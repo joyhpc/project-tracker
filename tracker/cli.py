@@ -3,6 +3,12 @@ import sys
 import argparse
 from . import core, flow as flowmod
 from .engine import analyze, format_advice, plan_project, generate_digest
+from .guide import (
+    format_guide_overview,
+    run_guide_interactive,
+    generate_guide_report,
+    get_phase_questions,
+)
 
 
 def _icon(status: str) -> str:
@@ -364,6 +370,49 @@ def cmd_phases(args):
     print()
 
 
+def cmd_guide(args):
+    """启发式项目引导"""
+    product = args.product or ""
+
+    if args.phase:
+        # 查看单个阶段的问题
+        phase_data = get_phase_questions(args.phase.upper(), product)
+        if not phase_data:
+            print(f"❌ 未找到阶段: {args.phase}")
+            sys.exit(1)
+        print(f"\n📍 {args.phase.upper()}: {phase_data['title']}\n")
+        for i, q in enumerate(phase_data.get("questions", []), 1):
+            cat = f"[{q.get('category', '')}] " if q.get("category") else ""
+            print(f"  {i}. {cat}{q['q']}")
+        hints = phase_data.get("risk_hints", [])
+        if hints:
+            print(f"\n  ⚠️ 风险提示:")
+            for h in hints:
+                print(f"     • {h}")
+        print()
+        return
+
+    if args.overview:
+        # 非交互模式：打印所有问题
+        print(format_guide_overview(product))
+        return
+
+    # 交互模式
+    result = run_guide_interactive(product, args.flow)
+
+    # 输出报告
+    report = generate_guide_report(result)
+    print(f"\n{report}")
+
+    # 保存报告
+    if args.save:
+        from datetime import datetime
+        filename = args.save
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(report)
+        print(f"\n💾 报告已保存: {filename}")
+
+
 def main():
     parser = argparse.ArgumentParser(prog="pt", description="项目推进助手")
     sub = parser.add_subparsers(dest="command")
@@ -398,6 +447,14 @@ def main():
     p_digest = sub.add_parser("digest", help="项目状态摘要（通知用）")
     p_digest.add_argument("--json", action="store_true", help="JSON 输出")
     p_digest.add_argument("--quiet", "-q", action="store_true", help="静默模式")
+
+    # guide
+    p_guide = sub.add_parser("guide", help="启发式项目引导")
+    p_guide.add_argument("--product", "-p", help="产品名称（如：助眠枕头）")
+    p_guide.add_argument("--phase", help="查看单个阶段的问题")
+    p_guide.add_argument("--overview", action="store_true", help="非交互模式，打印所有问题")
+    p_guide.add_argument("--flow", "-f", default="duxin", help="流程定义（默认 duxin）")
+    p_guide.add_argument("--save", "-s", help="保存报告到文件")
 
     # phases
     sub.add_parser("phases", aliases=["ph"], help="查看流程阶段")
@@ -466,7 +523,7 @@ def main():
         "status": cmd_status, "s": cmd_status,
         "tasks": cmd_tasks, "t": cmd_tasks,
         "next": cmd_next, "n": cmd_next,
-        "plan": cmd_plan, "digest": cmd_digest,
+        "plan": cmd_plan, "digest": cmd_digest, "guide": cmd_guide,
         "phases": cmd_phases, "ph": cmd_phases,
         "start": cmd_start, "done": cmd_done, "d": cmd_done,
         "block": cmd_block, "unblock": cmd_unblock,
