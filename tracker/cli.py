@@ -4,6 +4,7 @@ from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_ph
 from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list
 from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate
 from .commands.guide_cmd import cmd_guide
+from .commands.risk_cmd import cmd_risk
 
 
 def main():
@@ -96,6 +97,10 @@ def main():
     p_guide.add_argument("--flow", "-f", default="duxin")
     p_guide.add_argument("--save", "-s")
 
+    # ── 风险 ──
+    p_risk = sub.add_parser("risk", help="风险评估")
+    p_risk.add_argument("--phase", help="评估单个阶段")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -118,7 +123,7 @@ def main():
         "plan": cmd_plan, "digest": cmd_digest,
         "timeline": cmd_timeline, "tl": cmd_timeline,
         "estimate": cmd_estimate, "est": cmd_estimate,
-        "guide": cmd_guide,
+        "guide": cmd_guide, "risk": cmd_risk,
     }
 
     fn = CMD.get(args.command)
