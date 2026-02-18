@@ -46,6 +46,7 @@ def main():
     p_done = sub.add_parser("done", aliases=["d"], help="完成任务")
     p_done.add_argument("task_id")
     p_done.add_argument("--note", help="备注")
+    p_done.add_argument("--force", action="store_true", help="跳过依赖检查")
 
     p_block = sub.add_parser("block", help="标记任务阻塞")
     p_block.add_argument("task_id")

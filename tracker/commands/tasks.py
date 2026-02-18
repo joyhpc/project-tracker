@@ -71,7 +71,7 @@ def cmd_start(args):
 def cmd_done(args):
     try:
         p = _require()
-        result = core.done_task(p["id"], args.task_id, args.note or "")
+        result = core.done_task(p["id"], args.task_id, args.note or "", force=getattr(args, 'force', False))
         print(f"✅ 已完成: {args.task_id}")
         print(f"   进度: {result['progress']}")
         if result["complete"]:

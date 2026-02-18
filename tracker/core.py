@@ -145,7 +145,7 @@ def start_task(project_id: str, task_id: str) -> dict:
     return task
 
 
-def done_task(project_id: str, task_id: str, note: str = "") -> dict:
+def done_task(project_id: str, task_id: str, note: str = "", force: bool = False) -> dict:
     p = _load(project_id)
     fl = flowmod.load_flow(p.get("flow", "duxin"))
     phase, task = flowmod.find_task(fl, task_id)
@@ -153,6 +153,16 @@ def done_task(project_id: str, task_id: str, note: str = "") -> dict:
         raise ValueError(f"任务不存在: {task_id}")
 
     entry = _task_entry(p, task_id)
+    if entry["status"] == "done":
+        raise ValueError(f"任务已完成: {task_id}")
+
+    # 检查依赖是否满足
+    deps = task.get("depends", [])
+    if deps and not force:
+        undone = [d for d in deps if p.get("tasks", {}).get(d, {}).get("status") != "done"]
+        if undone:
+            raise ValueError(f"依赖未完成: {', '.join(undone)}。使用 --force 强制完成")
+
     entry["status"] = "done"
     entry["completed"] = _now()
     if note:
