@@ -85,7 +85,15 @@ def find_critical_path(phase: dict, task_status: dict) -> list[str]:
         return result
 
     all_chains = [longest_chain(tid) for tid in undone]
-    return max(all_chains, key=len) if all_chains else []
+    if not all_chains:
+        return []
+    max_len = max(len(c) for c in all_chains)
+    # 同长度时优先选包含 critical 任务的链
+    candidates = [c for c in all_chains if len(c) == max_len]
+    for c in candidates:
+        if any(tasks.get(tid, {}).get("critical") for tid in c):
+            return c
+    return candidates[0]
 
 
 def analyze(phase: dict, task_status: dict, blockers: list) -> dict:

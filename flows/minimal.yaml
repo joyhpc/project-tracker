@@ -1,0 +1,24 @@
+# 极简流程 - 无依赖关系，所有任务并行
+phases:
+  - id: PHASE1
+    name: 第一阶段
+    tasks:
+      - id: task_a
+        name: 任务A
+        owner: 张三
+      - id: task_b
+        name: 任务B
+        owner: 李四
+      - id: task_c
+        name: 任务C
+        owner: 张三
+        critical: true
+  - id: PHASE2
+    name: 第二阶段
+    milestone: DONE
+    tasks:
+      - id: task_d
+        name: 任务D
+        depends: [task_a, task_b]
+        owner: 王五
+        gate: 需要审批
