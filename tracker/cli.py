@@ -210,10 +210,72 @@ def cmd_log(args):
     n = args.n or 20
     for entry in logs[-n:]:
         action = entry.get("action", "")
-        icon = {"init": "🆕", "start": "🔄", "done": "✅", "block": "🚫", "unblock": "🔓", "advance": "⏩", "note": "📝"}.get(action, "•")
+        icon = {"init": "🆕", "start": "🔄", "done": "✅", "block": "🚫", "unblock": "🔓", "advance": "⏩", "note": "📝",
+                "subtask_add": "➕", "subtask_done": "✅", "subtask_block": "🚫"}.get(action, "•")
         task = f" [{entry['task']}]" if entry.get("task") else ""
         detail = f" {entry.get('detail', '')}" if entry.get("detail") else ""
         print(f"  {entry['time']}  {icon}{task}{detail}")
+
+
+def cmd_sub_add(args):
+    try:
+        p = core.require_active()
+        kwargs = {}
+        if args.owner:
+            kwargs["owner"] = args.owner
+        if args.depends:
+            kwargs["depends"] = args.depends.split(",")
+        sub = core.add_subtask(p["id"], args.parent, args.sub_id, args.name, **kwargs)
+        print(f"➕ 子任务已添加: {args.parent}.{args.sub_id} - {args.name}")
+    except (RuntimeError, ValueError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+
+def cmd_sub_done(args):
+    try:
+        p = core.require_active()
+        result = core.done_subtask(p["id"], args.full_id, args.note or "")
+        print(f"✅ 子任务完成: {args.full_id}")
+        if result.get("all_subtasks_done"):
+            print(f"🎉 {result['hint']}")
+    except (RuntimeError, ValueError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+
+def cmd_sub_block(args):
+    try:
+        p = core.require_active()
+        core.block_subtask(p["id"], args.full_id, args.reason)
+        print(f"🚫 子任务阻塞: {args.full_id} - {args.reason}")
+    except (RuntimeError, ValueError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+
+def cmd_sub_list(args):
+    try:
+        p = core.require_active()
+        subs = core.list_subtasks(p["id"], args.parent)
+        if not subs:
+            print(f"  {args.parent} 没有子任务")
+            return
+        print(f"\n📋 {args.parent} 子任务:\n")
+        for s in subs:
+            icon = _icon(s["status"])
+            line = f"  {icon} [{s['id']}] {s['name']}"
+            if s.get("owner"):
+                line += f"  ← {s['owner']}"
+            print(line)
+            if s.get("blocked_reason"):
+                print(f"      阻塞: {s['blocked_reason']}")
+            if s.get("note") and s["status"] == "done":
+                print(f"      备注: {s['note']}")
+        print()
+    except (RuntimeError, ValueError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
 
 
 def cmd_phases(args):
@@ -302,6 +364,28 @@ def main():
     p_log = sub.add_parser("log", help="查看项目日志")
     p_log.add_argument("-n", type=int, default=20, help="显示条数")
 
+    # sub add
+    p_sub_add = sub.add_parser("sub", help="添加子任务")
+    p_sub_add.add_argument("parent", help="父任务ID")
+    p_sub_add.add_argument("sub_id", help="子任务ID")
+    p_sub_add.add_argument("--name", "-n", required=True, help="子任务名称")
+    p_sub_add.add_argument("--owner", "-o", help="责任人")
+    p_sub_add.add_argument("--depends", help="依赖的子任务ID，逗号分隔")
+
+    # sub done
+    p_sub_done = sub.add_parser("sub-done", aliases=["sd"], help="完成子任务")
+    p_sub_done.add_argument("full_id", help="子任务ID (parent.sub)")
+    p_sub_done.add_argument("--note", help="备注")
+
+    # sub block
+    p_sub_block = sub.add_parser("sub-block", aliases=["sb"], help="阻塞子任务")
+    p_sub_block.add_argument("full_id", help="子任务ID (parent.sub)")
+    p_sub_block.add_argument("--reason", "-r", required=True, help="阻塞原因")
+
+    # sub list
+    p_sub_list = sub.add_parser("sub-list", aliases=["sl"], help="查看子任务")
+    p_sub_list.add_argument("parent", help="父任务ID")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -318,6 +402,9 @@ def main():
         "start": cmd_start, "done": cmd_done, "d": cmd_done,
         "block": cmd_block, "unblock": cmd_unblock,
         "advance": cmd_advance, "note": cmd_note, "log": cmd_log,
+        "sub": cmd_sub_add, "sub-done": cmd_sub_done, "sd": cmd_sub_done,
+        "sub-block": cmd_sub_block, "sb": cmd_sub_block,
+        "sub-list": cmd_sub_list, "sl": cmd_sub_list,
     }
 
     fn = cmd_map.get(args.command)

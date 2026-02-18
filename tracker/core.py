@@ -201,6 +201,96 @@ def add_note(project_id: str, text: str):
     _save(p)
 
 
+# ── 子任务 ────────────────────────────────────────────
+
+def add_subtask(project_id: str, parent_id: str, subtask_id: str, name: str, **kwargs) -> dict:
+    """给流程任务添加自定义子任务"""
+    p = _load(project_id)
+    fl = flowmod.load_flow(p.get("flow", "duxin"))
+    _, parent = flowmod.find_task(fl, parent_id)
+    if not parent:
+        raise ValueError(f"父任务不存在: {parent_id}")
+
+    entry = _task_entry(p, parent_id)
+    if "subtasks" not in entry:
+        entry["subtasks"] = {}
+
+    full_id = f"{parent_id}.{subtask_id}"
+    if subtask_id in entry["subtasks"]:
+        raise ValueError(f"子任务已存在: {full_id}")
+
+    sub = {"name": name, "status": "pending", "created": _now()}
+    for k in ("owner", "note", "depends"):
+        if k in kwargs and kwargs[k]:
+            sub[k] = kwargs[k]
+    entry["subtasks"][subtask_id] = sub
+
+    # 父任务自动变为 in_progress
+    if entry["status"] == "pending":
+        entry["status"] = "in_progress"
+        entry["started"] = _now()
+
+    p["log"].append({"time": _now(), "action": "subtask_add", "task": full_id, "detail": name})
+    _save(p)
+    return sub
+
+
+def done_subtask(project_id: str, full_id: str, note: str = "") -> dict:
+    """完成子任务。full_id 格式: parent_id.subtask_id"""
+    parent_id, sub_id = _split_subtask_id(full_id)
+    p = _load(project_id)
+    entry = _task_entry(p, parent_id)
+    subs = entry.get("subtasks", {})
+    if sub_id not in subs:
+        raise ValueError(f"子任务不存在: {full_id}")
+
+    subs[sub_id]["status"] = "done"
+    subs[sub_id]["completed"] = _now()
+    if note:
+        subs[sub_id]["note"] = note
+
+    p["log"].append({"time": _now(), "action": "subtask_done", "task": full_id, "detail": note or subs[sub_id]["name"]})
+
+    # 检查所有子任务是否完成
+    all_done = all(s["status"] == "done" for s in subs.values())
+    result = {"subtask": full_id, "all_subtasks_done": all_done}
+    if all_done:
+        result["hint"] = f"所有子任务已完成，可以运行: pt done {parent_id}"
+
+    _save(p)
+    return result
+
+
+def block_subtask(project_id: str, full_id: str, reason: str):
+    parent_id, sub_id = _split_subtask_id(full_id)
+    p = _load(project_id)
+    entry = _task_entry(p, parent_id)
+    subs = entry.get("subtasks", {})
+    if sub_id not in subs:
+        raise ValueError(f"子任务不存在: {full_id}")
+    subs[sub_id]["status"] = "blocked"
+    subs[sub_id]["blocked_reason"] = reason
+    p["log"].append({"time": _now(), "action": "subtask_block", "task": full_id, "detail": reason})
+    _save(p)
+
+
+def list_subtasks(project_id: str, parent_id: str) -> list[dict]:
+    p = _load(project_id)
+    entry = p.get("tasks", {}).get(parent_id, {})
+    subs = entry.get("subtasks", {})
+    result = []
+    for sid, s in subs.items():
+        result.append({"id": f"{parent_id}.{sid}", **s})
+    return result
+
+
+def _split_subtask_id(full_id: str) -> tuple[str, str]:
+    parts = full_id.rsplit(".", 1)
+    if len(parts) != 2:
+        raise ValueError(f"子任务ID格式错误，应为 parent.sub: {full_id}")
+    return parts[0], parts[1]
+
+
 # ── 阶段推进 ──────────────────────────────────────────
 
 def check_phase(project_id: str) -> dict:
