@@ -2,6 +2,7 @@
 import sys
 import argparse
 from . import core, flow as flowmod
+from .engine import analyze, format_advice
 
 
 def _icon(status: str) -> str:
@@ -119,34 +120,16 @@ def cmd_next(args):
         print(f"❌ {e}")
         sys.exit(1)
 
-    info = core.get_status(p)
-    cat = info["categorized"]
+    fl = flowmod.load_flow(p.get("flow", "duxin"))
+    phases = flowmod.get_phases(fl)
+    phase = phases.get(p["current_phase"], {})
+    task_status = p.get("tasks", {})
+    blockers = p.get("blockers", [])
 
-    # 优先显示进行中
-    if cat["in_progress"]:
-        print("\n📌 继续推进:")
-        for t in cat["in_progress"]:
-            print(f"   [{t['id']}] {t['name']}")
-            if t.get("deliverables"):
-                print(f"   交付件: {', '.join(t['deliverables'])}")
-        return
-
-    # 然后显示可开始的
-    if cat["pending"]:
-        t = cat["pending"][0]
-        print(f"\n📌 建议下一步:")
-        print(f"   任务: {t['name']}")
-        print(f"   ID:   {t['id']}")
-        if t.get("owner"):
-            print(f"   责任人: {t['owner']}")
-        if t.get("deliverables"):
-            print(f"   交付件: {', '.join(t['deliverables'])}")
-        if t.get("gate"):
-            print(f"   准入: {t['gate']}")
-        print(f"\n   开始: pt start {t['id']}")
-        return
-
-    print("✅ 当前阶段所有任务已完成！运行 pt advance 进入下一阶段。")
+    result = analyze(phase, task_status, blockers)
+    print(f"\n📋 {p['name']} ({p['id']})")
+    print(f"📍 {phase.get('name', '')} ({p['current_phase']})\n")
+    print(format_advice(result))
 
 
 def cmd_start(args):
