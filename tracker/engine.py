@@ -279,7 +279,115 @@ def format_advice(analysis: dict) -> str:
     return "\n".join(lines)
 
 
-# ── 全局战略分析 ──────────────────────────────────────
+# ── 通知摘要 ──────────────────────────────────────────
+
+def generate_digest(project: dict, flow: dict) -> dict:
+    """生成项目状态摘要，用于通知推送。
+    
+    返回:
+        {
+            "has_alerts": bool,      # 是否有需要关注的事项
+            "text": str,             # 格式化的摘要文本
+            "alerts": list[str],     # 告警列表
+            "summary": dict,         # 数据摘要
+        }
+    """
+    phase_map = {p["id"]: p for p in flow.get("phases", [])}
+    order = [p["id"] for p in flow.get("phases", [])]
+    current_phase = project["current_phase"]
+    task_status = project.get("tasks", {})
+    blockers = project.get("blockers", [])
+    phase = phase_map.get(current_phase, {})
+
+    alerts = []
+    
+    # 1. 活跃阻塞
+    active_blockers = [b for b in blockers if not b.get("resolved")]
+    for b in active_blockers:
+        tid = b["task_id"]
+        tname = ""
+        for t in phase.get("tasks", []):
+            if t["id"] == tid:
+                tname = t["name"]
+                break
+        graph = build_dep_graph(phase)
+        downstream = _count_downstream(tid, graph["rdeps"], set())
+        alert = f"🚫 [{tid}] {tname} 被阻塞: {b['reason']}"
+        if downstream > 0:
+            alert += f" (影响下游 {downstream} 个任务)"
+        alerts.append(alert)
+
+    # 2. 阶段完成度
+    tasks = phase.get("tasks", [])
+    done_count = sum(1 for t in tasks if task_status.get(t["id"], {}).get("status") == "done")
+    total = len(tasks)
+    progress_pct = (done_count / total * 100) if total > 0 else 0
+
+    # 3. 进行中但可能停滞的任务（有 started 但超过一定时间没动静）
+    from datetime import datetime, timedelta
+    stale_tasks = []
+    now = datetime.now()
+    for t in tasks:
+        entry = task_status.get(t["id"], {})
+        if entry.get("status") == "in_progress" and entry.get("started"):
+            try:
+                started = datetime.strptime(entry["started"], "%Y-%m-%d %H:%M")
+                days = (now - started).days
+                if days >= 3:
+                    stale_tasks.append((t, days))
+            except (ValueError, TypeError):
+                pass
+    
+    for t, days in stale_tasks:
+        alerts.append(f"⏰ [{t['id']}] {t['name']} 已进行 {days} 天未完成")
+
+    # 4. 子任务中的阻塞
+    for tid, entry in task_status.items():
+        subs = entry.get("subtasks", {})
+        for sid, sub in subs.items():
+            if sub.get("status") == "blocked":
+                alerts.append(f"🚫 子任务 [{tid}.{sid}] {sub['name']} 阻塞: {sub.get('blocked_reason', '未知')}")
+
+    # 5. 可以立即开始的任务（提醒推进）
+    classified = classify_tasks(phase, task_status)
+    ready_tasks = classified["ready"]
+
+    # 构建摘要文本
+    lines = []
+    lines.append(f"📋 {project['name']} ({project['id']})")
+    lines.append(f"📍 {phase.get('name', '')} — {done_count}/{total} ({progress_pct:.0f}%)")
+    lines.append("")
+
+    if alerts:
+        lines.append("⚠️ 需要关注:")
+        for a in alerts:
+            lines.append(f"  {a}")
+        lines.append("")
+
+    if ready_tasks:
+        lines.append(f"🎯 可立即推进 ({len(ready_tasks)}):")
+        for t in ready_tasks[:5]:
+            owner = t.get("owner", "")
+            lines.append(f"  → [{t['id']}] {t['name']}  ← {owner}")
+        if len(ready_tasks) > 5:
+            lines.append(f"  ... 还有 {len(ready_tasks)-5} 个")
+        lines.append("")
+
+    if not alerts and not ready_tasks:
+        lines.append("✅ 一切正常，无需关注")
+
+    return {
+        "has_alerts": len(alerts) > 0,
+        "text": "\n".join(lines),
+        "alerts": alerts,
+        "summary": {
+            "phase": current_phase,
+            "progress": f"{done_count}/{total}",
+            "blockers": len(active_blockers),
+            "stale": len(stale_tasks),
+            "ready": len(ready_tasks),
+        },
+    }
 
 def plan_project(flow: dict, current_phase: str, task_status: dict, blockers: list) -> str:
     """项目全局作战地图：从当前阶段到结束的完整分析"""

@@ -2,7 +2,7 @@
 import sys
 import argparse
 from . import core, flow as flowmod
-from .engine import analyze, format_advice, plan_project
+from .engine import analyze, format_advice, plan_project, generate_digest
 
 
 def _icon(status: str) -> str:
@@ -147,6 +147,49 @@ def cmd_plan(args):
     print(f"  📋 {p['name']} ({p['id']}) - 作战地图")
     print(f"{'='*60}\n")
     print(plan_project(fl, p["current_phase"], task_status, blockers))
+
+
+def cmd_digest(args):
+    """生成通知摘要（供 cron 调用或手动查看）"""
+    import json
+    projects = core.list_projects()
+    if not projects:
+        if args.json:
+            print(json.dumps({"projects": [], "has_alerts": False}))
+        else:
+            print("没有项目")
+        return
+
+    all_digests = []
+    any_alerts = False
+
+    for p in projects:
+        fl = flowmod.load_flow(p.get("flow", "duxin"))
+        d = generate_digest(p, fl)
+        all_digests.append(d)
+        if d["has_alerts"]:
+            any_alerts = True
+
+    if args.json:
+        # JSON 模式：供程序调用
+        output = {
+            "has_alerts": any_alerts,
+            "projects": [
+                {"id": p["id"], "name": p["name"], **d["summary"], "alerts": d["alerts"]}
+                for p, d in zip(projects, all_digests)
+            ],
+        }
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+    else:
+        # 人类可读模式
+        for d in all_digests:
+            print(d["text"])
+            print("─" * 40)
+
+    # 退出码：有告警返回 1，无告警返回 0
+    if any_alerts and not args.quiet:
+        sys.exit(0)  # 正常退出但有告警
+    sys.exit(0)
 
 
 def cmd_start(args):
@@ -351,6 +394,11 @@ def main():
     # plan
     sub.add_parser("plan", help="项目作战地图（全局视角）")
 
+    # digest
+    p_digest = sub.add_parser("digest", help="项目状态摘要（通知用）")
+    p_digest.add_argument("--json", action="store_true", help="JSON 输出")
+    p_digest.add_argument("--quiet", "-q", action="store_true", help="静默模式")
+
     # phases
     sub.add_parser("phases", aliases=["ph"], help="查看流程阶段")
 
@@ -418,7 +466,7 @@ def main():
         "status": cmd_status, "s": cmd_status,
         "tasks": cmd_tasks, "t": cmd_tasks,
         "next": cmd_next, "n": cmd_next,
-        "plan": cmd_plan,
+        "plan": cmd_plan, "digest": cmd_digest,
         "phases": cmd_phases, "ph": cmd_phases,
         "start": cmd_start, "done": cmd_done, "d": cmd_done,
         "block": cmd_block, "unblock": cmd_unblock,
