@@ -1,7 +1,7 @@
-"""Prompt 导出引擎
+"""Prompt 导出引擎 v2
 
-根据用户问题，从项目中提取恰好需要的上下文，生成精准 prompt。
-原则：不多不少，只给 LLM 回答这个问题所需的信息。
+核心思路：从问题中提取实体（任务/人员/阶段），围绕实体收集上下文。
+不依赖关键词分类，而是实体驱动。
 """
 from . import core, flow as flowmod
 from .engine import find_critical_path, build_dep_graph, classify_tasks, _count_downstream
@@ -9,170 +9,188 @@ from .timeline import compute_full_schedule, estimate_task_days
 from .risk import assess_project_risk
 
 
-# ── 上下文收集器（按需） ──────────────────────────────
+# ── 实体提取 ──────────────────────────────────────────
 
-def _find_task_in_flow(flow, task_id):
-    """在流程中查找任务，返回 (phase, task) 或 (None, None)"""
+def _build_task_index(flow):
+    """构建任务索引：名称/ID/关键词 → task_id"""
+    index = {}  # keyword → (phase, task)
     for phase in flow.get("phases", []):
         for t in phase.get("tasks", []):
-            if t["id"] == task_id:
-                return phase, t
-    return None, None
+            # 精确匹配
+            index[t["id"]] = (phase, t)
+            index[t["name"]] = (phase, t)
+            # 拆分名称为关键词
+            for part in t["name"].replace("（", "(").replace("）", ")").split():
+                if len(part) >= 2:
+                    index[part] = (phase, t)
+    return index
 
 
-def _find_task_by_name(flow, name):
-    """按名称模糊匹配任务"""
-    name_lower = name.lower()
+def _build_owner_index(flow):
+    """构建人员索引：owner名 → [tasks]"""
+    index = {}
     for phase in flow.get("phases", []):
         for t in phase.get("tasks", []):
-            if name_lower in t["name"].lower() or name_lower in t["id"].lower():
-                return phase, t
-    return None, None
+            owners = t.get("owner", "").replace("/", ",").replace("、", ",").split(",")
+            for o in owners:
+                o = o.strip()
+                if o:
+                    index.setdefault(o, []).append((phase, t))
+    return index
 
 
-def _task_detail(task, phase, task_status, blockers, graph):
-    """收集单个任务的详细信息"""
+def _build_phase_index(flow):
+    """构建阶段索引"""
+    index = {}
+    for phase in flow.get("phases", []):
+        index[phase["id"]] = phase
+        index[phase.get("name", "")] = phase
+    return index
+
+
+def extract_entities(question, flow):
+    """从问题中提取所有实体"""
+    entities = {"tasks": [], "owners": [], "phases": []}
+
+    task_idx = _build_task_index(flow)
+    owner_idx = _build_owner_index(flow)
+    phase_idx = _build_phase_index(flow)
+
+    seen_tasks = set()
+
+    # 任务匹配：先长后短，避免短词误匹配
+    candidates = sorted(task_idx.keys(), key=len, reverse=True)
+    for keyword in candidates:
+        if keyword in question:
+            phase, task = task_idx[keyword]
+            if task["id"] not in seen_tasks:
+                entities["tasks"].append((phase, task))
+                seen_tasks.add(task["id"])
+
+    # 人员匹配
+    seen_owners = set()
+    for owner_name in sorted(owner_idx.keys(), key=len, reverse=True):
+        if owner_name in question and owner_name not in seen_owners:
+            entities["owners"].append(owner_name)
+            seen_owners.add(owner_name)
+
+    # 阶段匹配
+    for phase_key in sorted(phase_idx.keys(), key=len, reverse=True):
+        if phase_key in question:
+            entities["phases"].append(phase_idx[phase_key])
+            break  # 一个就够
+
+    return entities
+
+
+# ── 意图信号检测 ──────────────────────────────────────
+
+def detect_signals(question):
+    """检测问题中的意图信号，返回需要补充的上下文维度"""
+    q = question.lower()
+    signals = set()
+
+    time_kw = ["时间", "多久", "什么时候", "工期", "交付", "deadline",
+               "预计", "完成", "来得及"]
+    block_kw = ["阻塞", "block", "卡住", "等待", "停滞", "替代", "绕过", "先做"]
+    speed_kw = ["加速", "缩短", "提速", "赶工期", "瓶颈", "并行"]
+    risk_kw = ["风险", "延期", "隐患", "担心"]
+    arch_kw = ["架构", "合理", "依赖", "流程", "优化"]
+    status_kw = ["汇报", "报告", "总结", "进展"]
+    what_kw = ["做什么", "应该", "下一步", "接下来", "优先"]
+    push_kw = ["快", "推进"]
+
+    if any(kw in q for kw in time_kw):
+        signals.add("timeline")
+    if any(kw in q for kw in block_kw):
+        signals.add("blockers")
+        signals.add("alternatives")
+    if any(kw in q for kw in speed_kw):
+        signals.add("critical_path")
+        signals.add("alternatives")
+        signals.add("bottlenecks")
+    if any(kw in q for kw in risk_kw):
+        signals.add("risks")
+    if any(kw in q for kw in arch_kw):
+        signals.add("phase_overview")
+        signals.add("dependencies")
+    if any(kw in q for kw in status_kw):
+        signals.add("phase_overview")
+        signals.add("blockers")
+    if any(kw in q for kw in what_kw):
+        signals.add("alternatives")
+    # "推进"/"快" — 轻量信号，补替代方案和关键路径
+    if any(kw in q for kw in push_kw):
+        signals.add("alternatives")
+        signals.add("critical_path")
+
+    return signals
+
+
+# ── 上下文构建 ──────────────────────────────────────────
+
+def _task_context(task, phase, task_status, blockers, graph):
+    """单个任务的上下文文本"""
     tid = task["id"]
     entry = task_status.get(tid, {})
     status = entry.get("status", "pending")
+    status_map = {"done": "✅已完成", "in_progress": "🔄进行中",
+                  "pending": "⏳待开始", "blocked": "🚫已阻塞"}
 
-    info = {
-        "id": tid,
-        "name": task["name"],
-        "phase": phase.get("name", ""),
-        "owner": task.get("owner", ""),
-        "status": status,
-        "depends": task.get("depends", []),
-        "deliverables": task.get("deliverables", []),
-    }
+    lines = [f"[{tid}] {task['name']}"]
+    lines.append(f"  状态: {status_map.get(status, status)}")
+    if task.get("owner"):
+        lines.append(f"  负责人: {task['owner']}")
+    lines.append(f"  阶段: {phase.get('name', '')}")
 
-    if task.get("gate"):
-        info["gate"] = task["gate"]
-    if task.get("critical"):
-        info["critical"] = True
-    if entry.get("started"):
-        info["started"] = entry["started"]
+    # 阻塞
+    active = [b for b in blockers if b["task_id"] == tid and not b.get("resolved")]
+    if active:
+        lines.append(f"  ⚠️ 阻塞: {active[0]['reason']}")
 
-    # 阻塞信息
-    active_blockers = [b for b in blockers if b["task_id"] == tid and not b.get("resolved")]
-    if active_blockers:
-        info["blocked_reason"] = active_blockers[0]["reason"]
+    # 依赖
+    deps = task.get("depends", [])
+    if deps:
+        dep_info = []
+        for d in deps:
+            ds = task_status.get(d, {}).get("status", "pending")
+            dep_info.append(f"{d}({status_map.get(ds, ds)})")
+        lines.append(f"  依赖: {', '.join(dep_info)}")
 
-    # 下游影响
+    # 下游
     if graph:
         downstream = _count_downstream(tid, graph["rdeps"], set())
         if downstream > 0:
-            info["downstream_count"] = downstream
-            # 直接下游任务名
-            direct = []
-            for other_id, other_task in graph["tasks"].items():
-                if tid in other_task.get("depends", []):
-                    direct.append(f"{other_task['name']}({other_id})")
-            if direct:
-                info["direct_downstream"] = direct
+            direct = [f"{graph['tasks'][oid]['name']}"
+                      for oid, ot in graph["tasks"].items()
+                      if tid in ot.get("depends", [])]
+            lines.append(f"  下游({downstream}个): {', '.join(direct)}")
 
-    # 上游依赖状态
-    if info["depends"]:
-        dep_status = []
-        for d in info["depends"]:
-            ds = task_status.get(d, {}).get("status", "pending")
-            dep_status.append(f"{d}={ds}")
-        info["dep_status"] = dep_status
+    # 交付件/准入
+    if task.get("deliverables"):
+        lines.append(f"  交付件: {', '.join(task['deliverables'])}")
+    if task.get("gate"):
+        lines.append(f"  准入: {task['gate']}")
 
-    return info
-
-
-def _format_task_detail(info):
-    """格式化单个任务详情"""
-    lines = []
-    status_map = {"done": "✅已完成", "in_progress": "🔄进行中", "pending": "⏳待开始", "blocked": "🚫已阻塞"}
-    lines.append(f"[{info['id']}] {info['name']}")
-    lines.append(f"  状态: {status_map.get(info['status'], info['status'])}")
-    if info.get("owner"):
-        lines.append(f"  负责人: {info['owner']}")
-    if info.get("phase"):
-        lines.append(f"  所属阶段: {info['phase']}")
-    if info.get("blocked_reason"):
-        lines.append(f"  ⚠️ 阻塞原因: {info['blocked_reason']}")
-    if info.get("depends"):
-        lines.append(f"  依赖: {', '.join(info['depends'])}")
-    if info.get("dep_status"):
-        lines.append(f"  依赖状态: {', '.join(info['dep_status'])}")
-    if info.get("direct_downstream"):
-        lines.append(f"  直接下游: {', '.join(info['direct_downstream'])}")
-    if info.get("downstream_count"):
-        lines.append(f"  影响下游: {info['downstream_count']} 个任务")
-    if info.get("gate"):
-        lines.append(f"  准入条件: {info['gate']}")
-    if info.get("deliverables"):
-        lines.append(f"  交付件: {', '.join(info['deliverables'])}")
-    if info.get("critical"):
-        lines.append(f"  🔴 关键路径任务")
     return "\n".join(lines)
 
 
-# ── 问题分析 ──────────────────────────────────────────
-
-def extract_task_refs(question, flow):
-    """从问题中提取涉及的任务"""
-    refs = []
+def _owner_context(owner, flow, task_status, current_phase_id):
+    """某个人员的任务列表"""
+    lines = [f"## {owner} 的任务"]
     for phase in flow.get("phases", []):
         for t in phase.get("tasks", []):
-            # 匹配 task_id 或任务名
-            if t["id"] in question or t["name"] in question:
-                refs.append(t["id"])
-    return refs
+            owners = t.get("owner", "").replace("/", ",").replace("、", ",").split(",")
+            if owner in [o.strip() for o in owners]:
+                status = task_status.get(t["id"], {}).get("status", "pending")
+                if status != "done":
+                    marker = " ◀当前阶段" if phase["id"] == current_phase_id else ""
+                    status_map = {"in_progress": "🔄", "pending": "⏳", "blocked": "🚫"}
+                    lines.append(f"  {status_map.get(status, '⏳')} [{t['id']}] {t['name']} ({phase.get('name', '')}){marker}")
+    return "\n".join(lines)
 
 
-def analyze_question(question):
-    """分析问题的意图，决定需要哪些上下文。
-    优先级：具体任务问题 > 全局问题。避免叠加过多上下文。"""
-    q = question.lower()
-
-    needs = set()
-    primary = None  # 主要意图
-
-    # 阻塞相关（最具体）
-    block_kw = ["阻塞", "block", "卡住", "等待", "停滞", "替代", "绕过", "先做"]
-    if any(kw in q for kw in block_kw):
-        needs.update(["target_task", "blockers", "alternatives"])
-        primary = "blocked"
-
-    # 加速/推进（全局性）
-    accel_kw = ["快", "加速", "推进", "缩短", "提速", "赶", "工期", "瓶颈"]
-    if any(kw in q for kw in accel_kw):
-        if primary != "blocked":  # 已有具体意图时不叠加全局
-            needs.update(["critical_path", "ready_tasks", "blockers", "bottlenecks"])
-            primary = primary or "accelerate"
-
-    # 架构/设计
-    arch_kw = ["架构", "合理", "依赖", "流程"]
-    if any(kw in q for kw in arch_kw):
-        needs.update(["phase_overview", "critical_path", "dependencies"])
-        primary = primary or "architecture"
-
-    # 风险
-    risk_kw = ["风险", "延期", "隐患"]
-    if any(kw in q for kw in risk_kw):
-        needs.update(["risks", "critical_path"])
-        primary = primary or "risk"
-
-    # 状态/汇报
-    status_kw = ["汇报", "报告", "总结", "状态"]
-    if any(kw in q for kw in status_kw):
-        needs.update(["phase_overview", "progress", "blockers", "ready_tasks"])
-        primary = primary or "status"
-
-    # 如果没匹配到任何意图，给基本上下文
-    if not needs:
-        needs.update(["progress", "current_phase"])
-
-    return needs
-
-
-# ── 精准上下文构建 ──────────────────────────────────────
-
-def build_focused_context(question, project, flow):
+def build_context(question, project, flow):
     """根据问题构建精准上下文"""
     task_status = project.get("tasks", {})
     blockers = project.get("blockers", [])
@@ -182,133 +200,174 @@ def build_focused_context(question, project, flow):
     current_phase = phase_map.get(current_phase_id, {})
     graph = build_dep_graph(current_phase)
 
-    needs = analyze_question(question)
-    task_refs = extract_task_refs(question, flow)
+    entities = extract_entities(question, flow)
+    signals = detect_signals(question)
 
     lines = []
 
-    # 始终给项目基本信息（一行）
+    # 一行项目概要（始终给）
     total = sum(len(p.get("tasks", [])) for p in phases)
     done = sum(1 for p in phases for t in p.get("tasks", [])
                if task_status.get(t["id"], {}).get("status") == "done")
-    lines.append(f"项目: {project['name']} | 当前阶段: {current_phase.get('name', current_phase_id)} | 进度: {done}/{total}")
+    lines.append(f"项目: {project['name']} | 阶段: {current_phase.get('name', '')} | 进度: {done}/{total}")
     lines.append("")
 
-    # 目标任务详情
-    if task_refs:
-        lines.append("## 相关任务")
-        for tid in task_refs:
-            phase, task = _find_task_in_flow(flow, tid)
-            if task:
-                detail = _task_detail(task, phase, task_status, blockers, graph)
-                lines.append(_format_task_detail(detail))
-                lines.append("")
+    has_content = False
+
+    # ── 实体驱动的上下文 ──
+
+    # 任务详情
+    if entities["tasks"]:
+        for phase, task in entities["tasks"]:
+            # 如果任务在当前阶段，用当前阶段的 graph；否则构建对应阶段的
+            if phase["id"] == current_phase_id:
+                g = graph
+            else:
+                g = build_dep_graph(phase)
+            lines.append(_task_context(task, phase, task_status, blockers, g))
+            lines.append("")
+        has_content = True
+
+    # 人员任务
+    if entities["owners"]:
+        for owner in entities["owners"]:
+            lines.append(_owner_context(owner, flow, task_status, current_phase_id))
+            lines.append("")
+        has_content = True
+
+    # ── 信号驱动的补充上下文 ──
+
+    # 时间线
+    if "timeline" in signals:
+        sched = compute_full_schedule(flow, current_phase_id, task_status,
+                                      custom_estimates=project.get("estimates", {}))
+        lines.append(f"预计总工期: {sched.get('total_days', '?')} 天")
+        if sched.get("end_date"):
+            lines.append(f"预计完成: {sched['end_date'].strftime('%Y-%m-%d')}")
+
+        # 如果问的是具体任务的时间，给该任务的工时
+        for _, task in entities["tasks"]:
+            days = estimate_task_days(task)
+            lines.append(f"[{task['id']}] 预估工时: {days} 天")
+        lines.append("")
+        has_content = True
 
     # 阻塞 + 替代方案
-    if "blockers" in needs or "alternatives" in needs:
-        active_blockers = [b for b in blockers if not b.get("resolved")]
-        if active_blockers:
-            if not task_refs:  # 如果没有指定任务，列出所有阻塞
-                lines.append("## 当前阻塞")
-                for b in active_blockers:
-                    phase_t, task_t = _find_task_in_flow(flow, b["task_id"])
-                    if task_t:
-                        detail = _task_detail(task_t, phase_t, task_status, blockers, graph)
-                        lines.append(_format_task_detail(detail))
-                        lines.append("")
+    if "blockers" in signals or "alternatives" in signals:
+        active = [b for b in blockers if not b.get("resolved")]
+        # 只在没有具体任务实体时列出所有阻塞
+        if active and not entities["tasks"]:
+            lines.append("当前阻塞:")
+            for b in active:
+                lines.append(f"  [{b['task_id']}] {b['reason']}")
+            lines.append("")
 
-        if "alternatives" in needs:
+        if "alternatives" in signals:
             classified = classify_tasks(current_phase, task_status)
             ready = classified.get("ready", [])
-            if ready:
-                lines.append("## 不受阻塞影响、可立即推进的任务")
-                for t in ready:
-                    blocked_ids = {b["task_id"] for b in active_blockers}
-                    if t["id"] not in blocked_ids:
-                        lines.append(f"- [{t['id']}] {t['name']} ← {t.get('owner', '未分配')}")
+            blocked_ids = {b["task_id"] for b in active}
+            available = [t for t in ready if t["id"] not in blocked_ids]
+            if available:
+                lines.append("可立即推进的任务:")
+                for t in available:
+                    lines.append(f"  [{t['id']}] {t['name']} ← {t.get('owner', '未分配')}")
                 lines.append("")
+        has_content = True
 
     # 关键路径
-    if "critical_path" in needs:
+    if "critical_path" in signals:
         cp = find_critical_path(current_phase, task_status)
         if cp:
-            lines.append(f"## 当前阶段关键路径")
-            lines.append(f"{' → '.join(cp)}")
+            lines.append(f"关键路径: {' → '.join(cp)}")
             lines.append("")
-
-    # 可启动任务
-    if "ready_tasks" in needs and "alternatives" not in needs:
-        classified = classify_tasks(current_phase, task_status)
-        ready = classified.get("ready", [])
-        if ready:
-            lines.append("## 可立即启动的任务")
-            for t in ready:
-                lines.append(f"- [{t['id']}] {t['name']} ← {t.get('owner', '未分配')}")
-            lines.append("")
-
-    # 阶段概览
-    if "phase_overview" in needs:
-        lines.append("## 各阶段进度")
-        for p in phases:
-            pid = p["id"]
-            tasks = p.get("tasks", [])
-            d = sum(1 for t in tasks if task_status.get(t["id"], {}).get("status") == "done")
-            marker = " ◀当前" if pid == current_phase_id else ""
-            lines.append(f"- {p['name']}({pid}): {d}/{len(tasks)}{marker}")
-        lines.append("")
+        has_content = True
 
     # 风险
-    if "risks" in needs:
+    if "risks" in signals:
         risk = assess_project_risk(flow, current_phase_id, task_status,
                                    project.get("estimates", {}))
         top = risk.get("top_risks", [])[:3]
         if top:
-            lines.append("## 高风险任务")
+            lines.append("高风险任务:")
             for r in top:
-                lines.append(f"- {r['name']} (风险分: {r['score']}): {'; '.join(r['factors'])}")
+                lines.append(f"  {r['name']} (风险分: {r['score']}): {'; '.join(r['factors'])}")
             lines.append("")
+        has_content = True
 
     # 资源瓶颈
-    if "bottlenecks" in needs:
+    if "bottlenecks" in signals:
         risk = assess_project_risk(flow, current_phase_id, task_status,
                                    project.get("estimates", {}))
         bn = risk.get("bottlenecks", [])[:3]
         if bn:
-            lines.append("## 资源瓶颈")
+            lines.append("资源瓶颈:")
             for owner, count in bn:
-                lines.append(f"- {owner}: {count} 个待办")
+                lines.append(f"  {owner}: {count} 个待办")
             lines.append("")
+        has_content = True
+
+    # 阶段概览
+    if "phase_overview" in signals:
+        lines.append("各阶段进度:")
+        for p in phases:
+            d = sum(1 for t in p.get("tasks", [])
+                    if task_status.get(t["id"], {}).get("status") == "done")
+            marker = " ◀" if p["id"] == current_phase_id else ""
+            lines.append(f"  {p['name']}: {d}/{len(p.get('tasks', []))}{marker}")
+        lines.append("")
+        has_content = True
+
+    # ── 兜底：没有任何实体或信号命中 ──
+    if not has_content:
+        # 给当前阶段概要
+        classified = classify_tasks(current_phase, task_status)
+        phase_tasks = current_phase.get("tasks", [])
+        phase_done = sum(1 for t in phase_tasks
+                         if task_status.get(t["id"], {}).get("status") == "done")
+        lines.append(f"当前阶段: {current_phase.get('name', '')} ({phase_done}/{len(phase_tasks)})")
+
+        active = [b for b in blockers if not b.get("resolved")]
+        if active:
+            lines.append(f"阻塞: {len(active)} 个")
+            for b in active:
+                lines.append(f"  [{b['task_id']}] {b['reason']}")
+
+        in_prog = classified.get("in_progress", [])
+        if in_prog:
+            lines.append(f"进行中: {', '.join(t['name'] for t in in_prog)}")
+
+        ready = classified.get("ready", [])
+        if ready:
+            lines.append(f"可启动: {', '.join(t['name'] for t in ready)}")
+        lines.append("")
 
     return "\n".join(lines)
 
 
 def generate_prompt(question, project=None, flow=None):
-    """根据问题和项目状态生成精准 prompt"""
+    """生成精准 prompt"""
     if project and flow:
-        context = build_focused_context(question, project, flow)
+        context = build_context(question, project, flow)
     else:
         context = "(无活跃项目)"
 
-    prompt = f"""以下是项目的相关信息：
-
-{context}
-
-问题：{question}
-
-请基于以上数据给出具体、可执行的建议。"""
+    prompt = f"""{context}
+问题：{question}"""
 
     return {
-        "system": "你是一位资深硬件项目管理专家。基于提供的项目数据回答问题，只使用给定数据，不要编造信息。",
+        "system": "你是一位资深硬件项目管理专家。基于提供的项目数据回答问题。只使用给定数据，不编造。给出具体可执行的建议。",
         "prompt": prompt,
     }
 
 
 def list_templates():
-    """列出支持的问题类型"""
+    """列出支持的问题类型示例"""
     return [
-        {"key": "blocked", "label": "阻塞分析", "example": "PCB Layout 被阻塞了怎么办？"},
-        {"key": "accelerate", "label": "加速推进", "example": "怎么才能最快推进项目？"},
-        {"key": "architecture", "label": "架构评估", "example": "这个项目的架构是否合理？"},
+        {"key": "task", "label": "任务相关", "example": "PCB Layout 被阻塞了怎么办？"},
+        {"key": "person", "label": "人员相关", "example": "硬件工程师现在应该做什么？"},
+        {"key": "time", "label": "时间相关", "example": "下个月能不能交付？"},
+        {"key": "speed", "label": "加速推进", "example": "怎么才能最快推进项目？"},
         {"key": "risk", "label": "风险分析", "example": "当前最大的风险是什么？"},
         {"key": "status", "label": "状态汇报", "example": "帮我写一份项目状态汇报"},
+        {"key": "any", "label": "任意问题", "example": "原理图设计需要注意什么？"},
     ]
