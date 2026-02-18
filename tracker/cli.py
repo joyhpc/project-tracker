@@ -9,6 +9,12 @@ from .guide import (
     generate_guide_report,
     get_phase_questions,
 )
+from .timeline import (
+    compute_full_schedule,
+    format_timeline,
+    format_phase_gantt,
+    estimate_task_days,
+)
 
 
 def _icon(status: str) -> str:
@@ -370,6 +376,90 @@ def cmd_phases(args):
     print()
 
 
+def cmd_timeline(args):
+    """项目时间线"""
+    try:
+        p = core.require_active()
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    fl = flowmod.load_flow(p.get("flow", "duxin"))
+    task_status = p.get("tasks", {})
+    custom_estimates = p.get("estimates", {})
+
+    from datetime import datetime
+
+    start_date = None
+    if args.start:
+        try:
+            start_date = datetime.strptime(args.start, "%Y-%m-%d")
+        except ValueError:
+            print(f"❌ 日期格式错误，应为 YYYY-MM-DD")
+            sys.exit(1)
+
+    if args.phase:
+        # 单阶段甘特图
+        phases = flowmod.get_phases(fl)
+        phase = phases.get(args.phase.upper())
+        if not phase:
+            print(f"❌ 未找到阶段: {args.phase}")
+            sys.exit(1)
+        print(f"\n📋 {p['name']} ({p['id']})")
+        print(format_phase_gantt(phase, task_status, custom_estimates))
+    else:
+        # 全项目时间线
+        result = compute_full_schedule(fl, p["current_phase"], task_status,
+                                       start_date, custom_estimates)
+        print(f"\n📋 {p['name']} ({p['id']})")
+        print(format_timeline(result))
+
+
+def cmd_estimate(args):
+    """设置任务预估工时"""
+    try:
+        p = core.require_active()
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    fl = flowmod.load_flow(p.get("flow", "duxin"))
+
+    if args.task_id and args.days is not None:
+        # 设置单个任务
+        _, task = flowmod.find_task(fl, args.task_id)
+        if not task:
+            print(f"❌ 任务不存在: {args.task_id}")
+            sys.exit(1)
+        if "estimates" not in p:
+            p["estimates"] = {}
+        p["estimates"][args.task_id] = args.days
+        core._save(p)
+        print(f"⏱️  [{args.task_id}] {task['name']} → {args.days} 天")
+    elif args.show:
+        # 显示所有估算
+        custom = p.get("estimates", {})
+        print(f"\n⏱️  工时估算:\n")
+        for phase in fl.get("phases", []):
+            has_tasks = False
+            for task in phase.get("tasks", []):
+                tid = task["id"]
+                if tid in custom:
+                    if not has_tasks:
+                        print(f"  📍 {phase['name']}:")
+                        has_tasks = True
+                    print(f"     [{tid}] {task['name']}: {custom[tid]} 天 (自定义)")
+            if not has_tasks and args.all:
+                print(f"  📍 {phase['name']}:")
+                for task in phase.get("tasks", []):
+                    est = custom.get(task["id"], estimate_task_days(task))
+                    marker = " (自定义)" if task["id"] in custom else " (默认)"
+                    print(f"     [{task['id']}] {task['name']}: {est} 天{marker}")
+        print()
+    else:
+        print("用法: pt estimate <task_id> <days>  或  pt estimate --show")
+
+
 def cmd_guide(args):
     """启发式项目引导"""
     product = args.product or ""
@@ -456,6 +546,18 @@ def main():
     p_guide.add_argument("--flow", "-f", default="duxin", help="流程定义（默认 duxin）")
     p_guide.add_argument("--save", "-s", help="保存报告到文件")
 
+    # timeline
+    p_timeline = sub.add_parser("timeline", aliases=["tl"], help="项目时间线与甘特图")
+    p_timeline.add_argument("--phase", help="查看单个阶段的甘特图")
+    p_timeline.add_argument("--start", help="项目开始日期 (YYYY-MM-DD)")
+
+    # estimate
+    p_estimate = sub.add_parser("estimate", aliases=["est"], help="设置任务预估工时")
+    p_estimate.add_argument("task_id", nargs="?", help="任务ID")
+    p_estimate.add_argument("days", nargs="?", type=int, help="预估天数")
+    p_estimate.add_argument("--show", action="store_true", help="显示所有估算")
+    p_estimate.add_argument("--all", action="store_true", help="显示所有任务（含默认估算）")
+
     # phases
     sub.add_parser("phases", aliases=["ph"], help="查看流程阶段")
 
@@ -524,6 +626,8 @@ def main():
         "tasks": cmd_tasks, "t": cmd_tasks,
         "next": cmd_next, "n": cmd_next,
         "plan": cmd_plan, "digest": cmd_digest, "guide": cmd_guide,
+        "timeline": cmd_timeline, "tl": cmd_timeline,
+        "estimate": cmd_estimate, "est": cmd_estimate,
         "phases": cmd_phases, "ph": cmd_phases,
         "start": cmd_start, "done": cmd_done, "d": cmd_done,
         "block": cmd_block, "unblock": cmd_unblock,
