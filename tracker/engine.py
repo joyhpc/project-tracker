@@ -277,3 +277,165 @@ def format_advice(analysis: dict) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+# ── 全局战略分析 ──────────────────────────────────────
+
+def plan_project(flow: dict, current_phase: str, task_status: dict, blockers: list) -> str:
+    """项目全局作战地图：从当前阶段到结束的完整分析"""
+    phases = [p for p in flow.get("phases", [])]
+    phase_map = {p["id"]: p for p in phases}
+    order = [p["id"] for p in phases]
+
+    try:
+        start_idx = order.index(current_phase)
+    except ValueError:
+        return f"❌ 未知阶段: {current_phase}"
+
+    lines = []
+
+    # ── 1. 全局进度总览 ──
+    total_tasks = 0
+    total_done = 0
+    phase_summaries = []
+    for pid in order:
+        ph = phase_map[pid]
+        tasks = ph.get("tasks", [])
+        done = sum(1 for t in tasks if task_status.get(t["id"], {}).get("status") == "done")
+        total_tasks += len(tasks)
+        total_done += done
+        phase_summaries.append((pid, ph, len(tasks), done))
+
+    lines.append(f"📊 全局进度: {total_done}/{total_tasks} 任务完成\n")
+
+    # 阶段进度条
+    for pid, ph, count, done in phase_summaries:
+        if count == 0:
+            bar = "  "
+        else:
+            pct = done / count
+            filled = int(pct * 10)
+            bar = "█" * filled + "░" * (10 - filled)
+
+        marker = " ◀" if pid == current_phase else ""
+        ms = f" [{ph.get('milestone')}]" if ph.get("milestone") else ""
+        status_tag = ""
+        idx = order.index(pid)
+        if idx < start_idx:
+            status_tag = " ✅"
+        elif done == count and count > 0:
+            status_tag = " ✅"
+
+        lines.append(f"  {bar} {pid:8s} {ph['name']}{ms}{status_tag}{marker}  ({done}/{count})")
+    lines.append("")
+
+    # ── 2. 剩余阶段关键路径 ──
+    lines.append("📐 剩余关键路径:\n")
+    remaining_phases = order[start_idx:]
+    for pid in remaining_phases:
+        ph = phase_map[pid]
+        cp = find_critical_path(ph, task_status)
+        if cp:
+            lines.append(f"  {ph['name']} ({len(cp)} 步关键链):")
+            lines.append(f"    {' → '.join(cp)}")
+        else:
+            lines.append(f"  {ph['name']}: ✅ 无剩余关键任务")
+    lines.append("")
+
+    # ── 3. 高风险节点（跨所有剩余阶段）──
+    lines.append("⚠️ 高风险节点（需要重点盯的）:\n")
+    risk_items = []
+    for pid in remaining_phases:
+        ph = phase_map[pid]
+        graph = build_dep_graph(ph)
+        for tid, task in graph["tasks"].items():
+            if task_status.get(tid, {}).get("status") == "done":
+                continue
+            downstream = _count_downstream(tid, graph["rdeps"], set())
+            is_critical = task.get("critical", False)
+            has_gate = bool(task.get("gate"))
+            risk_score = 0
+            reasons = []
+            if is_critical:
+                risk_score += 50
+                reasons.append("关键节点")
+            if downstream >= 3:
+                risk_score += downstream * 5
+                reasons.append(f"阻塞下游{downstream}个任务")
+            if has_gate:
+                risk_score += 10
+                reasons.append(f"准入: {task['gate']}")
+            if risk_score > 0:
+                risk_items.append((risk_score, ph["name"], task, reasons))
+
+    risk_items.sort(key=lambda x: x[0], reverse=True)
+    for score, phase_name, task, reasons in risk_items[:10]:
+        lines.append(f"  🔴 [{task['id']}] {task['name']}  ({phase_name})")
+        lines.append(f"     {'; '.join(reasons)}")
+    if not risk_items:
+        lines.append("  无高风险节点")
+    lines.append("")
+
+    # ── 4. 长周期预警（需要提前准备的）──
+    lines.append("🕐 需要提前准备的事项:\n")
+    early_items = []
+    for pid in remaining_phases:
+        ph = phase_map[pid]
+        for task in ph.get("tasks", []):
+            if task_status.get(task["id"], {}).get("status") == "done":
+                continue
+            # 有 gate 的任务通常需要提前准备
+            if task.get("gate"):
+                early_items.append((pid, ph["name"], task))
+            # 涉及外部依赖的关键词
+            name_lower = task["name"].lower()
+            for kw in ["申请", "审批", "送样", "制样", "采购", "知识产权", "新品承认"]:
+                if kw in task["name"]:
+                    early_items.append((pid, ph["name"], task))
+                    break
+
+    seen = set()
+    for pid, pname, task in early_items:
+        if task["id"] in seen:
+            continue
+        seen.add(task["id"])
+        line = f"  📌 [{task['id']}] {task['name']}  ({pname})"
+        if task.get("gate"):
+            line += f"\n     准入: {task['gate']}"
+        lines.append(line)
+    if not seen:
+        lines.append("  无特殊提前准备项")
+    lines.append("")
+
+    # ── 5. 人力分布（谁最忙）──
+    lines.append("👥 人力负载分布:\n")
+    owner_load = {}
+    for pid in remaining_phases:
+        ph = phase_map[pid]
+        for task in ph.get("tasks", []):
+            if task_status.get(task["id"], {}).get("status") == "done":
+                continue
+            owner = task.get("owner", "未指定")
+            # 拆分多人
+            for o in owner.replace("/", ",").replace("、", ",").split(","):
+                o = o.strip()
+                if o:
+                    owner_load.setdefault(o, []).append((ph["name"], task["name"]))
+
+    sorted_owners = sorted(owner_load.items(), key=lambda x: len(x[1]), reverse=True)
+    for owner, tasks in sorted_owners[:8]:
+        lines.append(f"  {owner}: {len(tasks)} 个待办")
+        # 显示前3个
+        for pname, tname in tasks[:3]:
+            lines.append(f"    - {tname} ({pname})")
+        if len(tasks) > 3:
+            lines.append(f"    ... 还有 {len(tasks)-3} 个")
+    lines.append("")
+
+    # ── 6. 当前阶段行动建议 ──
+    current = phase_map[current_phase]
+    result = analyze(current, task_status, blockers)
+    lines.append(f"🎯 当前阶段行动:\n")
+    lines.append(format_advice(result))
+
+    return "\n".join(lines)

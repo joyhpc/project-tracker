@@ -2,7 +2,7 @@
 import sys
 import argparse
 from . import core, flow as flowmod
-from .engine import analyze, format_advice
+from .engine import analyze, format_advice, plan_project
 
 
 def _icon(status: str) -> str:
@@ -130,6 +130,23 @@ def cmd_next(args):
     print(f"\n📋 {p['name']} ({p['id']})")
     print(f"📍 {phase.get('name', '')} ({p['current_phase']})\n")
     print(format_advice(result))
+
+
+def cmd_plan(args):
+    try:
+        p = core.require_active()
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    fl = flowmod.load_flow(p.get("flow", "duxin"))
+    task_status = p.get("tasks", {})
+    blockers = p.get("blockers", [])
+
+    print(f"\n{'='*60}")
+    print(f"  📋 {p['name']} ({p['id']}) - 作战地图")
+    print(f"{'='*60}\n")
+    print(plan_project(fl, p["current_phase"], task_status, blockers))
 
 
 def cmd_start(args):
@@ -331,6 +348,9 @@ def main():
     # next
     sub.add_parser("next", aliases=["n"], help="查看下一步行动")
 
+    # plan
+    sub.add_parser("plan", help="项目作战地图（全局视角）")
+
     # phases
     sub.add_parser("phases", aliases=["ph"], help="查看流程阶段")
 
@@ -398,6 +418,7 @@ def main():
         "status": cmd_status, "s": cmd_status,
         "tasks": cmd_tasks, "t": cmd_tasks,
         "next": cmd_next, "n": cmd_next,
+        "plan": cmd_plan,
         "phases": cmd_phases, "ph": cmd_phases,
         "start": cmd_start, "done": cmd_done, "d": cmd_done,
         "block": cmd_block, "unblock": cmd_unblock,
