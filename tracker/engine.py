@@ -1,226 +1,314 @@
-"""智能推进引擎 — 纯分析逻辑，无格式化"""
-from datetime import datetime
+"""智能推进引擎 v2 — 全局 DAG + CPM 关键路径
+
+核心变更：
+- 从阶段内分析 → 全局 DAG 分析
+- 从步数关键路径 → 基于工时的 CPM
+- 新增 Slack（松弛时间）计算
+"""
+
+DEFAULT_DAYS = 3  # 未估算工时的默认值
 
 
-def build_dep_graph(phase: dict) -> dict:
-    """构建任务依赖图"""
-    tasks = {t["id"]: t for t in phase.get("tasks", [])}
-    deps = {tid: t.get("depends", []) for tid, t in tasks.items()}
-    rdeps = {tid: [] for tid in tasks}
-    for tid, dep_list in deps.items():
+# ── DAG 构建 ──────────────────────────────────────────
+
+def build_graph(flow: dict) -> dict:
+    """构建全局 DAG
+
+    Returns:
+        {
+            "nodes": {id: node_dict},
+            "deps": {id: [dep_ids]},       # 前驱
+            "rdeps": {id: [successor_ids]}, # 后继
+            "sources": [ids],               # 无前驱的节点
+            "sinks": [ids],                 # 无后继的节点
+        }
+    """
+    nodes = {n["id"]: n for n in flow.get("nodes", [])}
+    deps = {}
+    rdeps = {nid: [] for nid in nodes}
+
+    for nid, node in nodes.items():
+        dep_list = [d for d in node.get("depends", []) if d in nodes]
+        deps[nid] = dep_list
         for d in dep_list:
-            if d in rdeps:
-                rdeps[d].append(tid)
-    return {"tasks": tasks, "deps": deps, "rdeps": rdeps}
+            rdeps[d].append(nid)
+
+    sources = [nid for nid in nodes if not deps.get(nid)]
+    sinks = [nid for nid in nodes if not rdeps.get(nid)]
+
+    return {
+        "nodes": nodes, "deps": deps, "rdeps": rdeps,
+        "sources": sources, "sinks": sinks,
+    }
 
 
-def classify_tasks(phase: dict, task_status: dict) -> dict:
-    """分类任务状态: ready/in_progress/blocked/waiting/done"""
-    graph = build_dep_graph(phase)
-    tasks = graph["tasks"]
-    deps = graph["deps"]
+def topo_sort(graph: dict) -> list[str]:
+    """拓扑排序（Kahn 算法），同时检测环"""
+    in_degree = {nid: len(graph["deps"].get(nid, [])) for nid in graph["nodes"]}
+    queue = [nid for nid, deg in in_degree.items() if deg == 0]
+    order = []
+
+    while queue:
+        # 稳定排序：同层级按 ID 排
+        queue.sort()
+        nid = queue.pop(0)
+        order.append(nid)
+        for succ in graph["rdeps"].get(nid, []):
+            in_degree[succ] -= 1
+            if in_degree[succ] == 0:
+                queue.append(succ)
+
+    if len(order) != len(graph["nodes"]):
+        visited = set(order)
+        cycle_nodes = [nid for nid in graph["nodes"] if nid not in visited]
+        raise ValueError(f"检测到循环依赖: {', '.join(cycle_nodes[:5])}")
+
+    return order
+
+
+# ── CPM 关键路径 ──────────────────────────────────────
+
+def node_days(node: dict, custom_estimates: dict = None) -> float:
+    """获取节点工时（天）"""
+    if custom_estimates and node["id"] in custom_estimates:
+        return custom_estimates[node["id"]]
+    if node.get("type") == "milestone":
+        return 0
+    return node.get("days", DEFAULT_DAYS)
+
+
+def compute_cpm(flow: dict, task_status: dict = None,
+                custom_estimates: dict = None) -> dict:
+    """CPM 关键路径计算
+
+    Returns:
+        {
+            "nodes": {id: {es, ef, ls, lf, slack, critical, days}},
+            "critical_path": [ids],      # 关键路径节点（按拓扑序）
+            "total_days": float,         # 项目总工期
+            "topo_order": [ids],
+        }
+    """
+    if task_status is None:
+        task_status = {}
+    if custom_estimates is None:
+        custom_estimates = {}
+
+    graph = build_graph(flow)
+    topo = topo_sort(graph)
+
+    result = {}
+    for nid in graph["nodes"]:
+        node = graph["nodes"][nid]
+        status = task_status.get(nid, {}).get("status", "pending")
+        days = 0 if status == "done" else node_days(node, custom_estimates)
+        result[nid] = {"days": days, "es": 0, "ef": 0, "ls": 0, "lf": 0,
+                       "slack": 0, "critical": False}
+
+    # Step 1: 前向推导 (Forward Pass)
+    for nid in topo:
+        r = result[nid]
+        dep_ids = graph["deps"].get(nid, [])
+        if dep_ids:
+            r["es"] = max(result[d]["ef"] for d in dep_ids)
+        else:
+            r["es"] = 0
+        r["ef"] = r["es"] + r["days"]
+
+    # 项目总工期
+    total_days = max(r["ef"] for r in result.values()) if result else 0
+
+    # Step 2: 反向推导 (Backward Pass)
+    for nid in reversed(topo):
+        r = result[nid]
+        succ_ids = graph["rdeps"].get(nid, [])
+        if succ_ids:
+            r["lf"] = min(result[s]["ls"] for s in succ_ids)
+        else:
+            r["lf"] = total_days
+        r["ls"] = r["lf"] - r["days"]
+
+    # Step 3: 计算 Slack，标记关键路径
+    for nid, r in result.items():
+        r["slack"] = r["ls"] - r["es"]
+        r["critical"] = abs(r["slack"]) < 0.001  # float 精度
+
+    # 提取关键路径（按拓扑序）
+    critical_path = [nid for nid in topo if result[nid]["critical"]
+                     and result[nid]["days"] > 0]  # 排除已完成的
+
+    return {
+        "nodes": result,
+        "critical_path": critical_path,
+        "total_days": total_days,
+        "topo_order": topo,
+    }
+
+
+# ── 任务分类 ──────────────────────────────────────────
+
+def classify_tasks(flow: dict, task_status: dict,
+                   phase_id: str = None) -> dict:
+    """分类任务状态
+
+    Args:
+        flow: 流程定义
+        task_status: 项目任务状态
+        phase_id: 可选，只看某个阶段
+
+    Returns:
+        {ready, in_progress, blocked, waiting, done}
+    """
+    graph = build_graph(flow)
+    nodes = graph["nodes"]
+
+    if phase_id:
+        node_ids = {nid for nid, n in nodes.items() if n.get("phase") == phase_id}
+    else:
+        node_ids = set(nodes.keys())
 
     result = {"ready": [], "in_progress": [], "blocked": [], "waiting": [], "done": []}
 
-    for tid, task in tasks.items():
-        s = task_status.get(tid, {}).get("status", "pending")
+    for nid in node_ids:
+        node = nodes[nid]
+        s = task_status.get(nid, {}).get("status", "pending")
+
         if s == "done":
-            result["done"].append(task)
+            result["done"].append(node)
         elif s == "blocked":
-            result["blocked"].append(task)
+            result["blocked"].append(node)
         elif s == "in_progress":
-            result["in_progress"].append(task)
+            result["in_progress"].append(node)
         else:
-            dep_ids = deps.get(tid, [])
-            all_done = all(task_status.get(d, {}).get("status") == "done" for d in dep_ids)
+            # 检查依赖是否全部完成（全局依赖，不限阶段）
+            dep_ids = graph["deps"].get(nid, [])
+            all_done = all(
+                task_status.get(d, {}).get("status") == "done"
+                for d in dep_ids
+            )
             if all_done:
-                result["ready"].append(task)
+                result["ready"].append(node)
             else:
-                task["_waiting_for"] = [d for d in dep_ids if task_status.get(d, {}).get("status") != "done"]
-                result["waiting"].append(task)
+                waiting_for = [d for d in dep_ids
+                              if task_status.get(d, {}).get("status") != "done"]
+                node = dict(node)  # copy
+                node["_waiting_for"] = waiting_for
+                result["waiting"].append(node)
 
     return result
 
 
-def _count_downstream(tid: str, rdeps: dict, visited: set) -> int:
+# ── 优先级 ──────────────────────────────────────────
+
+def count_downstream(nid: str, rdeps: dict, visited: set = None) -> int:
     """递归计算下游任务总数"""
+    if visited is None:
+        visited = set()
     count = 0
-    for child in rdeps.get(tid, []):
+    for child in rdeps.get(nid, []):
         if child not in visited:
             visited.add(child)
-            count += 1 + _count_downstream(child, rdeps, visited)
+            count += 1 + count_downstream(child, rdeps, visited)
     return count
 
 
-def compute_priority(task: dict, graph: dict, task_status: dict) -> int:
-    """计算任务优先级"""
+def compute_priority(node: dict, graph: dict, cpm_result: dict) -> int:
+    """计算任务优先级（结合 CPM）"""
     score = 0
-    if task.get("critical"):
+    nid = node["id"]
+    cpm_node = cpm_result["nodes"].get(nid, {})
+
+    # 关键路径上的任务最高优先
+    if cpm_node.get("critical"):
+        score += 200
+
+    # Slack 越小越紧急
+    slack = cpm_node.get("slack", 999)
+    if slack <= 3:
         score += 100
-    score += _count_downstream(task["id"], graph["rdeps"], set()) * 10
-    if task.get("gate"):
+    elif slack <= 7:
+        score += 50
+
+    # 下游任务越多越重要
+    score += count_downstream(nid, graph["rdeps"]) * 10
+
+    # 有准入条件的需要提前关注
+    if node.get("gate"):
         score += 5
-    if task.get("deliverables"):
+    if node.get("deliverables"):
         score += 3
+    if node.get("critical"):
+        score += 20
+
     return score
 
 
-def find_critical_path(phase: dict, task_status: dict) -> list[str]:
-    """找到关键路径（最长依赖链）"""
-    graph = build_dep_graph(phase)
-    tasks = graph["tasks"]
-    deps = graph["deps"]
-    undone = {tid for tid in tasks if task_status.get(tid, {}).get("status") != "done"}
+# ── 阻塞分析 ──────────────────────────────────────────
 
-    memo = {}
-    def longest_chain(tid):
-        if tid in memo:
-            return memo[tid]
-        if tid not in undone:
-            return []
-        dep_chains = [longest_chain(d) for d in deps.get(tid, []) if d in undone]
-        best = max(dep_chains, key=len) if dep_chains else []
-        result = best + [tid]
-        memo[tid] = result
-        return result
+def analyze_blockers(flow: dict, task_status: dict, blockers: list) -> list:
+    """分析阻塞影响"""
+    graph = build_graph(flow)
+    active = [b for b in blockers if not b.get("resolved")]
+    result = []
 
-    all_chains = [longest_chain(tid) for tid in undone]
-    if not all_chains:
-        return []
-    max_len = max(len(c) for c in all_chains)
-    # 同长度时优先选包含 critical 任务的链
-    candidates = [c for c in all_chains if len(c) == max_len]
-    for c in candidates:
-        if any(tasks.get(tid, {}).get("critical") for tid in c):
-            return c
-    return candidates[0]
+    for b in active:
+        tid = b["task_id"]
+        downstream = count_downstream(tid, graph["rdeps"])
+        direct = [graph["nodes"][s]["name"]
+                  for s in graph["rdeps"].get(tid, [])
+                  if s in graph["nodes"]]
+        result.append({
+            "task_id": tid,
+            "task_name": graph["nodes"].get(tid, {}).get("name", tid),
+            "reason": b["reason"],
+            "downstream_count": downstream,
+            "direct_downstream": direct[:5],
+        })
+
+    return result
 
 
-def analyze(phase: dict, task_status: dict, blockers: list) -> dict:
-    """核心分析：返回结构化数据"""
-    graph = build_dep_graph(phase)
-    classified = classify_tasks(phase, task_status)
-    critical_path = find_critical_path(phase, task_status)
+def find_alternatives(flow: dict, task_status: dict, blockers: list) -> list:
+    """找到不受阻塞影响的可执行任务"""
+    classified = classify_tasks(flow, task_status)
+    blocked_ids = {b["task_id"] for b in blockers if not b.get("resolved")}
+    return [t for t in classified["ready"] if t["id"] not in blocked_ids]
 
+
+# ── 综合分析 ──────────────────────────────────────────
+
+def analyze(flow: dict, task_status: dict, blockers: list = None,
+            phase_id: str = None, custom_estimates: dict = None) -> dict:
+    """综合分析：返回结构化数据"""
+    if blockers is None:
+        blockers = []
+    if custom_estimates is None:
+        custom_estimates = {}
+
+    graph = build_graph(flow)
+    cpm = compute_cpm(flow, task_status, custom_estimates)
+    classified = classify_tasks(flow, task_status, phase_id)
+
+    # 按优先级排序 ready 任务
     for task in classified["ready"]:
-        task["_priority"] = compute_priority(task, graph, task_status)
+        task["_priority"] = compute_priority(task, graph, cpm)
     classified["ready"].sort(key=lambda t: t.get("_priority", 0), reverse=True)
 
-    active_blockers = [b for b in blockers if not b.get("resolved")]
-    blocked_impact = []
-    for b in active_blockers:
-        tid = b["task_id"]
-        downstream = _count_downstream(tid, graph["rdeps"], set())
-        blocked_impact.append({
-            "task_id": tid,
-            "task_name": graph["tasks"].get(tid, {}).get("name", tid),
-            "reason": b["reason"],
-            "downstream_blocked": downstream,
-        })
-    blocked_impact.sort(key=lambda x: x["downstream_blocked"], reverse=True)
+    # 阻塞分析
+    blocker_analysis = analyze_blockers(flow, task_status, blockers)
+    alternatives = find_alternatives(flow, task_status, blockers)
 
-    bypass_suggestions = []
-    for b in active_blockers:
-        tid = b["task_id"]
-        for task in classified["ready"]:
-            if tid not in graph["deps"].get(task["id"], []):
-                bypass_suggestions.append({
-                    "blocked": tid, "can_do": task["id"], "can_do_name": task["name"],
-                })
-
-    parallel_groups = []
-    if len(classified["ready"]) > 1:
-        by_owner = {}
-        for t in classified["ready"]:
-            by_owner.setdefault(t.get("owner", "未指定"), []).append(t)
-        parallel_groups = [{"owner": o, "tasks": ts} for o, ts in by_owner.items()]
+    # 并行推荐：按 owner 分组
+    parallel = {}
+    for t in classified["ready"]:
+        owner = t.get("owner", "未分配")
+        parallel.setdefault(owner, []).append(t)
 
     return {
         "classified": classified,
-        "critical_path": critical_path,
-        "blocked_impact": blocked_impact,
-        "bypass_suggestions": bypass_suggestions,
-        "parallel_groups": parallel_groups,
-        "phase_name": phase.get("name", ""),
-    }
-
-
-def generate_digest(project: dict, flow: dict) -> dict:
-    """生成项目状态摘要数据"""
-    phase_map = {p["id"]: p for p in flow.get("phases", [])}
-    current_phase = project["current_phase"]
-    task_status = project.get("tasks", {})
-    blockers = project.get("blockers", [])
-    phase = phase_map.get(current_phase, {})
-
-    alerts = []
-    active_blockers = [b for b in blockers if not b.get("resolved")]
-
-    # 阻塞告警
-    for b in active_blockers:
-        tid = b["task_id"]
-        tname = next((t["name"] for t in phase.get("tasks", []) if t["id"] == tid), tid)
-        graph = build_dep_graph(phase)
-        downstream = _count_downstream(tid, graph["rdeps"], set())
-        alert = f"🚫 [{tid}] {tname} 被阻塞: {b['reason']}"
-        if downstream > 0:
-            alert += f" (影响下游 {downstream} 个任务)"
-        alerts.append(alert)
-
-    # 停滞告警
-    tasks = phase.get("tasks", [])
-    done_count = sum(1 for t in tasks if task_status.get(t["id"], {}).get("status") == "done")
-    total = len(tasks)
-    progress_pct = (done_count / total * 100) if total > 0 else 0
-
-    stale_tasks = []
-    now = datetime.now()
-    for t in tasks:
-        entry = task_status.get(t["id"], {})
-        if entry.get("status") == "in_progress" and entry.get("started"):
-            try:
-                started = datetime.strptime(entry["started"], "%Y-%m-%d %H:%M")
-                days = (now - started).days
-                if days >= 3:
-                    stale_tasks.append((t, days))
-            except (ValueError, TypeError):
-                pass
-
-    for t, days in stale_tasks:
-        alerts.append(f"⏰ [{t['id']}] {t['name']} 已进行 {days} 天未完成")
-
-    # 子任务阻塞
-    for tid, entry in task_status.items():
-        for sid, sub in entry.get("subtasks", {}).items():
-            if sub.get("status") == "blocked":
-                alerts.append(f"🚫 子任务 [{tid}.{sid}] {sub['name']} 阻塞: {sub.get('blocked_reason', '未知')}")
-
-    classified = classify_tasks(phase, task_status)
-    ready_tasks = classified["ready"]
-
-    # 摘要文本
-    lines = [f"📋 {project['name']} ({project['id']})",
-             f"📍 {phase.get('name', '')} — {done_count}/{total} ({progress_pct:.0f}%)", ""]
-    if alerts:
-        lines.append("⚠️ 需要关注:")
-        lines.extend(f"  {a}" for a in alerts)
-        lines.append("")
-    if ready_tasks:
-        lines.append(f"🎯 可立即推进 ({len(ready_tasks)}):")
-        for t in ready_tasks[:5]:
-            lines.append(f"  → [{t['id']}] {t['name']}  ← {t.get('owner', '')}")
-        if len(ready_tasks) > 5:
-            lines.append(f"  ... 还有 {len(ready_tasks)-5} 个")
-        lines.append("")
-    if not alerts and not ready_tasks:
-        lines.append("✅ 一切正常，无需关注")
-
-    return {
-        "has_alerts": len(alerts) > 0,
-        "text": "\n".join(lines),
-        "alerts": alerts,
-        "summary": {
-            "phase": current_phase, "progress": f"{done_count}/{total}",
-            "blockers": len(active_blockers), "stale": len(stale_tasks), "ready": len(ready_tasks),
-        },
+        "cpm": cpm,
+        "blockers": blocker_analysis,
+        "alternatives": alternatives,
+        "parallel": parallel,
+        "graph": graph,
     }

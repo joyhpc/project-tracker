@@ -1,0 +1,38 @@
+phases:
+- id: PHASE1
+  name: 第一阶段
+- id: PHASE2
+  name: 第二阶段
+  milestone: DONE
+nodes:
+- id: task_a
+  name: 任务A
+  type: task
+  phase: PHASE1
+  owner: 张三
+- id: task_b
+  name: 任务B
+  type: task
+  phase: PHASE1
+  owner: 李四
+- id: task_c
+  name: 任务C
+  type: task
+  phase: PHASE1
+  owner: 张三
+  critical: true
+- id: task_d
+  name: 任务D
+  type: task
+  phase: PHASE2
+  owner: 王五
+  depends:
+  - task_a
+  - task_b
+  gate: 需要审批
+- id: ms_phase2
+  name: 第二阶段 里程碑
+  type: milestone
+  phase: PHASE2
+  depends:
+  - task_d

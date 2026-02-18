@@ -1,0 +1,599 @@
+# 度信平台机型流程 - 结构化数据（v2: 含依赖关系）
+# 用于项目推进助手
+
+phases:
+  - id: REQ
+    name: 需求阶段
+    tasks:
+      - id: requirement_research
+        name: 需求调研
+        deliverables: [《开发提案书》初版]
+        owner: 产品经理
+        reviewer: 产品部负责人
+
+      - id: requirement_review
+        name: 需求评审
+        depends: [requirement_research]
+        deliverables: [《需求评审会议纪要》]
+        owner: 产品经理/架构师
+        reviewer: 项目成员
+
+      - id: requirement_proposal
+        name: 需求提案
+        depends: [requirement_review]
+        deliverables: [《项目提案书》]
+        owner: 产品经理
+        reviewer: 总经理/产品总监/营销总监/研发总监
+        gate: 获批才能提案
+
+      - id: team_setup
+        name: 组建团队
+        depends: [requirement_proposal]
+        owner: 研发总监/研发经理
+        reviewer: PMO
+
+  - id: FEAS
+    name: 可行性评估
+    tasks:
+      - id: ip_search
+        name: 知识产权检索
+        deliverables: [《立项阶段知识产权分析报告》]
+        owner: 软/硬件项目负责人
+        reviewer: 主管/知识产权小组
+
+      - id: key_component_eval
+        name: 关键器件评估
+        deliverables: [《新器件选型说明》]
+        owner: 硬件工程师/软件工程师
+        reviewer: 研发经理/主管/项目成员
+
+      - id: sw_feasibility
+        name: 软件可行性评估
+        depends: [key_component_eval]
+        deliverables: [《可行性分析报告》, 《立项风险评估表》]
+        owner: 固件工程师/应用软件工程师
+        reviewer: 研发经理/主管/总监/项目成员
+
+      - id: struct_feasibility
+        name: 结构可行性评估
+        depends: [key_component_eval]
+        deliverables: [《可行性评估报告》, 《立项风险评估表》]
+        owner: 结构工程师
+        reviewer: 结构/硬件工程师
+
+      - id: schematic_feasibility
+        name: 原理可行性评估
+        depends: [key_component_eval]
+        deliverables: [《可行性评估报告》, 《立项风险评估表》]
+        owner: 硬件工程师
+        reviewer: 研发经理/主管
+
+      - id: pcb_feasibility
+        name: PCB可行性评估
+        depends: [struct_feasibility, schematic_feasibility]
+        deliverables: [《可行性评估报告》, 《立项风险评估表》]
+        owner: PCB工程师
+        reviewer: 结构工程师/硬件工程师/PCB组长
+
+      - id: cost_estimate
+        name: 成本估算
+        depends: [key_component_eval]
+        owner: 硬件负责人
+        reviewer: 研发经理/主管
+
+      - id: feasibility_review
+        name: 可行性分析报告评审会议
+        depends: [sw_feasibility, struct_feasibility, schematic_feasibility, pcb_feasibility, cost_estimate, ip_search]
+        deliverables: [评审会议纪要]
+        owner: 软/硬件项目负责人
+        reviewer: 总经理/项目组核心成员/应用软件
+        critical: true
+
+  - id: INIT
+    name: 立项
+    milestone: MS1
+    tasks:
+      - id: init_doc_prep
+        name: 立项资料准备
+        deliverables: [《项目立项书》, 《产品专用物料跟进表》]
+        owner: 软/硬件项目负责人
+        reviewer: 产品经理
+
+      - id: init_approval
+        name: 立项审批
+        depends: [init_doc_prep]
+        deliverables: [《项目立项书》]
+        owner: 硬件负责人
+        reviewer: 审批流
+        critical: true
+
+      - id: project_plan
+        name: 项目计划
+        depends: [init_approval]
+        deliverables: [《项目计划表》]
+        owner: 软/硬件项目负责人
+        reviewer: PMO/项目组成员
+
+  - id: OUTLINE
+    name: 概要设计
+    tasks:
+      - id: hw_outline
+        name: 硬件概要设计
+        deliverables: [《概要设计》]
+        owner: 硬件工程师
+        reviewer: 产品经理/架构师/经理/主管/项目成员
+
+      - id: struct_outline
+        name: 结构概要设计
+        owner: 结构工程师
+
+      - id: fw_outline
+        name: 固件概要设计
+        owner: 固件开发
+
+      - id: sw_outline
+        name: 软件概要设计
+        owner: 软件工程师
+
+      - id: app_outline
+        name: 应用软件概要设计
+        owner: 软件工程师
+
+  - id: DETAIL
+    name: 详细设计
+    tasks:
+      # 结构线（可与原理图并行）
+      - id: struct_design
+        name: 结构设计
+        deliverables: [《结构.exe》]
+        owner: 结构工程师
+        reviewer: 硬件/PCB/主管/专家
+
+      - id: struct_review
+        name: 结构评审
+        depends: [struct_design]
+        owner: 结构工程师
+        reviewer: 主管
+        gate: 完成结构修改
+
+      - id: package_design
+        name: 包装设计
+        depends: [struct_review]
+        deliverables: [《包装设计图》dwg .pdf]
+        owner: 结构工程师
+        reviewer: 主管
+
+      # 原理图线
+      - id: new_component_selection
+        name: 新器件选型
+        deliverables: [新器件选型调查表, 新器件说明]
+        owner: 硬件工程师
+        reviewer: 硬件主管/经理
+
+      - id: schematic_design
+        name: 原理图设计
+        depends: [new_component_selection]
+        deliverables: [《XX板设计文件.DSN》]
+        owner: 硬件工程师
+        reviewer: 硬件主管/经理
+        gate: 电源树和框图审核通过
+
+      - id: schematic_review
+        name: 原理图审核
+        depends: [schematic_design]
+        deliverables: [《原理图评审报告.docx》]
+        owner: 硬件工程师
+        reviewer: 研发经理/主管
+        critical: true
+
+      - id: sw_control_spec
+        name: 软件控制说明
+        depends: [schematic_design]
+        deliverables: [《软件控制说明.xlsx》]
+        owner: 硬件工程师
+        reviewer: 架构师/设计团队
+
+      - id: sw_control_walkthrough
+        name: 软件控制说明串讲
+        depends: [sw_control_spec]
+        owner: 硬件工程师/软件工程师
+        reviewer: 硬件工程师/软件工程师/研发经理/主管
+
+      - id: pcb_layout_req
+        name: PCB layout要求
+        depends: [schematic_review]
+        deliverables: [《PCB layout要求说明书.docx》]
+        owner: 硬件工程师
+
+      # 物料线（可与原理图并行推进）
+      - id: material_tracking
+        name: 物料跟进
+        depends: [new_component_selection]
+        deliverables: [《专用物料跟进表刷新》, 《物料清单盘点确认表》]
+        owner: 硬件工程师
+
+      # PCB 线（依赖原理图和结构）
+      - id: pcb_footprint
+        name: 新器件封装制作
+        depends: [new_component_selection]
+        deliverables: [封装.dra, 焊盘.pad]
+        owner: PCB工程师
+        reviewer: PCB组长
+
+      - id: pcb_3d
+        name: 新器件3D制作
+        depends: [new_component_selection]
+        deliverables: [《元器件3D文件.STP》]
+        owner: 结构工程师
+        reviewer: PCB组长
+
+      - id: pcb_layout
+        name: PCB布局设计
+        depends: [schematic_review, struct_review, pcb_footprint, pcb_3d]
+        owner: PCB工程师
+        reviewer: PCB组长
+
+      - id: pcb_layout_review
+        name: 布局评审
+        depends: [pcb_layout]
+        deliverables: [《拼版图.pdf》]
+        owner: PCB工程师
+        reviewer: 主管/专家/结构/工程
+
+      - id: pcb_routing
+        name: PCB走线
+        depends: [pcb_layout_review]
+        owner: PCB工程师
+        reviewer: PCB组长
+
+      - id: pin_confirm
+        name: 最终管脚确认
+        depends: [sw_control_spec]
+        owner: 软件工程师
+        reviewer: 硬件工程师/软件工程师
+
+      - id: pcb_review
+        name: PCB评审
+        depends: [pcb_routing, pin_confirm]
+        deliverables: [《PCB评审报告.docx》]
+        owner: PCB工程师
+        reviewer: 主管/专家/结构/工程
+        critical: true
+
+      - id: design_archive
+        name: 设计文件归档
+        depends: [pcb_review]
+        owner: PCB工程师
+        reviewer: PCB组长/原理图设计者
+        gate: 硬件主管
+
+  - id: SAMPLE
+    name: 制样阶段
+    milestone: MS2
+    tasks:
+      - id: pcb_sample
+        name: PCB制样
+        deliverables: [《PCB制样资料.ZIP》]
+        owner: PCB工程师
+        reviewer: PCB组长
+
+      - id: pcb_eq
+        name: PCB EQ确认
+        depends: [pcb_sample]
+        deliverables: [EQ文件]
+        owner: PCB工程师
+        reviewer: PCB组长
+
+      - id: bom_output
+        name: 单板BOM
+        deliverables: [《XX单板BOM.xlsx》]
+        owner: 硬件工程师
+        reviewer: 硬件主管
+        gate: CIS检查link完全
+
+      - id: smt_data
+        name: 贴片资料
+        depends: [pcb_eq]
+        deliverables: [贴片图, 坐标文件]
+        owner: PCB工程师
+        reviewer: PCB组长/硬件工程师
+
+      - id: stencil
+        name: 钢网
+        depends: [pcb_eq]
+        deliverables: [《钢网制样申请单》]
+        owner: PCB工程师
+        reviewer: PCB组长
+
+      - id: sample_data
+        name: 制样资料
+        depends: [bom_output, smt_data, stencil]
+        deliverables: [《PCBA做样资料.ZIP》]
+        owner: 硬件工程师
+        reviewer: 硬件主管
+
+      - id: pcba_test
+        name: PCBA测试
+        depends: [sample_data]
+        owner: 硬件工程师
+        reviewer: 硬件助理
+        critical: true
+
+  - id: SW_DEV
+    name: 软件设计阶段
+    tasks:
+      - id: fpga_dev
+        name: 固件开发-FPGA
+        deliverables: [《关键模块功能设计文档》]
+        owner: FPGA工程师
+        reviewer: 研发经理/FPGA组长
+        gate: FPGA概要设计通过
+
+      - id: fpga_review
+        name: FPGA代码评审
+        depends: [fpga_dev]
+        deliverables: [《代码review记录》]
+        owner: FPGA工程师
+        reviewer: 研发经理/FPGA组长/总监
+        gate: 代码评审通过
+
+      - id: mcu_dev
+        name: 固件开发-MCU
+        deliverables: [《关键模块功能设计文档》]
+        owner: 单片机工程师
+        reviewer: 单片机组长/研发经理/总监
+        gate: MCU概要设计通过
+
+      - id: mcu_review
+        name: MCU代码评审
+        depends: [mcu_dev]
+        deliverables: [《代码review记录》]
+        owner: 单片机
+        reviewer: 单片机组长/研发经理/总监
+        gate: 代码评审通过
+
+      - id: app_dev
+        name: AP工具/SDK/驱动设计
+        deliverables: [《关键模块功能设计文档》]
+        owner: 软件工程师
+        reviewer: 研发经理/总监
+        gate: 概要设计通过
+
+  - id: INTEG
+    name: 联调
+    milestone: MS3
+    tasks:
+      - id: hw_sw_integration
+        name: 软硬件联调
+        owner: FPGA/单片机/硬件原理
+        reviewer: 研发经理/研发主管/FPGA组长
+        gate: 硬件板子寄到长沙
+
+      - id: dev_selftest
+        name: 开发自测
+        depends: [hw_sw_integration]
+        deliverables: [《代码QC问题登记表》]
+        owner: FPGA工程师/单片机
+        reviewer: 测试/PMO
+        gate: 自动化测试工具解决稳定可靠问题
+
+      - id: fw_code_review
+        name: 固件代码评审
+        depends: [dev_selftest]
+        deliverables: [《代码评审记录》]
+        owner: FPGA工程师/单片机
+        reviewer: 总监/经理/主管
+        gate: 代码评审记录的问题全部闭环
+        critical: true
+
+      - id: cost_calc
+        name: 成本核算
+        deliverables: [《硬件成本核算表》]
+        owner: 硬件工程师
+        reviewer: 主管/文员
+
+  - id: TEST_A
+    name: A版本测试
+    tasks:
+      - id: hw_test
+        name: 硬件测试
+        deliverables: [《硬件测试报告》]
+        owner: 硬件工程师
+        reviewer: 硬件/主管
+
+      - id: system_test_a
+        name: 整机测试
+        deliverables: [《A版本测试简报》, 《缺陷清单》]
+        owner: 测试负责人/硬件负责人
+
+      - id: spec_draft
+        name: 初版规格书输出
+        deliverables: [《产品规格书》]
+        owner: 软/硬件项目负责人
+        reviewer: 软/硬件负责人/结构/产品经理
+
+      - id: hw_fix
+        name: 硬件错误修改
+        depends: [hw_test, system_test_a]
+        deliverables: [《XX项目硬件调试记录》]
+        owner: 硬件/PCB/结构
+
+  - id: TEST_B
+    name: B版本测试
+    tasks:
+      - id: test_b
+        name: B版本测试
+        deliverables: [《缺陷清单_日期》]
+        owner: 测试负责人
+        reviewer: 测试组长
+        gate: 问题解决率>80%
+
+      - id: test_b_report
+        name: B版本测试简报
+        depends: [test_b]
+        deliverables: [《测试简报》]
+        owner: 测试负责人
+        reviewer: 测试组长/主管/项目成员
+
+      - id: sample_delivery
+        name: 样机送样
+        depends: [test_b_report]
+        deliverables: [《样机送样指标确认表》]
+        owner: 产品经理
+        gate: B版本测试报告
+
+  - id: TEST_C
+    name: C版本测试
+    tasks:
+      - id: test_c
+        name: C版本测试
+        deliverables: [《缺陷清单_日期》]
+        owner: 测试负责人
+        reviewer: 测试组长
+        gate: 缺陷待回归占比90%以上
+
+      - id: final_report_review
+        name: 完整报告评审
+        depends: [test_c]
+        deliverables: [《产品总体测试报告》]
+        owner: 测试负责人
+        reviewer: 项目成员/总监/产品/主管
+        gate: 遗留缺陷DI<3
+        critical: true
+
+      - id: product_acceptance
+        name: 产品验收
+        depends: [final_report_review]
+        owner: 产品经理
+        gate: 验收通过
+
+  - id: TRIAL
+    name: 试产阶段
+    milestone: MS4
+    tasks:
+      - id: trial_prep
+        name: 试产准备
+        deliverables: [《可生产性测试报告》]
+        owner: 测试工程师
+        reviewer: PMO
+        gate: 研发测试报告评审通过
+
+      - id: trial_data_prep
+        name: 试产资料准备
+        depends: [trial_prep]
+        deliverables: [固件, 测试AP, 转接板, 电性能治具, 老化治具, 贴片资料, 印字文件, 整机BOM, 生产注意事项, 试产申请单]
+        owner: 硬件工程师
+        reviewer: 主管
+
+      - id: trial_meeting
+        name: 试产会议
+        depends: [trial_data_prep]
+        deliverables: [试样试产总结报告]
+        owner: 项目负责人
+        reviewer: 结构/硬件/软件/工程
+
+      - id: trial_issue_fix
+        name: 试产问题解决
+        depends: [trial_meeting]
+        owner: 项目负责人
+        reviewer: 结构/硬件/软件/工程
+
+  - id: RELEASE
+    name: 发布阶段
+    tasks:
+      - id: new_material_approval
+        name: 新品承认
+        owner: 硬件工程师
+
+      - id: cis_entry
+        name: 新物料入CIS库
+        depends: [new_material_approval]
+        deliverables: [XX物料CIS入库资料包.ZIP]
+        owner: CIS管理员
+
+      - id: bom_final
+        name: 半成品承认
+        deliverables: [最终BOM]
+        owner: 硬件工程师
+        reviewer: 主管
+
+      - id: prod_data
+        name: 生产资料
+        deliverables: [贴片资料]
+        owner: 硬件工程师
+        reviewer: 主管
+
+      - id: material_code
+        name: 系统物料料号新建
+        owner: 硬件工程师
+        reviewer: 主管
+
+      - id: inventory
+        name: 物料/样机盘点
+        depends: [bom_final, prod_data, material_code]
+        owner: 硬件工程师
+        reviewer: 研发文员
+
+      - id: release_data
+        name: 成品发布资料准备
+        depends: [inventory]
+        deliverables: [《XX系列机型生产注意事项.docx》, 《XX新机种通知单.docx》]
+        owner: 硬件工程师
+        reviewer: 硬件主管/金蝶审批流
+
+      - id: fw_release
+        name: 固件发布
+        owner: 测试负责人
+        reviewer: 金蝶流程审批
+
+      - id: product_entry
+        name: 系统建立成品资料
+        depends: [release_data, fw_release]
+        owner: 硬件工程师
+        reviewer: 硬件主管/金蝶审批流
+
+      - id: launch_training
+        name: 新品发布会
+        depends: [product_entry]
+        deliverables: [《新品培训》]
+        owner: 产品经理
+        reviewer: 总监/产品/FAE/业务
+
+  - id: ACCEPT
+    name: 验收阶段
+    tasks:
+      - id: project_acceptance
+        name: 项目验收
+        deliverables: [《项目验收报告.docx》]
+        owner: PMO
+
+      - id: doc_archive
+        name: 项目资料归档
+        depends: [project_acceptance]
+        deliverables: [《XX项目IPO文档资料包.zip》]
+        owner: 项目负责人
+        reviewer: PMO
+
+      - id: hw_review
+        name: 硬件问题复盘
+        deliverables: [《XX项目硬件调试记录.xlsx》]
+        owner: 硬件主管
+        reviewer: 硬件项目全员
+
+      - id: sw_review
+        name: 软件问题复盘
+        owner: 软件主管
+        reviewer: 软件项目全员
+
+      - id: hw_archive
+        name: 硬件资料归档
+        depends: [hw_review]
+        deliverables: [《硬件设计资料最终版资料.ZIP》]
+        owner: 硬件负责人
+        reviewer: 硬件主管/结构
+
+      - id: sw_archive
+        name: 软件资料归档
+        depends: [sw_review]
+        owner: 软件负责人
+        reviewer: 软件主管
