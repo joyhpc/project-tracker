@@ -1,303 +1,314 @@
 """Prompt 导出引擎
 
-根据用户问题 + 项目当前状态，生成带完整上下文的 prompt。
-让 LLM 能基于真实项目数据给出精准建议。
+根据用户问题，从项目中提取恰好需要的上下文，生成精准 prompt。
+原则：不多不少，只给 LLM 回答这个问题所需的信息。
 """
 from . import core, flow as flowmod
-from .engine import analyze, find_critical_path, build_dep_graph, classify_tasks, _count_downstream
+from .engine import find_critical_path, build_dep_graph, classify_tasks, _count_downstream
 from .timeline import compute_full_schedule, estimate_task_days
 from .risk import assess_project_risk
 
 
-def gather_project_context(project: dict, flow: dict) -> dict:
-    """收集项目的完整上下文数据"""
+# ── 上下文收集器（按需） ──────────────────────────────
+
+def _find_task_in_flow(flow, task_id):
+    """在流程中查找任务，返回 (phase, task) 或 (None, None)"""
+    for phase in flow.get("phases", []):
+        for t in phase.get("tasks", []):
+            if t["id"] == task_id:
+                return phase, t
+    return None, None
+
+
+def _find_task_by_name(flow, name):
+    """按名称模糊匹配任务"""
+    name_lower = name.lower()
+    for phase in flow.get("phases", []):
+        for t in phase.get("tasks", []):
+            if name_lower in t["name"].lower() or name_lower in t["id"].lower():
+                return phase, t
+    return None, None
+
+
+def _task_detail(task, phase, task_status, blockers, graph):
+    """收集单个任务的详细信息"""
+    tid = task["id"]
+    entry = task_status.get(tid, {})
+    status = entry.get("status", "pending")
+
+    info = {
+        "id": tid,
+        "name": task["name"],
+        "phase": phase.get("name", ""),
+        "owner": task.get("owner", ""),
+        "status": status,
+        "depends": task.get("depends", []),
+        "deliverables": task.get("deliverables", []),
+    }
+
+    if task.get("gate"):
+        info["gate"] = task["gate"]
+    if task.get("critical"):
+        info["critical"] = True
+    if entry.get("started"):
+        info["started"] = entry["started"]
+
+    # 阻塞信息
+    active_blockers = [b for b in blockers if b["task_id"] == tid and not b.get("resolved")]
+    if active_blockers:
+        info["blocked_reason"] = active_blockers[0]["reason"]
+
+    # 下游影响
+    if graph:
+        downstream = _count_downstream(tid, graph["rdeps"], set())
+        if downstream > 0:
+            info["downstream_count"] = downstream
+            # 直接下游任务名
+            direct = []
+            for other_id, other_task in graph["tasks"].items():
+                if tid in other_task.get("depends", []):
+                    direct.append(f"{other_task['name']}({other_id})")
+            if direct:
+                info["direct_downstream"] = direct
+
+    # 上游依赖状态
+    if info["depends"]:
+        dep_status = []
+        for d in info["depends"]:
+            ds = task_status.get(d, {}).get("status", "pending")
+            dep_status.append(f"{d}={ds}")
+        info["dep_status"] = dep_status
+
+    return info
+
+
+def _format_task_detail(info):
+    """格式化单个任务详情"""
+    lines = []
+    status_map = {"done": "✅已完成", "in_progress": "🔄进行中", "pending": "⏳待开始", "blocked": "🚫已阻塞"}
+    lines.append(f"[{info['id']}] {info['name']}")
+    lines.append(f"  状态: {status_map.get(info['status'], info['status'])}")
+    if info.get("owner"):
+        lines.append(f"  负责人: {info['owner']}")
+    if info.get("phase"):
+        lines.append(f"  所属阶段: {info['phase']}")
+    if info.get("blocked_reason"):
+        lines.append(f"  ⚠️ 阻塞原因: {info['blocked_reason']}")
+    if info.get("depends"):
+        lines.append(f"  依赖: {', '.join(info['depends'])}")
+    if info.get("dep_status"):
+        lines.append(f"  依赖状态: {', '.join(info['dep_status'])}")
+    if info.get("direct_downstream"):
+        lines.append(f"  直接下游: {', '.join(info['direct_downstream'])}")
+    if info.get("downstream_count"):
+        lines.append(f"  影响下游: {info['downstream_count']} 个任务")
+    if info.get("gate"):
+        lines.append(f"  准入条件: {info['gate']}")
+    if info.get("deliverables"):
+        lines.append(f"  交付件: {', '.join(info['deliverables'])}")
+    if info.get("critical"):
+        lines.append(f"  🔴 关键路径任务")
+    return "\n".join(lines)
+
+
+# ── 问题分析 ──────────────────────────────────────────
+
+def extract_task_refs(question, flow):
+    """从问题中提取涉及的任务"""
+    refs = []
+    for phase in flow.get("phases", []):
+        for t in phase.get("tasks", []):
+            # 匹配 task_id 或任务名
+            if t["id"] in question or t["name"] in question:
+                refs.append(t["id"])
+    return refs
+
+
+def analyze_question(question):
+    """分析问题的意图，决定需要哪些上下文。
+    优先级：具体任务问题 > 全局问题。避免叠加过多上下文。"""
+    q = question.lower()
+
+    needs = set()
+    primary = None  # 主要意图
+
+    # 阻塞相关（最具体）
+    block_kw = ["阻塞", "block", "卡住", "等待", "停滞", "替代", "绕过", "先做"]
+    if any(kw in q for kw in block_kw):
+        needs.update(["target_task", "blockers", "alternatives"])
+        primary = "blocked"
+
+    # 加速/推进（全局性）
+    accel_kw = ["快", "加速", "推进", "缩短", "提速", "赶", "工期", "瓶颈"]
+    if any(kw in q for kw in accel_kw):
+        if primary != "blocked":  # 已有具体意图时不叠加全局
+            needs.update(["critical_path", "ready_tasks", "blockers", "bottlenecks"])
+            primary = primary or "accelerate"
+
+    # 架构/设计
+    arch_kw = ["架构", "合理", "依赖", "流程"]
+    if any(kw in q for kw in arch_kw):
+        needs.update(["phase_overview", "critical_path", "dependencies"])
+        primary = primary or "architecture"
+
+    # 风险
+    risk_kw = ["风险", "延期", "隐患"]
+    if any(kw in q for kw in risk_kw):
+        needs.update(["risks", "critical_path"])
+        primary = primary or "risk"
+
+    # 状态/汇报
+    status_kw = ["汇报", "报告", "总结", "状态"]
+    if any(kw in q for kw in status_kw):
+        needs.update(["phase_overview", "progress", "blockers", "ready_tasks"])
+        primary = primary or "status"
+
+    # 如果没匹配到任何意图，给基本上下文
+    if not needs:
+        needs.update(["progress", "current_phase"])
+
+    return needs
+
+
+# ── 精准上下文构建 ──────────────────────────────────────
+
+def build_focused_context(question, project, flow):
+    """根据问题构建精准上下文"""
     task_status = project.get("tasks", {})
     blockers = project.get("blockers", [])
     current_phase_id = project["current_phase"]
     phases = flow.get("phases", [])
     phase_map = {p["id"]: p for p in phases}
-    order = [p["id"] for p in phases]
     current_phase = phase_map.get(current_phase_id, {})
-
-    # 基本信息
-    total_tasks = sum(len(p.get("tasks", [])) for p in phases)
-    total_done = sum(
-        1 for p in phases
-        for t in p.get("tasks", [])
-        if task_status.get(t["id"], {}).get("status") == "done"
-    )
-
-    # 当前阶段分析
-    classified = classify_tasks(current_phase, task_status)
-    cp = find_critical_path(current_phase, task_status)
-    active_blockers = [b for b in blockers if not b.get("resolved")]
-
-    # 阻塞影响
     graph = build_dep_graph(current_phase)
-    blocker_details = []
-    for b in active_blockers:
-        tid = b["task_id"]
-        downstream = _count_downstream(tid, graph["rdeps"], set())
-        blocker_details.append({
-            "task": tid,
-            "name": graph["tasks"].get(tid, {}).get("name", tid),
-            "reason": b["reason"],
-            "downstream": downstream,
-        })
 
-    # 进行中任务
-    in_progress = []
-    for t in classified.get("in_progress", []):
-        entry = task_status.get(t["id"], {})
-        in_progress.append({
-            "id": t["id"], "name": t["name"],
-            "owner": t.get("owner", ""),
-            "started": entry.get("started", ""),
-        })
+    needs = analyze_question(question)
+    task_refs = extract_task_refs(question, flow)
 
-    # Ready 任务
-    ready = [{"id": t["id"], "name": t["name"], "owner": t.get("owner", "")}
-             for t in classified.get("ready", [])]
-
-    # 风险概要
-    risk = assess_project_risk(flow, current_phase_id, task_status,
-                               project.get("estimates", {}))
-    top_risks = [{"name": r["name"], "score": r["score"], "factors": r["factors"]}
-                 for r in risk.get("top_risks", [])[:5]]
-
-    # 时间线概要
-    sched = compute_full_schedule(flow, current_phase_id, task_status,
-                                  custom_estimates=project.get("estimates", {}))
-
-    # 阶段进度
-    phase_progress = []
-    for p in phases:
-        pid = p["id"]
-        tasks = p.get("tasks", [])
-        done = sum(1 for t in tasks if task_status.get(t["id"], {}).get("status") == "done")
-        phase_progress.append(f"{pid}({p['name']}): {done}/{len(tasks)}")
-
-    return {
-        "project_name": project["name"],
-        "project_id": project["id"],
-        "flow_name": project.get("flow", "duxin"),
-        "current_phase": f"{current_phase_id} ({current_phase.get('name', '')})",
-        "global_progress": f"{total_done}/{total_tasks}",
-        "phase_progress": phase_progress,
-        "critical_path": cp,
-        "blockers": blocker_details,
-        "in_progress": in_progress,
-        "ready_tasks": ready,
-        "top_risks": top_risks,
-        "total_days": sched.get("total_days", 0),
-        "end_date": sched.get("end_date", None),
-        "bottlenecks": risk.get("bottlenecks", []),
-    }
-
-
-def format_context_block(ctx: dict) -> str:
-    """将项目上下文格式化为 prompt 可用的文本块"""
     lines = []
 
-    lines.append(f"## 项目: {ctx['project_name']} ({ctx['project_id']})")
-    lines.append(f"- 流程: {ctx['flow_name']}")
-    lines.append(f"- 当前阶段: {ctx['current_phase']}")
-    lines.append(f"- 全局进度: {ctx['global_progress']}")
-    lines.append(f"- 预计剩余工期: {ctx['total_days']} 天")
-    if ctx.get("end_date"):
-        lines.append(f"- 预计完成: {ctx['end_date'].strftime('%Y-%m-%d')}")
+    # 始终给项目基本信息（一行）
+    total = sum(len(p.get("tasks", [])) for p in phases)
+    done = sum(1 for p in phases for t in p.get("tasks", [])
+               if task_status.get(t["id"], {}).get("status") == "done")
+    lines.append(f"项目: {project['name']} | 当前阶段: {current_phase.get('name', current_phase_id)} | 进度: {done}/{total}")
     lines.append("")
 
-    # 阶段进度
-    lines.append("### 各阶段进度")
-    for pp in ctx["phase_progress"]:
-        lines.append(f"- {pp}")
-    lines.append("")
+    # 目标任务详情
+    if task_refs:
+        lines.append("## 相关任务")
+        for tid in task_refs:
+            phase, task = _find_task_in_flow(flow, tid)
+            if task:
+                detail = _task_detail(task, phase, task_status, blockers, graph)
+                lines.append(_format_task_detail(detail))
+                lines.append("")
+
+    # 阻塞 + 替代方案
+    if "blockers" in needs or "alternatives" in needs:
+        active_blockers = [b for b in blockers if not b.get("resolved")]
+        if active_blockers:
+            if not task_refs:  # 如果没有指定任务，列出所有阻塞
+                lines.append("## 当前阻塞")
+                for b in active_blockers:
+                    phase_t, task_t = _find_task_in_flow(flow, b["task_id"])
+                    if task_t:
+                        detail = _task_detail(task_t, phase_t, task_status, blockers, graph)
+                        lines.append(_format_task_detail(detail))
+                        lines.append("")
+
+        if "alternatives" in needs:
+            classified = classify_tasks(current_phase, task_status)
+            ready = classified.get("ready", [])
+            if ready:
+                lines.append("## 不受阻塞影响、可立即推进的任务")
+                for t in ready:
+                    blocked_ids = {b["task_id"] for b in active_blockers}
+                    if t["id"] not in blocked_ids:
+                        lines.append(f"- [{t['id']}] {t['name']} ← {t.get('owner', '未分配')}")
+                lines.append("")
 
     # 关键路径
-    if ctx["critical_path"]:
-        lines.append(f"### 当前阶段关键路径")
-        lines.append(f"{' → '.join(ctx['critical_path'])}")
-        lines.append("")
+    if "critical_path" in needs:
+        cp = find_critical_path(current_phase, task_status)
+        if cp:
+            lines.append(f"## 当前阶段关键路径")
+            lines.append(f"{' → '.join(cp)}")
+            lines.append("")
 
-    # 阻塞
-    if ctx["blockers"]:
-        lines.append("### 当前阻塞")
-        for b in ctx["blockers"]:
-            lines.append(f"- [{b['task']}] {b['name']}: {b['reason']} (影响下游 {b['downstream']} 个任务)")
-        lines.append("")
+    # 可启动任务
+    if "ready_tasks" in needs and "alternatives" not in needs:
+        classified = classify_tasks(current_phase, task_status)
+        ready = classified.get("ready", [])
+        if ready:
+            lines.append("## 可立即启动的任务")
+            for t in ready:
+                lines.append(f"- [{t['id']}] {t['name']} ← {t.get('owner', '未分配')}")
+            lines.append("")
 
-    # 进行中
-    if ctx["in_progress"]:
-        lines.append("### 进行中的任务")
-        for t in ctx["in_progress"]:
-            lines.append(f"- [{t['id']}] {t['name']} ← {t['owner']} (开始于 {t['started']})")
-        lines.append("")
-
-    # 可启动
-    if ctx["ready_tasks"]:
-        lines.append("### 可立即启动的任务")
-        for t in ctx["ready_tasks"]:
-            lines.append(f"- [{t['id']}] {t['name']} ← {t['owner']}")
+    # 阶段概览
+    if "phase_overview" in needs:
+        lines.append("## 各阶段进度")
+        for p in phases:
+            pid = p["id"]
+            tasks = p.get("tasks", [])
+            d = sum(1 for t in tasks if task_status.get(t["id"], {}).get("status") == "done")
+            marker = " ◀当前" if pid == current_phase_id else ""
+            lines.append(f"- {p['name']}({pid}): {d}/{len(tasks)}{marker}")
         lines.append("")
 
     # 风险
-    if ctx["top_risks"]:
-        lines.append("### Top 风险")
-        for r in ctx["top_risks"]:
-            lines.append(f"- {r['name']} (风险分: {r['score']}): {'; '.join(r['factors'])}")
-        lines.append("")
+    if "risks" in needs:
+        risk = assess_project_risk(flow, current_phase_id, task_status,
+                                   project.get("estimates", {}))
+        top = risk.get("top_risks", [])[:3]
+        if top:
+            lines.append("## 高风险任务")
+            for r in top:
+                lines.append(f"- {r['name']} (风险分: {r['score']}): {'; '.join(r['factors'])}")
+            lines.append("")
 
     # 资源瓶颈
-    if ctx["bottlenecks"]:
-        lines.append("### 资源瓶颈")
-        for owner, count in ctx["bottlenecks"][:3]:
-            lines.append(f"- {owner}: {count} 个待办任务")
-        lines.append("")
+    if "bottlenecks" in needs:
+        risk = assess_project_risk(flow, current_phase_id, task_status,
+                                   project.get("estimates", {}))
+        bn = risk.get("bottlenecks", [])[:3]
+        if bn:
+            lines.append("## 资源瓶颈")
+            for owner, count in bn:
+                lines.append(f"- {owner}: {count} 个待办")
+            lines.append("")
 
     return "\n".join(lines)
 
 
-# ── Prompt 模板 ──────────────────────────────────────
-
-PROMPT_TEMPLATES = {
-    "accelerate": {
-        "label": "如何最快推进项目",
-        "system": "你是一位资深硬件项目管理专家，擅长识别项目瓶颈并给出可执行的加速方案。",
-        "template": """基于以下项目状态，分析如何最快推进项目。
-
-{context}
-
-请回答：
-1. 当前最大的瓶颈是什么？
-2. 哪些任务可以并行推进来缩短工期？
-3. 阻塞问题的具体解决建议？
-4. 资源如何优化分配？
-5. 给出一个具体的未来两周行动计划。""",
-    },
-
-    "architecture": {
-        "label": "架构是否合理",
-        "system": "你是一位资深电子产品系统架构师，擅长评估硬件/软件/结构的架构合理性。",
-        "template": """基于以下项目状态，评估当前项目架构和流程是否合理。
-
-{context}
-
-请回答：
-1. 当前的任务依赖关系是否合理？有没有不必要的串行依赖？
-2. 关键路径是否可以优化？
-3. 风险最高的环节是否有足够的缓冲？
-4. 资源分配是否均衡？
-5. 有没有遗漏的关键任务或评审节点？""",
-    },
-
-    "risk": {
-        "label": "风险分析与缓解",
-        "system": "你是一位硬件项目风险管理专家，擅长识别潜在风险并制定缓解方案。",
-        "template": """基于以下项目状态，进行深度风险分析。
-
-{context}
-
-请回答：
-1. 最可能导致项目延期的 3 个风险是什么？
-2. 每个风险的缓解方案？
-3. 需要提前准备什么来降低风险？
-4. 如果最坏情况发生，应急方案是什么？""",
-    },
-
-    "status": {
-        "label": "项目状态汇报",
-        "system": "你是一位项目管理助手，擅长将复杂的项目数据整理成清晰的汇报材料。",
-        "template": """基于以下项目数据，生成一份简洁的项目状态汇报（适合给领导看）。
-
-{context}
-
-要求：
-1. 一句话总结当前状态
-2. 关键进展（已完成的重要事项）
-3. 当前风险和阻塞
-4. 下一步计划
-5. 需要协调的资源或决策""",
-    },
-
-    "custom": {
-        "label": "自定义问题",
-        "system": "你是一位资深硬件项目管理专家。基于提供的项目数据回答问题。",
-        "template": """以下是项目的当前状态：
-
-{context}
-
-用户问题：{question}""",
-    },
-}
-
-
-def generate_prompt(question: str, project: dict = None, flow: dict = None) -> dict:
-    """根据问题和项目状态生成完整 prompt
-
-    Returns:
-        {
-            "system": str,
-            "prompt": str,
-            "template_used": str,
-            "context_summary": str,
-        }
-    """
-    # 自动匹配模板
-    template_key = match_template(question)
-
-    template = PROMPT_TEMPLATES[template_key]
-
-    # 收集上下文
+def generate_prompt(question, project=None, flow=None):
+    """根据问题和项目状态生成精准 prompt"""
     if project and flow:
-        ctx = gather_project_context(project, flow)
-        context_block = format_context_block(ctx)
-        context_summary = f"项目: {ctx['project_name']} | 阶段: {ctx['current_phase']} | 进度: {ctx['global_progress']}"
+        context = build_focused_context(question, project, flow)
     else:
-        context_block = "(无活跃项目)"
-        context_summary = "无项目上下文"
+        context = "(无活跃项目)"
 
-    # 生成 prompt
-    prompt = template["template"].format(
-        context=context_block,
-        question=question,
-    )
+    prompt = f"""以下是项目的相关信息：
+
+{context}
+
+问题：{question}
+
+请基于以上数据给出具体、可执行的建议。"""
 
     return {
-        "system": template["system"],
+        "system": "你是一位资深硬件项目管理专家。基于提供的项目数据回答问题，只使用给定数据，不要编造信息。",
         "prompt": prompt,
-        "template_used": template_key,
-        "template_label": template["label"],
-        "context_summary": context_summary,
     }
 
 
-def match_template(question: str) -> str:
-    """根据问题内容匹配最合适的模板"""
-    q = question.lower()
-
-    accelerate_kw = ["快", "加速", "推进", "缩短", "提速", "赶", "工期", "进度", "瓶颈",
-                     "accelerate", "speed", "faster", "bottleneck"]
-    arch_kw = ["架构", "合理", "设计", "依赖", "结构", "方案", "architecture", "design"]
-    risk_kw = ["风险", "延期", "问题", "隐患", "risk", "delay", "issue"]
-    status_kw = ["汇报", "报告", "总结", "状态", "report", "status", "summary"]
-
-    for kw in accelerate_kw:
-        if kw in q:
-            return "accelerate"
-    for kw in arch_kw:
-        if kw in q:
-            return "architecture"
-    for kw in risk_kw:
-        if kw in q:
-            return "risk"
-    for kw in status_kw:
-        if kw in q:
-            return "status"
-
-    return "custom"
-
-
-def list_templates() -> list[dict]:
-    """列出所有可用模板"""
-    return [{"key": k, "label": v["label"]} for k, v in PROMPT_TEMPLATES.items()]
+def list_templates():
+    """列出支持的问题类型"""
+    return [
+        {"key": "blocked", "label": "阻塞分析", "example": "PCB Layout 被阻塞了怎么办？"},
+        {"key": "accelerate", "label": "加速推进", "example": "怎么才能最快推进项目？"},
+        {"key": "architecture", "label": "架构评估", "example": "这个项目的架构是否合理？"},
+        {"key": "risk", "label": "风险分析", "example": "当前最大的风险是什么？"},
+        {"key": "status", "label": "状态汇报", "example": "帮我写一份项目状态汇报"},
+    ]
