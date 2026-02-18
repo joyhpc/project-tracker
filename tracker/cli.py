@@ -6,6 +6,7 @@ from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate
 from .commands.guide_cmd import cmd_guide
 from .commands.risk_cmd import cmd_risk
 from .commands.conflict_cmd import cmd_conflict
+from .commands.prompt_cmd import cmd_prompt
 
 
 def main():
@@ -106,6 +107,15 @@ def main():
     # ── 冲突 ──
     sub.add_parser("conflict", aliases=["cf"], help="多项目资源冲突检测")
 
+    # ── Prompt ──
+    p_prompt = sub.add_parser("prompt", help="Prompt 导出（带项目上下文）")
+    p_prompt.add_argument("question", nargs="?", help="你的问题")
+    p_prompt.add_argument("--template", "-t", help="指定模板 (accelerate/architecture/risk/status)")
+    p_prompt.add_argument("--list", "-l", action="store_true", help="列出可用模板")
+    p_prompt.add_argument("--system", action="store_true", help="显示 system prompt")
+    p_prompt.add_argument("--copy", "-c", action="store_true", help="复制到剪贴板")
+    p_prompt.add_argument("--save", "-s", help="保存到文件")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -130,6 +140,7 @@ def main():
         "estimate": cmd_estimate, "est": cmd_estimate,
         "guide": cmd_guide, "risk": cmd_risk,
         "conflict": cmd_conflict, "cf": cmd_conflict,
+        "prompt": cmd_prompt,
     }
 
     fn = CMD.get(args.command)
