@@ -1,7 +1,7 @@
 """CLI 入口 — 只做参数解析和路由"""
 import argparse
 from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_advance, cmd_note, cmd_log
-from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list
+from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list, cmd_sub_load
 from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate
 from .commands.guide_cmd import cmd_guide
 from .commands.risk_cmd import cmd_risk
@@ -75,6 +75,11 @@ def main():
     p_sl = sub.add_parser("sub-list", aliases=["sl"], help="查看子任务")
     p_sl.add_argument("parent")
 
+    p_sload = sub.add_parser("sub-load", help="从模板加载子任务")
+    p_sload.add_argument("parent", nargs="?", help="父任务ID")
+    p_sload.add_argument("template", nargs="?", help="模板ID")
+    p_sload.add_argument("--list", "-l", action="store_true", help="列出可用模板")
+
     # ── 分析 ──
     sub.add_parser("plan", help="项目作战地图")
 
@@ -133,6 +138,7 @@ def main():
         "sub": cmd_sub_add, "sub-done": cmd_sub_done, "sd": cmd_sub_done,
         "sub-block": cmd_sub_block, "sb": cmd_sub_block,
         "sub-list": cmd_sub_list, "sl": cmd_sub_list,
+        "sub-load": cmd_sub_load,
         "plan": cmd_plan, "digest": cmd_digest,
         "timeline": cmd_timeline, "tl": cmd_timeline,
         "estimate": cmd_estimate, "est": cmd_estimate,

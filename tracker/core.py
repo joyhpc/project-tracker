@@ -294,6 +294,110 @@ def list_subtasks(project_id: str, parent_id: str) -> list[dict]:
     return result
 
 
+def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> dict:
+    """从模板批量导入子任务到指定主任务
+
+    Args:
+        project_id: 项目ID
+        parent_id: 主任务ID
+        template_id: 模板ID (对应 flows/subtasks/<template_id>.yaml)
+
+    Returns:
+        {"loaded": int, "template": str, "parent": str}
+    """
+    import os
+    p = _load(project_id)
+    fl = flowmod.load_flow(p.get("flow", "duxin"))
+    _, parent = flowmod.find_task(fl, parent_id)
+    if not parent:
+        raise ValueError(f"父任务不存在: {parent_id}")
+
+    # 加载模板
+    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                  "flows", "subtasks", f"{template_id}.yaml")
+    if not os.path.exists(template_path):
+        # 列出可用模板
+        tpl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "flows", "subtasks")
+        available = [f.replace(".yaml", "") for f in os.listdir(tpl_dir) if f.endswith(".yaml")]
+        raise ValueError(f"模板不存在: {template_id}。可用: {', '.join(available)}")
+
+    import yaml
+    with open(template_path, "r", encoding="utf-8") as f:
+        template = yaml.safe_load(f)
+
+    entry = _task_entry(p, parent_id)
+    if "subtasks" not in entry:
+        entry["subtasks"] = {}
+
+    count = 0
+    for phase in template.get("phases", []):
+        for task in phase.get("tasks", []):
+            tid = task["id"]
+            if tid in entry["subtasks"]:
+                continue  # 跳过已存在的
+
+            sub = {
+                "name": task["name"],
+                "status": "pending",
+                "created": _now(),
+                "phase": phase.get("name", ""),
+            }
+            if task.get("owner"):
+                sub["owner"] = task["owner"]
+            if task.get("days"):
+                sub["days"] = task["days"]
+            if task.get("depends"):
+                sub["depends"] = task["depends"]
+            if task.get("deliverables"):
+                sub["deliverables"] = task["deliverables"]
+            if task.get("critical"):
+                sub["critical"] = True
+            if task.get("description"):
+                sub["description"] = task["description"]
+
+            entry["subtasks"][tid] = sub
+            count += 1
+
+    # 父任务自动变为 in_progress
+    if entry["status"] == "pending" and count > 0:
+        entry["status"] = "in_progress"
+        entry["started"] = _now()
+
+    p["log"].append({
+        "time": _now(), "action": "subtask_template_load",
+        "task": parent_id,
+        "detail": f"加载模板 {template_id}: {count} 个子任务"
+    })
+    _save(p)
+    return {"loaded": count, "template": template_id, "parent": parent_id,
+            "template_name": template.get("name", template_id)}
+
+
+def list_subtask_templates() -> list[dict]:
+    """列出所有可用的子任务模板"""
+    import os, yaml
+    tpl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "flows", "subtasks")
+    if not os.path.exists(tpl_dir):
+        return []
+    result = []
+    for f in sorted(os.listdir(tpl_dir)):
+        if not f.endswith(".yaml"):
+            continue
+        path = os.path.join(tpl_dir, f)
+        with open(path, "r", encoding="utf-8") as fh:
+            tpl = yaml.safe_load(fh)
+        task_count = sum(len(p.get("tasks", [])) for p in tpl.get("phases", []))
+        result.append({
+            "id": f.replace(".yaml", ""),
+            "name": tpl.get("name", ""),
+            "description": tpl.get("description", ""),
+            "attach_to": tpl.get("attach_to", []),
+            "task_count": task_count,
+            "phases": [p.get("name", "") for p in tpl.get("phases", [])],
+        })
+    return result
+
+
 def _split_subtask_id(full_id: str) -> tuple[str, str]:
     parts = full_id.rsplit(".", 1)
     if len(parts) != 2:

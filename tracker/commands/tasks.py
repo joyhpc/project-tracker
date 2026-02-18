@@ -162,3 +162,31 @@ def cmd_sub_list(args):
     except (RuntimeError, ValueError) as e:
         print(f"❌ {e}")
         sys.exit(1)
+
+
+def cmd_sub_load(args):
+    """从模板批量加载子任务"""
+    try:
+        if args.list:
+            templates = core.list_subtask_templates()
+            if not templates:
+                print("没有可用的子任务模板")
+                return
+            print("\n📋 可用子任务模板:\n")
+            for t in templates:
+                print(f"  [{t['id']}] {t['name']} ({t['task_count']}个任务)")
+                if t['description']:
+                    print(f"       {t['description']}")
+                print(f"       适用: {', '.join(t['attach_to'])}")
+                print(f"       阶段: {' → '.join(t['phases'])}")
+                print()
+            return
+
+        p = _require()
+        result = core.load_subtask_template(p["id"], args.parent, args.template)
+        print(f"✅ 已加载模板 [{result['template']}] {result['template_name']}")
+        print(f"   → {result['parent']}: {result['loaded']} 个子任务")
+        print(f"   查看: pt sl {args.parent}")
+    except (RuntimeError, ValueError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
