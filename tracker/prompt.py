@@ -19,10 +19,13 @@ def _build_task_index(flow):
             # 精确匹配
             index[t["id"]] = (phase, t)
             index[t["name"]] = (phase, t)
-            # 拆分名称为关键词
-            for part in t["name"].replace("（", "(").replace("）", ")").split():
-                if len(part) >= 2:
-                    index[part] = (phase, t)
+            # 中文：滑动窗口提取子串作为关键词
+            name = t["name"]
+            for wlen in range(min(len(name), 6), 2, -1):  # 先长后短，最短3字
+                for i in range(len(name) - wlen + 1):
+                    sub = name[i:i+wlen]
+                    if sub not in index:
+                        index[sub] = (phase, t)
     return index
 
 
@@ -58,14 +61,46 @@ def extract_entities(question, flow):
 
     seen_tasks = set()
 
-    # 任务匹配：先长后短，避免短词误匹配
+    # 停用词：太泛的词不用于匹配
+    stop_words = {"什么", "怎么", "如何", "是否", "可以", "需要", "现在",
+                  "时候", "多久", "哪些", "为什么", "能不能", "应该",
+                  "做什么", "准备", "进度", "状态", "问题", "方案",
+                  "今天", "明天", "项目", "阶段", "任务", "工程"}
+
+    # 1. 索引关键词 in 问题（3字以上，长词优先）
     candidates = sorted(task_idx.keys(), key=len, reverse=True)
     for keyword in candidates:
-        if keyword in question:
+        if len(keyword) >= 3 and keyword in question:
             phase, task = task_idx[keyword]
             if task["id"] not in seen_tasks:
                 entities["tasks"].append((phase, task))
                 seen_tasks.add(task["id"])
+
+    # 2. 反向匹配：问题中的 2 字词是否是某个任务名的子串
+    #    只在第一轮没匹配到时启用，限制最多 2 个避免过度匹配
+    if not entities["tasks"]:
+        reverse_matches = []
+        for phase in flow.get("phases", []):
+            for t in phase.get("tasks", []):
+                if t["id"] in seen_tasks:
+                    continue
+                name = t["name"]
+                best_len = 0
+                for wlen in range(4, 1, -1):
+                    for i in range(len(question) - wlen + 1):
+                        sub = question[i:i+wlen]
+                        if sub in stop_words or len(sub) < 2:
+                            continue
+                        if sub in name and wlen > best_len:
+                            best_len = wlen
+                            break
+                if best_len > 0:
+                    reverse_matches.append((best_len, phase, t))
+        # 按匹配长度排序，取前 2 个
+        reverse_matches.sort(key=lambda x: x[0], reverse=True)
+        for _, phase, t in reverse_matches[:2]:
+            entities["tasks"].append((phase, t))
+            seen_tasks.add(t["id"])
 
     # 人员匹配
     seen_owners = set()
