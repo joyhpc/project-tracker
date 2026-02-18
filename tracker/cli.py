@@ -5,6 +5,7 @@ from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block,
 from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate
 from .commands.guide_cmd import cmd_guide
 from .commands.risk_cmd import cmd_risk
+from .commands.conflict_cmd import cmd_conflict
 
 
 def main():
@@ -101,6 +102,9 @@ def main():
     p_risk = sub.add_parser("risk", help="风险评估")
     p_risk.add_argument("--phase", help="评估单个阶段")
 
+    # ── 冲突 ──
+    sub.add_parser("conflict", aliases=["cf"], help="多项目资源冲突检测")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -124,6 +128,7 @@ def main():
         "timeline": cmd_timeline, "tl": cmd_timeline,
         "estimate": cmd_estimate, "est": cmd_estimate,
         "guide": cmd_guide, "risk": cmd_risk,
+        "conflict": cmd_conflict, "cf": cmd_conflict,
     }
 
     fn = CMD.get(args.command)
