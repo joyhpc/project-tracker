@@ -8,6 +8,7 @@ from .commands.risk_cmd import cmd_risk
 from .commands.conflict_cmd import cmd_conflict
 from .commands.prompt_cmd import cmd_prompt
 from .commands.docs_cmd import cmd_docs
+from .commands.log_cmd import cmd_log as cmd_brief
 
 
 def main():
@@ -123,6 +124,10 @@ def main():
     p_prompt.add_argument("--full", action="store_true", help="完整输出（system+prompt，方便复制）")
     p_prompt.add_argument("--save", "-s", help="保存到文件")
 
+    # ── 简报 ──
+    p_brief = sub.add_parser("brief", aliases=["br"], help="项目推进简报")
+    p_brief.add_argument("--save", "-s", help="保存到文件")
+
     # ── 文档管理 ──
     p_docs = sub.add_parser("docs", help="文档管理")
     p_docs.add_argument("task", nargs="?", help="查看指定任务的文档")
@@ -161,6 +166,7 @@ def main():
         "conflict": cmd_conflict, "cf": cmd_conflict,
         "prompt": cmd_prompt,
         "docs": cmd_docs,
+        "brief": cmd_brief, "br": cmd_brief,
     }
 
     fn = CMD.get(args.command)
