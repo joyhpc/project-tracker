@@ -8,6 +8,13 @@
 #     risk_hint: 风险提示（可选，回答后显示）
 #     tags: 适用条件标签（可选，用于过滤）
 
+# 阶段别名映射（不同流程的阶段 ID → 问题模板阶段 ID）
+aliases:
+  CONCEPT: REQ        # generic 概念阶段 → 需求问题
+  DESIGN: DETAIL      # generic 设计阶段 → 详细设计问题
+  PROTO: SAMPLE       # generic 原型阶段 → 制样问题
+  MASS: TRIAL         # generic 量产阶段 → 试产+发布问题
+
 phases:
   REQ:
     title: "需求阶段 — 你真的了解这个市场吗？"

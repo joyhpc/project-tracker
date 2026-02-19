@@ -1,0 +1,467 @@
+id: SP
+name: 智能助眠枕头
+flow: generic
+created: 2026-02-19 13:15
+phases:
+- id: CONCEPT
+  name: 概念阶段
+- id: DESIGN
+  name: 设计阶段
+  milestone: M1
+- id: PROTO
+  name: 原型阶段
+  milestone: M2
+- id: TEST
+  name: 测试阶段
+- id: MASS
+  name: 量产阶段
+  milestone: M3
+nodes:
+- id: market_research
+  name: 市场调研
+  type: task
+  phase: CONCEPT
+  owner: 产品经理
+  deliverables:
+  - 市场分析报告
+  status: done
+  started: 2026-02-19 13:17
+  completed: 2026-02-19 13:17
+  note: 目标用户:25-45岁失眠人群,售价299-499,核心卖点:脑电波监测+智能温控
+- id: concept_design
+  name: 概念设计
+  type: task
+  phase: CONCEPT
+  owner: 系统架构师
+  depends:
+  - market_research
+  deliverables:
+  - 概念设计文档
+  status: done
+  started: 2026-02-19 13:17
+  completed: 2026-02-19 13:17
+  note: 方案确定:ESP32-S3+脑电传感器+半导体制冷片
+- id: feasibility
+  name: 可行性分析
+  type: task
+  phase: CONCEPT
+  owner: 技术负责人
+  depends:
+  - concept_design
+  deliverables:
+  - 可行性报告
+  critical: true
+  status: done
+  started: 2026-02-19 13:17
+  completed: 2026-02-19 13:17
+  note: BOM成本120元,售价399,毛利率70%,需要3C认证
+- id: hw_design
+  name: 硬件设计
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  deliverables:
+  - 原理图
+  - PCB
+  gate: 概念设计评审通过
+  depends:
+  - feasibility
+  status: done
+  started: 2026-02-19 13:17
+  completed: 2026-02-19 13:18
+  note: 使用替代方案:NeuroSky TGAM模块
+- id: fw_design
+  name: 固件设计
+  type: task
+  phase: DESIGN
+  owner: 固件工程师
+  deliverables:
+  - 固件架构文档
+  depends:
+  - feasibility
+  status: done
+  started: 2026-02-19 13:17
+  completed: 2026-02-19 13:18
+  note: ESP32-S3蓝牙+脑电采集+温控PID算法
+- id: mech_design
+  name: 结构设计
+  type: task
+  phase: DESIGN
+  owner: 结构工程师
+  deliverables:
+  - 3D模型
+  depends:
+  - feasibility
+  status: done
+  started: 2026-02-19 13:17
+  completed: 2026-02-19 13:18
+  note: 枕头外壳:记忆棉+硅胶外壳,内置PCB仓
+- id: hw_review
+  name: 硬件评审
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_design
+  deliverables:
+  - 评审报告
+  critical: true
+  reviewer: 技术负责人
+  status: done
+  started: 2026-02-19 13:18
+  completed: 2026-02-19 13:18
+  note: 评审通过,建议增加ESD保护
+- id: pcb_layout
+  name: PCB Layout
+  type: task
+  phase: DESIGN
+  owner: PCB工程师
+  depends:
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB文件
+  status: done
+  started: 2026-02-19 13:18
+  completed: 2026-02-19 13:18
+  note: 4层板,50x40mm
+- id: bom_prep
+  name: BOM整理
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_review
+  deliverables:
+  - BOM清单
+  status: done
+  started: 2026-02-19 13:18
+  completed: 2026-02-19 13:18
+  note: BOM 45项,总成本118元
+- id: ms_design
+  name: 设计阶段 里程碑
+  type: milestone
+  phase: DESIGN
+  depends:
+  - fw_design
+  - pcb_layout
+  - bom_prep
+  status: done
+  completed: 2026-02-19 13:18
+- id: pcb_fab
+  name: PCB打样
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_layout
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB板
+  status: done
+  completed: 2026-02-19 13:18
+  note: 嘉立创5天出货
+- id: component_buy
+  name: 物料采购
+  type: task
+  phase: PROTO
+  owner: 采购
+  depends:
+  - bom_prep
+  deliverables:
+  - 物料
+  status: done
+  completed: 2026-02-19 13:18
+  note: 立创商城+淘宝
+- id: smt
+  name: SMT贴片
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_fab
+  - component_buy
+  status: done
+  completed: 2026-02-19 13:18
+  note: 贴片完成,首板上电OK
+- id: fw_dev
+  name: 固件开发
+  type: task
+  phase: PROTO
+  owner: 固件工程师
+  depends:
+  - fw_design
+  deliverables:
+  - 固件
+  status: done
+  started: 2026-02-19 13:18
+  completed: 2026-02-19 13:18
+  note: 脑电采集+蓝牙+温控PID
+- id: bringup
+  name: 板级调试
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - smt
+  - fw_dev
+  critical: true
+  status: done
+  completed: 2026-02-19 13:18
+  note: 蓝牙连接OK,脑电采集OK,温控OK
+- id: ms_proto
+  name: 原型阶段 里程碑
+  type: milestone
+  phase: PROTO
+  depends:
+  - bringup
+  status: done
+  completed: 2026-02-19 13:18
+- id: func_test
+  name: 功能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  deliverables:
+  - 测试报告
+  depends:
+  - bringup
+  status: done
+  completed: 2026-02-19 13:18
+  note: 12项功能全部通过
+- id: perf_test
+  name: 性能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - func_test
+  - bringup
+  deliverables:
+  - 性能报告
+  status: done
+  completed: 2026-02-19 13:18
+  note: 功耗0.8W,蓝牙距离10m,温控精度±0.5℃
+- id: cert_test
+  name: 认证测试
+  type: task
+  phase: TEST
+  owner: 认证工程师
+  depends:
+  - func_test
+  deliverables:
+  - 认证报告
+  gate: 需要送第三方实验室
+  status: done
+  completed: 2026-02-19 13:18
+  note: 3C认证提交
+- id: reliability
+  name: 可靠性测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - perf_test
+  deliverables:
+  - 可靠性报告
+  critical: true
+  status: done
+  completed: 2026-02-19 13:18
+  note: 跌落/高温/低温/湿度全部通过
+- id: tooling
+  name: 模具开发
+  type: task
+  phase: MASS
+  owner: 结构工程师
+  deliverables:
+  - 模具
+  gate: 结构设计冻结
+  depends:
+  - reliability
+  status: done
+  completed: 2026-02-19 13:18
+  note: 硅胶模具开模,周期25天
+- id: pilot_run
+  name: 试产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - tooling
+  deliverables:
+  - 试产报告
+  status: done
+  completed: 2026-02-19 13:18
+  note: 首批100台,良率96%
+- id: mass_prod
+  name: 量产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - pilot_run
+  critical: true
+  status: done
+  completed: 2026-02-19 13:18
+  note: 首批1000台量产完成
+- id: ms_mass
+  name: 量产阶段 里程碑
+  type: milestone
+  phase: MASS
+  depends:
+  - mass_prod
+  status: done
+  completed: 2026-02-19 13:18
+blockers:
+- task_id: hw_design
+  reason: 脑电传感器模块交期延迟2周
+  date: 2026-02-19 13:17
+  resolved: 2026-02-19 13:18
+log:
+- time: 2026-02-19 13:15
+  action: init
+  detail: '项目创建，流程: generic'
+- time: 2026-02-19 13:17
+  action: start
+  task: market_research
+  detail: 市场调研
+- time: 2026-02-19 13:17
+  action: done
+  task: market_research
+  detail: 目标用户:25-45岁失眠人群,售价299-499,核心卖点:脑电波监测+智能温控
+- time: 2026-02-19 13:17
+  action: start
+  task: concept_design
+  detail: 概念设计
+- time: 2026-02-19 13:17
+  action: done
+  task: concept_design
+  detail: 方案确定:ESP32-S3+脑电传感器+半导体制冷片
+- time: 2026-02-19 13:17
+  action: start
+  task: feasibility
+  detail: 可行性分析
+- time: 2026-02-19 13:17
+  action: done
+  task: feasibility
+  detail: BOM成本120元,售价399,毛利率70%,需要3C认证
+- time: 2026-02-19 13:17
+  action: start
+  task: hw_design
+  detail: 硬件设计
+- time: 2026-02-19 13:17
+  action: start
+  task: mech_design
+  detail: 结构设计
+- time: 2026-02-19 13:17
+  action: start
+  task: fw_design
+  detail: 固件设计
+- time: 2026-02-19 13:17
+  action: block
+  task: hw_design
+  detail: 脑电传感器模块交期延迟2周
+- time: 2026-02-19 13:18
+  action: unblock
+  task: hw_design
+- time: 2026-02-19 13:18
+  action: done
+  task: hw_design
+  detail: 使用替代方案:NeuroSky TGAM模块
+- time: 2026-02-19 13:18
+  action: done
+  task: mech_design
+  detail: 枕头外壳:记忆棉+硅胶外壳,内置PCB仓
+- time: 2026-02-19 13:18
+  action: done
+  task: fw_design
+  detail: ESP32-S3蓝牙+脑电采集+温控PID算法
+- time: 2026-02-19 13:18
+  action: start
+  task: hw_review
+  detail: 硬件评审
+- time: 2026-02-19 13:18
+  action: done
+  task: hw_review
+  detail: 评审通过,建议增加ESD保护
+- time: 2026-02-19 13:18
+  action: start
+  task: pcb_layout
+  detail: PCB Layout
+- time: 2026-02-19 13:18
+  action: start
+  task: bom_prep
+  detail: BOM整理
+- time: 2026-02-19 13:18
+  action: start
+  task: fw_dev
+  detail: 固件开发
+- time: 2026-02-19 13:18
+  action: done
+  task: pcb_layout
+  detail: 4层板,50x40mm
+- time: 2026-02-19 13:18
+  action: done
+  task: bom_prep
+  detail: BOM 45项,总成本118元
+- time: 2026-02-19 13:18
+  action: done
+  task: fw_dev
+  detail: 脑电采集+蓝牙+温控PID
+- time: 2026-02-19 13:18
+  action: done
+  task: pcb_fab
+  detail: 嘉立创5天出货
+- time: 2026-02-19 13:18
+  action: done
+  task: component_buy
+  detail: 立创商城+淘宝
+- time: 2026-02-19 13:18
+  action: done
+  task: smt
+  detail: 贴片完成,首板上电OK
+- time: 2026-02-19 13:18
+  action: done
+  task: bringup
+  detail: 蓝牙连接OK,脑电采集OK,温控OK
+- time: 2026-02-19 13:18
+  action: done
+  task: func_test
+  detail: 12项功能全部通过
+- time: 2026-02-19 13:18
+  action: done
+  task: perf_test
+  detail: 功耗0.8W,蓝牙距离10m,温控精度±0.5℃
+- time: 2026-02-19 13:18
+  action: done
+  task: cert_test
+  detail: 3C认证提交
+- time: 2026-02-19 13:18
+  action: done
+  task: reliability
+  detail: 跌落/高温/低温/湿度全部通过
+- time: 2026-02-19 13:18
+  action: done
+  task: tooling
+  detail: 硅胶模具开模,周期25天
+- time: 2026-02-19 13:18
+  action: done
+  task: pilot_run
+  detail: 首批100台,良率96%
+- time: 2026-02-19 13:18
+  action: done
+  task: mass_prod
+  detail: 首批1000台量产完成
+- time: 2026-02-19 13:18
+  action: done
+  task: ms_design
+  detail: 设计阶段 里程碑
+- time: 2026-02-19 13:18
+  action: done
+  task: ms_proto
+  detail: 原型阶段 里程碑
+- time: 2026-02-19 13:18
+  action: done
+  task: ms_mass
+  detail: 量产阶段 里程碑

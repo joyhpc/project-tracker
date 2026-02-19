@@ -26,7 +26,10 @@ def load_guide_questions() -> dict:
 def get_phase_questions(phase_id: str, product: str = "") -> dict | None:
     """获取指定阶段的引导问题"""
     guide = load_guide_questions()
-    phase_data = guide.get("phases", {}).get(phase_id)
+    # 别名映射
+    aliases = guide.get("aliases", {})
+    resolved_id = aliases.get(phase_id, phase_id)
+    phase_data = guide.get("phases", {}).get(resolved_id)
     if not phase_data:
         return None
 
