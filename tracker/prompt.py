@@ -46,25 +46,6 @@ def generate_prompt(question, project=None, flow=None):
     prompt = f"{role}\n\n{background}\n{focused}\n{instruction}"
 
     return {"system": "", "prompt": prompt}
-
-
-# ── 问题类型检测 ──────────────────────────────────────
-
-def _detect_question_type(question):
-    q = question
-    if any(w in q for w in ["决策", "拍板", "A/B/C", "推荐组合"]):
-        return "decision"
-    if "选" in q and "选型" not in q:
-        return "decision"
-    if any(w in q for w in ["方案", "怎么做", "架构", "选型", "设计"]):
-        return "solution"
-    if any(w in q for w in ["风险", "失败", "避坑", "教训"]):
-        return "risk"
-    if any(w in q for w in ["战略", "方向", "定位", "长期"]):
-        return "strategy"
-    return "general"
-
-
 # ── 角色 ──────────────────────────────────────────
 
 def _get_role(qtype):
