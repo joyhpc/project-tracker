@@ -5,7 +5,7 @@ from ..engine import analyze, compute_cpm
 
 
 def _icon(status: str) -> str:
-    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳"}.get(status, "❓")
+    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳", "expanded": "📦"}.get(status, "❓")
 
 
 def _require():
@@ -25,10 +25,10 @@ def cmd_tasks(args):
     if phase_filter:
         nodes = [n for n in nodes if n.get("phase") == phase_filter]
 
-    # 不显示子任务（有 parent 的）
+    # 不显示子任务（有 parent 的）和已展开的父节点
     show_subs = getattr(args, "all", False)
     if not show_subs:
-        nodes = [n for n in nodes if not n.get("parent")]
+        nodes = [n for n in nodes if not n.get("parent") and n.get("status") != "expanded"]
 
     print(f"\n📋 {p['name']} - 任务列表 ({len(nodes)} 个)\n")
     for n in nodes:

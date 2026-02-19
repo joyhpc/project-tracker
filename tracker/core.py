@@ -386,6 +386,54 @@ def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> 
             p["nodes"].append(sub_node)
             count += 1
 
+    if count > 0:
+        # ── 边重连（Rewire）──
+        # 1. 找子图的入口节点（无内部依赖的子任务）
+        sub_ids = {n["id"] for n in p["nodes"] if n.get("parent") == parent_id}
+        entry_subs = []
+        for n in p["nodes"]:
+            if n["id"] not in sub_ids:
+                continue
+            internal_deps = [d for d in n.get("depends", []) if d in sub_ids]
+            if not internal_deps:
+                entry_subs.append(n["id"])
+
+        # 2. 找子图的出口节点（无内部后继的子任务）
+        depended_by = set()
+        for n in p["nodes"]:
+            if n["id"] not in sub_ids:
+                continue
+            for d in n.get("depends", []):
+                if d in sub_ids:
+                    depended_by.add(d)
+        exit_subs = [sid for sid in sub_ids if sid not in depended_by]
+
+        # 3. 入口子任务继承父任务的 depends
+        parent_deps = parent.get("depends", [])
+        if parent_deps:
+            for eid in entry_subs:
+                entry_node = _find_node(p, eid)
+                if entry_node:
+                    existing = set(entry_node.get("depends", []))
+                    new_deps = [d for d in parent_deps if d not in existing]
+                    if new_deps:
+                        entry_node.setdefault("depends", []).extend(new_deps)
+
+        # 4. 父任务的后继改为依赖出口子任务（替代依赖父任务）
+        if exit_subs:
+            for n in p["nodes"]:
+                if n["id"] in sub_ids or n["id"] == parent_id:
+                    continue
+                deps = n.get("depends", [])
+                if parent_id in deps:
+                    deps.remove(parent_id)
+                    deps.extend(exit_subs)
+                    n["depends"] = deps
+
+        # 5. 父任务标记为展开状态（不再参与依赖图）
+        parent["status"] = "expanded"
+        parent["expanded_to"] = sorted(sub_ids)
+
     if parent.get("status") == "pending" and count > 0:
         parent["status"] = "in_progress"
         parent["started"] = _now()

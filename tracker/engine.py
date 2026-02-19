@@ -23,7 +23,8 @@ def build_graph(flow: dict) -> dict:
             "sinks": [ids],                 # 无后继的节点
         }
     """
-    nodes = {n["id"]: n for n in flow.get("nodes", [])}
+    nodes = {n["id"]: n for n in flow.get("nodes", [])
+             if n.get("status") != "expanded"}  # 跳过已展开的父节点
     deps = {}
     rdeps = {nid: [] for nid in nodes}
 

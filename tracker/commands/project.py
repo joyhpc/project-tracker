@@ -4,7 +4,7 @@ from .. import core
 
 
 def _icon(status: str) -> str:
-    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳"}.get(status, "❓")
+    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳", "expanded": "📦"}.get(status, "❓")
 
 
 def cmd_init(args):

@@ -14,7 +14,7 @@ def _require():
 
 
 def _icon(status: str) -> str:
-    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳"}.get(status, "❓")
+    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳", "expanded": "📦"}.get(status, "❓")
 
 
 def cmd_plan(args):
@@ -51,7 +51,7 @@ def cmd_plan(args):
         print(f"{'─'*50}")
 
         for n in phase_nodes:
-            if n.get("parent"):
+            if n.get("parent") or n.get("status") == "expanded":
                 continue  # 子任务不在主视图显示
             icon = _icon(n.get("status", "pending"))
             r = cpm["nodes"].get(n["id"], {})
@@ -177,7 +177,7 @@ def cmd_timeline(args):
         pid = phase["id"]
         if phase_filter and pid.upper() != phase_filter.upper():
             continue
-        phase_nodes = [n for n in nodes_by_phase.get(pid, []) if not n.get("parent")]
+        phase_nodes = [n for n in nodes_by_phase.get(pid, []) if not n.get("parent") and n.get("status") != "expanded"]
         if not phase_nodes:
             continue
 
@@ -229,7 +229,7 @@ def cmd_estimate(args):
 
         for phase in phases:
             pid = phase["id"]
-            phase_nodes = [n for n in nodes_by_phase.get(pid, []) if not n.get("parent")]
+            phase_nodes = [n for n in nodes_by_phase.get(pid, []) if not n.get("parent") and n.get("status") != "expanded"]
             if not phase_nodes:
                 continue
             print(f"  📍 {phase.get('name', pid)}:")
