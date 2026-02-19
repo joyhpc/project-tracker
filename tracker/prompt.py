@@ -451,6 +451,103 @@ def _build_deep_prompt(question, project, flow):
     return "\n".join(lines)
 
 
+def auto_generate_questions(project, flow):
+    """根据项目当前状态，自动生成最有价值的问题列表"""
+    task_status = {n["id"]: {"status": n.get("status", "pending")} for n in flow.get("nodes", [])}
+    cpm = compute_cpm(flow, task_status)
+    classified = classify_tasks(flow, task_status)
+    risk = assess_project_risk(flow, task_status)
+
+    ready = classified.get("ready", [])
+    blocked = classified.get("blocked", [])
+    in_progress = classified.get("in_progress", [])
+
+    # 收集已完成任务的待决策项（从 note 中提取）
+    pending_decisions = []
+    for n in flow.get("nodes", []):
+        if n.get("status") == "done" and n.get("note"):
+            note = n["note"]
+            if "待拍板" in note or "待决策" in note or "选" in note:
+                pending_decisions.append(n)
+
+    questions = []
+
+    # 1. 如果有待决策项 → 生成决策推进问题
+    if pending_decisions:
+        for n in pending_decisions:
+            # 读取 note_file 获取决策选项
+            note_file = n.get("note_file", "")
+            repo = project.get("repo", "")
+            options_hint = ""
+            if note_file and repo:
+                from pathlib import Path
+                path = Path(repo) / note_file
+                if path.exists():
+                    content = path.read_text(encoding="utf-8")
+                    # 提取待决策段落
+                    for line in content.split("\n"):
+                        if "待拍板" in line or "待决策" in line or "等待决策" in line:
+                            options_hint = line.strip()
+                            break
+
+            q = {
+                "priority": "🔴 决策阻塞",
+                "question": f"基于{n['name']}的结论，需要做出哪些关键决策？请给出每个选项的优劣势对比和明确推荐。",
+                "why": f"{n['name']}已完成但有待拍板决策，不决策则下游任务无法启动",
+            }
+            if options_hint:
+                q["hint"] = options_hint
+            questions.append(q)
+
+    # 2. 关键路径上的下一个任务 → 生成深度方案问题
+    for t in ready[:2]:
+        slack = cpm["nodes"].get(t["id"], {}).get("slack", 0)
+        if slack > 0:
+            continue
+        delivs = ", ".join(t.get("deliverables", []))
+        q = {
+            "priority": "🔴 关键路径",
+            "question": f"[{t['name']}] 的具体执行方案是什么？需要输出：技术选型对比、执行步骤、时间估算、交付物清单（{delivs}）、潜在风险及应对。",
+            "why": f"关键路径任务，slack=0，延迟直接影响总工期",
+        }
+        questions.append(q)
+
+    # 3. 高风险任务 → 生成风险应对问题
+    top_risks = risk.get("top_risks", [])[:2]
+    for r in top_risks:
+        # 避免和上面重复
+        if any(r["name"] in q["question"] for q in questions):
+            continue
+        q = {
+            "priority": "🟡 风险预警",
+            "question": f"[{r['name']}] 风险分 {r['score']}，主要因素：{'; '.join(r['factors'][:2])}。如何降低风险？有哪些备选方案？",
+            "why": f"高风险任务，失败会阻塞下游",
+        }
+        questions.append(q)
+
+    # 4. 阻塞任务 → 生成解除阻塞问题
+    for b in blocked[:2]:
+        q = {
+            "priority": "🟠 阻塞中",
+            "question": f"[{b['name']}] 被阻塞，原因：{b.get('block_reason', '依赖未完成')}。有什么方法可以绕过或加速解除？",
+            "why": "阻塞任务不解决会拖延整体进度",
+        }
+        questions.append(q)
+
+    # 5. 如果项目刚开始（<10% 完成）→ 生成战略级问题
+    total = len(flow.get("nodes", []))
+    done = sum(1 for n in flow["nodes"] if n.get("status") == "done")
+    if total > 0 and done / total < 0.1:
+        q = {
+            "priority": "💡 战略思考",
+            "question": f"作为{project['name']}项目，在当前阶段最容易犯的战略错误是什么？有哪些同类产品的失败教训值得借鉴？",
+            "why": "项目早期，战略方向错误的代价最大",
+        }
+        questions.append(q)
+
+    return questions
+
+
 def list_templates():
     return [
         {"key": "task", "label": "任务相关", "example": "PCB Layout 被阻塞了怎么办？"},
