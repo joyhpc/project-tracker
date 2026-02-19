@@ -107,9 +107,14 @@ def cmd_start(args):
 def cmd_done(args):
     try:
         p = _require()
-        result = core.done_task(p["id"], args.task_id, args.note or "", force=getattr(args, 'force', False))
+        note_file = getattr(args, 'note_file', '') or ''
+        result = core.done_task(p["id"], args.task_id, args.note or "",
+                                force=getattr(args, 'force', False),
+                                note_file=note_file)
         print(f"✅ 已完成: {args.task_id}")
         print(f"   进度: {result['progress']}")
+        if note_file:
+            print(f"   📎 备注文件: {note_file}")
         if result.get("remaining_ready"):
             print(f"   下一步可做: {', '.join(result['remaining_ready'])}")
     except (RuntimeError, ValueError) as e:

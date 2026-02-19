@@ -55,15 +55,14 @@ def _list(args):
 
     if not docs:
         # 显示有 deliverables 但没关联文档的任务
-        missing = []
-        for n in p.get("nodes", []):
-            if n.get("deliverables") and not n.get("docs"):
-                missing.append(n)
+        missing = _get_missing_docs(p)
         if missing:
             print(f"\n📝 有交付物但未关联文档的任务 ({len(missing)}):")
             for n in missing[:10]:
                 delivs = ", ".join(n["deliverables"])
                 print(f"  [{n['id']}] {n['name']} — 交付物: {delivs}")
+            if len(missing) > 10:
+                print(f"  ... 共 {len(missing)} 个")
         else:
             print("\n没有关联的文档。")
         print()
@@ -78,17 +77,42 @@ def _list(args):
         icon = "✅" if d["exists"] else "❌"
         desc = f" — {d['desc']}" if d["desc"] else ""
         print(f"    {icon} {d['path']}{desc}")
+
+    # 始终显示未关联统计
+    missing = _get_missing_docs(p)
+    if missing:
+        print(f"\n⚠️ 还有 {len(missing)} 个任务有交付物但未关联文档:")
+        for n in missing[:5]:
+            delivs = ", ".join(n["deliverables"])
+            print(f"  [{n['id']}] {n['name']} — {delivs}")
+        if len(missing) > 5:
+            print(f"  ... 共 {len(missing)} 个")
     print()
+
+
+def _get_missing_docs(project):
+    """获取有交付物但没关联文档的任务"""
+    missing = []
+    for n in project.get("nodes", []):
+        if n.get("deliverables") and not n.get("docs"):
+            missing.append(n)
+    return missing
 
 
 def _sync(args):
     """同步项目到仓库"""
     try:
         p = core.require_active()
-        result = core.sync_project_to_repo(p["id"])
+        push = getattr(args, 'push', False)
+        result = core.sync_project_to_repo(p["id"], push=push)
         print(f"✅ 已同步到: {result['repo']}")
         print(f"   项目文件: {result['synced']}")
         print(f"   README 状态已更新")
+        if push:
+            if result.get("pushed"):
+                print(f"   🚀 已 git commit + push")
+            elif result.get("push_error"):
+                print(f"   ⚠️ git push 失败: {result['push_error']}")
     except (ValueError, RuntimeError) as e:
         print(f"❌ {e}")
         sys.exit(1)

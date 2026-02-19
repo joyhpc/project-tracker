@@ -47,7 +47,8 @@ def main():
 
     p_done = sub.add_parser("done", aliases=["d"], help="完成任务")
     p_done.add_argument("task_id")
-    p_done.add_argument("--note", help="备注")
+    p_done.add_argument("--note", help="备注（一行）")
+    p_done.add_argument("--note-file", help="备注文件（相对于仓库根目录）")
     p_done.add_argument("--force", action="store_true", help="跳过依赖检查")
 
     p_block = sub.add_parser("block", help="标记任务阻塞")
@@ -128,6 +129,7 @@ def main():
     p_docs.add_argument("--file", help="文档文件路径 (相对于仓库根)")
     p_docs.add_argument("--desc", help="文档描述")
     p_docs.add_argument("--sync", action="store_true", help="同步项目到仓库")
+    p_docs.add_argument("--push", action="store_true", help="同步后自动 git commit + push")
     p_docs.add_argument("--load", help="从仓库加载项目 (仓库路径)")
 
     # ── 路由 ──

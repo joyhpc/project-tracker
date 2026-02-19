@@ -176,7 +176,7 @@ def start_task(project_id: str, task_id: str) -> dict:
     return node
 
 
-def done_task(project_id: str, task_id: str, note: str = "", force: bool = False) -> dict:
+def done_task(project_id: str, task_id: str, note: str = "", force: bool = False, note_file: str = "") -> dict:
     p = _load(project_id)
     node = _find_node(p, task_id)
     if not node:
@@ -197,6 +197,13 @@ def done_task(project_id: str, task_id: str, note: str = "", force: bool = False
     node["completed"] = _now()
     if note:
         node["note"] = note
+    if note_file:
+        # 多行备注：关联文件路径，同时自动 attach 为文档
+        node["note_file"] = note_file
+        docs = node.get("docs", [])
+        if not any(d["path"] == note_file for d in docs):
+            docs.append({"path": note_file, "desc": "完成备注", "added": _now()})
+            node["docs"] = docs
     p["log"].append({"time": _now(), "action": "done", "task": task_id,
                      "detail": note or node["name"]})
     _save(p)
@@ -585,7 +592,7 @@ def list_task_docs(project: dict, task_id: str = None) -> list[dict]:
     return result
 
 
-def sync_project_to_repo(project_id: str) -> dict:
+def sync_project_to_repo(project_id: str, push: bool = False) -> dict:
     """将项目状态文件同步到关联仓库的 .pt/ 目录"""
     p = _load(project_id)
     if not p:
@@ -602,7 +609,28 @@ def sync_project_to_repo(project_id: str) -> dict:
     shutil.copy2(src, dst)
 
     _update_readme_status(p, repo)
-    return {"synced": str(dst), "repo": str(repo)}
+
+    result = {"synced": str(dst), "repo": str(repo), "pushed": False}
+
+    if push:
+        import subprocess
+        try:
+            subprocess.run(["git", "add", "-A"], cwd=repo, check=True,
+                           capture_output=True, text=True)
+            # 生成 commit message
+            nodes = p.get("nodes", [])
+            done = sum(1 for n in nodes if n.get("status") == "done")
+            total = len(nodes)
+            msg = f"pt sync: {p['name']} [{done}/{total}]"
+            subprocess.run(["git", "commit", "-m", msg], cwd=repo, check=True,
+                           capture_output=True, text=True)
+            subprocess.run(["git", "push"], cwd=repo, check=True,
+                           capture_output=True, text=True)
+            result["pushed"] = True
+        except subprocess.CalledProcessError as e:
+            result["push_error"] = e.stderr.strip() or str(e)
+
+    return result
 
 
 def _update_readme_status(project: dict, repo: Path):
