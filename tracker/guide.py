@@ -62,35 +62,6 @@ def get_all_guide_phases(product: str = "") -> list[dict]:
             pd["questions"] = questions
         phases.append(pd)
     return phases
-
-
-def map_guide_to_flow(flow_name: str = "duxin") -> dict:
-    """将引导问题映射到流程定义的阶段
-
-    返回 {guide_phase_id: [flow_phase_id, ...]}
-    引导问题的阶段可能覆盖多个流程阶段（如 TEST 覆盖 TEST_A/TEST_B/TEST_C）
-    """
-    fl = flowmod.load_flow(flow_name)
-    flow_phases = flowmod.get_phase_order(fl)
-    guide = load_guide_questions()
-    guide_phases = list(guide.get("phases", {}).keys())
-
-    mapping = {}
-    for gp in guide_phases:
-        matched = []
-        for fp in flow_phases:
-            # 精确匹配或前缀匹配
-            if fp == gp or fp.startswith(gp + "_") or fp.startswith(gp):
-                matched.append(fp)
-        if not matched:
-            # 特殊映射
-            if gp == "TEST":
-                matched = [fp for fp in flow_phases if "TEST" in fp]
-        mapping[gp] = matched if matched else [gp]
-
-    return mapping
-
-
 def run_guide_interactive(product: str = "", flow_name: str = "duxin") -> dict:
     """交互式引导（CLI 模式）
 

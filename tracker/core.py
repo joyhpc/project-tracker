@@ -482,28 +482,6 @@ def list_subtask_templates() -> list[dict]:
 
 
 # ── 阶段/里程碑 ──────────────────────────────────────
-
-def check_phase(project_id: str, phase_id: str = None) -> dict:
-    """检查某阶段的完成情况"""
-    p = _load(project_id)
-    nodes = p.get("nodes", [])
-
-    if phase_id:
-        phase_nodes = [n for n in nodes if n.get("phase") == phase_id]
-    else:
-        phase_nodes = nodes
-
-    done = [n for n in phase_nodes if n.get("status") == "done"]
-    remaining = [n for n in phase_nodes if n.get("status") != "done"]
-
-    return {
-        "complete": len(remaining) == 0,
-        "progress": f"{len(done)}/{len(phase_nodes)}",
-        "remaining": [n["name"] for n in remaining[:5]],
-        "phase": phase_id,
-    }
-
-
 def get_phase_progress(project: dict) -> list[dict]:
     """获取所有阶段的进度"""
     nodes = project.get("nodes", [])
