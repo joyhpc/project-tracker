@@ -1,8 +1,7 @@
 """任务命令: tasks, start, done, block, unblock, next, sub*"""
 import sys
-from .. import core, flow as flowmod
-from ..engine import analyze
-from ..formatter import format_advice
+from .. import core
+from ..engine import analyze, compute_cpm
 
 
 def _icon(status: str) -> str:
@@ -19,43 +18,80 @@ def _require():
 
 def cmd_tasks(args):
     p = _require()
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    phases = flowmod.get_phases(fl)
-    phase = phases.get(p["current_phase"], {})
-    tasks = phase.get("tasks", [])
-    task_status = p.get("tasks", {})
+    nodes = p.get("nodes", [])
 
-    print(f"\n📋 {phase.get('name', '')} - 任务列表\n")
-    for t in tasks:
-        s = task_status.get(t["id"], {}).get("status", "pending")
-        icon = _icon(s)
-        line = f"  {icon} [{t['id']}] {t['name']}"
-        if t.get("owner"):
-            line += f"  ← {t['owner']}"
+    # 可选按阶段过滤
+    phase_filter = getattr(args, "phase", None)
+    if phase_filter:
+        nodes = [n for n in nodes if n.get("phase") == phase_filter]
+
+    # 不显示子任务（有 parent 的）
+    show_subs = getattr(args, "all", False)
+    if not show_subs:
+        nodes = [n for n in nodes if not n.get("parent")]
+
+    print(f"\n📋 {p['name']} - 任务列表 ({len(nodes)} 个)\n")
+    for n in nodes:
+        icon = _icon(n.get("status", "pending"))
+        line = f"  {icon} [{n['id']}] {n['name']}"
+        if n.get("owner"):
+            line += f"  ← {n['owner']}"
+        if n.get("type") == "milestone":
+            line += " 🏁"
         print(line)
-        if t.get("deliverables"):
-            print(f"      交付件: {', '.join(t['deliverables'])}")
-        if t.get("gate"):
-            print(f"      准入: {t['gate']}")
-        if s == "blocked":
-            reason = task_status.get(t["id"], {}).get("blocked_reason", "")
-            if reason:
-                print(f"      阻塞: {reason}")
+        if n.get("deliverables"):
+            print(f"      交付件: {', '.join(n['deliverables'])}")
+        if n.get("gate"):
+            print(f"      准入: {n['gate']}")
+        if n.get("status") == "blocked" and n.get("blocked_reason"):
+            print(f"      阻塞: {n['blocked_reason']}")
     print()
 
 
 def cmd_next(args):
     p = _require()
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    phases = flowmod.get_phases(fl)
-    phase = phases.get(p["current_phase"], {})
-    task_status = p.get("tasks", {})
+    flow = core._project_as_flow(p)
+    task_status = core._get_task_status(p)
     blockers = p.get("blockers", [])
 
-    result = analyze(phase, task_status, blockers)
+    result = analyze(flow, task_status, blockers)
+    classified = result["classified"]
+    cpm = result["cpm"]
+
     print(f"\n📋 {p['name']} ({p['id']})")
-    print(f"📍 {phase.get('name', '')} ({p['current_phase']})\n")
-    print(format_advice(result))
+    print(f"⏱️  总工期: {cpm['total_days']:.0f} 天\n")
+
+    # 推荐任务（按优先级排序的 ready 列表）
+    ready = classified["ready"]
+    if ready:
+        print(f"🎯 推荐执行 ({len(ready)} 个可执行):\n")
+        for i, t in enumerate(ready[:5], 1):
+            slack = cpm["nodes"].get(t["id"], {}).get("slack", 0)
+            crit = " 🔴关键" if cpm["nodes"].get(t["id"], {}).get("critical") else ""
+            owner = t.get("owner", "未分配")
+            print(f"  {i}. [{t['id']}] {t['name']}  ← {owner}")
+            print(f"     slack={slack:.0f}天{crit}")
+        if len(ready) > 5:
+            print(f"\n  ... 共 {len(ready)} 个可执行任务")
+    else:
+        print("没有可执行的任务。")
+
+    # 阻塞
+    if result["blockers"]:
+        print(f"\n🚫 阻塞影响:")
+        for b in result["blockers"]:
+            print(f"  [{b['task_id']}] {b['task_name']}: {b['reason']}")
+            print(f"     影响 {b['downstream_count']} 个下游任务")
+
+    # 并行建议
+    parallel = result["parallel"]
+    if len(parallel) > 1:
+        print(f"\n👥 并行建议:")
+        for owner, tasks in parallel.items():
+            names = [t["name"] for t in tasks[:3]]
+            print(f"  {owner}: {', '.join(names)}")
+
+    print()
 
 
 def cmd_start(args):
@@ -74,10 +110,8 @@ def cmd_done(args):
         result = core.done_task(p["id"], args.task_id, args.note or "", force=getattr(args, 'force', False))
         print(f"✅ 已完成: {args.task_id}")
         print(f"   进度: {result['progress']}")
-        if result["complete"]:
-            print("🎉 阶段完成！运行 pt advance 进入下一阶段。")
-        elif result["remaining"]:
-            print(f"   剩余: {', '.join(result['remaining'][:3])}")
+        if result.get("remaining_ready"):
+            print(f"   下一步可做: {', '.join(result['remaining_ready'])}")
     except (RuntimeError, ValueError) as e:
         print(f"❌ {e}")
         sys.exit(1)
@@ -149,14 +183,14 @@ def cmd_sub_list(args):
             return
         print(f"\n📋 {args.parent} 子任务:\n")
         for s in subs:
-            icon = _icon(s["status"])
+            icon = _icon(s.get("status", "pending"))
             line = f"  {icon} [{s['id']}] {s['name']}"
             if s.get("owner"):
                 line += f"  ← {s['owner']}"
             print(line)
             if s.get("blocked_reason"):
                 print(f"      阻塞: {s['blocked_reason']}")
-            if s.get("note") and s["status"] == "done":
+            if s.get("note") and s.get("status") == "done":
                 print(f"      备注: {s['note']}")
         print()
     except (RuntimeError, ValueError) as e:

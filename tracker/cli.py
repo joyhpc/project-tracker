@@ -1,6 +1,6 @@
 """CLI 入口 — 只做参数解析和路由"""
 import argparse
-from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_advance, cmd_note, cmd_log
+from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_note, cmd_log
 from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list, cmd_sub_load
 from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate
 from .commands.guide_cmd import cmd_guide
@@ -17,7 +17,6 @@ def main():
     p_init = sub.add_parser("init", help="创建项目")
     p_init.add_argument("id", help="项目ID")
     p_init.add_argument("--name", "-n", required=True, help="项目名称")
-    p_init.add_argument("--phase", "-p", default="REQ", help="起始阶段")
     p_init.add_argument("--flow", "-f", default="duxin", help="流程定义")
 
     sub.add_parser("list", aliases=["ls"], help="列出所有项目")
@@ -26,10 +25,7 @@ def main():
     p_sw.add_argument("id", help="项目ID")
 
     sub.add_parser("status", aliases=["s"], help="查看项目状态")
-    sub.add_parser("phases", aliases=["ph"], help="查看流程阶段")
-
-    p_adv = sub.add_parser("advance", help="推进到下一阶段")
-    p_adv.add_argument("--force", action="store_true", help="强制推进")
+    sub.add_parser("phases", aliases=["ph"], help="查看阶段进度")
 
     p_note = sub.add_parser("note", help="添加备注")
     p_note.add_argument("text", help="备注内容")
@@ -38,7 +34,10 @@ def main():
     p_log.add_argument("-n", type=int, default=20, help="显示条数")
 
     # ── 任务操作 ──
-    sub.add_parser("tasks", aliases=["t"], help="查看当前阶段任务")
+    p_tasks = sub.add_parser("tasks", aliases=["t"], help="查看任务列表")
+    p_tasks.add_argument("--phase", "-p", help="按阶段过滤")
+    p_tasks.add_argument("--all", "-a", action="store_true", help="包含子任务")
+
     sub.add_parser("next", aliases=["n"], help="查看下一步行动")
 
     p_start = sub.add_parser("start", help="开始任务")
@@ -130,7 +129,7 @@ def main():
         "switch": cmd_switch, "sw": cmd_switch,
         "status": cmd_status, "s": cmd_status,
         "phases": cmd_phases, "ph": cmd_phases,
-        "advance": cmd_advance, "note": cmd_note, "log": cmd_log,
+        "note": cmd_note, "log": cmd_log,
         "tasks": cmd_tasks, "t": cmd_tasks,
         "next": cmd_next, "n": cmd_next,
         "start": cmd_start, "done": cmd_done, "d": cmd_done,

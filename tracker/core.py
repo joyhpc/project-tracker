@@ -1,5 +1,6 @@
-"""核心逻辑"""
+"""核心逻辑 v2 — 单文件自包含 + 扁平 DAG"""
 import yaml
+import copy
 from datetime import datetime
 from pathlib import Path
 from . import flow as flowmod
@@ -44,23 +45,30 @@ def _set_active(project_id: str):
 
 # ── 项目管理 ──────────────────────────────────────────
 
-def init_project(project_id: str, name: str, phase: str = "REQ", flow_name: str = "duxin") -> dict:
+def init_project(project_id: str, name: str, flow_name: str = "duxin") -> dict:
+    """创建项目 — 从模板 deep copy 完整图"""
     if _load(project_id):
         raise ValueError(f"项目已存在: {project_id}")
+
     fl = flowmod.load_flow(flow_name)
-    phases = flowmod.get_phases(fl)
-    if phase not in phases:
-        raise ValueError(f"无效阶段: {phase}，可选: {list(phases.keys())}")
+
+    # Deep copy 节点到项目（单文件自包含）
+    nodes = copy.deepcopy(fl.get("nodes", []))
+    phases = copy.deepcopy(fl.get("phases", []))
+
+    # 给每个节点初始化运行时状态
+    for node in nodes:
+        node["status"] = "pending"
+
     project = {
         "id": project_id,
         "name": name,
         "flow": flow_name,
-        "current_phase": phase,
         "created": _now(),
-        "milestones": {},
-        "tasks": {},  # task_id -> {status, started, completed, notes}
+        "phases": phases,
+        "nodes": nodes,
         "blockers": [],
-        "log": [{"time": _now(), "action": "init", "detail": f"项目创建，起始阶段: {phase}"}],
+        "log": [{"time": _now(), "action": "init", "detail": f"项目创建，流程: {flow_name}"}],
     }
     _save(project)
     _set_active(project_id)
@@ -95,93 +103,124 @@ def require_active() -> dict:
     return p
 
 
+# ── 节点访问（项目内） ────────────────────────────────
+
+def _find_node(project: dict, node_id: str) -> dict | None:
+    """在项目节点列表中查找节点"""
+    for n in project.get("nodes", []):
+        if n["id"] == node_id:
+            return n
+    return None
+
+
+def _get_task_status(project: dict) -> dict:
+    """构建 {node_id: {status, ...}} 映射，兼容引擎接口"""
+    result = {}
+    for n in project.get("nodes", []):
+        result[n["id"]] = {"status": n.get("status", "pending")}
+        if n.get("started"):
+            result[n["id"]]["started"] = n["started"]
+        if n.get("completed"):
+            result[n["id"]]["completed"] = n["completed"]
+    return result
+
+
+def _project_as_flow(project: dict) -> dict:
+    """将项目数据转为引擎可用的 flow 格式"""
+    return {
+        "phases": project.get("phases", []),
+        "nodes": project.get("nodes", []),
+    }
+
+
 # ── 任务操作 ──────────────────────────────────────────
 
-def _task_entry(project: dict, task_id: str) -> dict:
-    """获取或创建任务状态条目"""
-    if task_id not in project["tasks"]:
-        project["tasks"][task_id] = {"status": "pending"}
-    return project["tasks"][task_id]
-
-
 def get_status(project: dict) -> dict:
-    fl = flowmod.load_flow(project.get("flow", "duxin"))
-    phases = flowmod.get_phases(fl)
-    phase = phases.get(project["current_phase"], {})
-    tasks = phase.get("tasks", [])
-    task_status = project.get("tasks", {})
+    """获取项目状态概览"""
+    from . import engine
+    flow = _project_as_flow(project)
+    task_status = _get_task_status(project)
+    classified = engine.classify_tasks(flow, task_status)
+    cpm = engine.compute_cpm(flow, task_status)
 
-    categorized = {"done": [], "in_progress": [], "blocked": [], "pending": []}
-    for t in tasks:
-        s = task_status.get(t["id"], {}).get("status", "pending")
-        categorized[s].append(t)
-
+    nodes = project.get("nodes", [])
+    total = len(nodes)
+    done_count = sum(1 for n in nodes if n.get("status") == "done")
     active_blockers = [b for b in project.get("blockers", []) if not b.get("resolved")]
 
     return {
         "project": project,
-        "phase": phase,
-        "categorized": categorized,
+        "classified": classified,
+        "cpm": cpm,
         "blockers": active_blockers,
-        "total": len(tasks),
-        "done_count": len(categorized["done"]),
+        "total": total,
+        "done_count": done_count,
     }
 
 
 def start_task(project_id: str, task_id: str) -> dict:
     p = _load(project_id)
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    phase, task = flowmod.find_task(fl, task_id)
-    if not task:
+    node = _find_node(p, task_id)
+    if not node:
         raise ValueError(f"任务不存在: {task_id}")
-
-    entry = _task_entry(p, task_id)
-    if entry["status"] == "done":
+    if node.get("status") == "done":
         raise ValueError(f"任务已完成: {task_id}")
-    entry["status"] = "in_progress"
-    entry["started"] = _now()
-    p["log"].append({"time": _now(), "action": "start", "task": task_id, "detail": task["name"]})
+    if node.get("status") == "in_progress":
+        raise ValueError(f"任务已在进行中: {task_id}")
+
+    node["status"] = "in_progress"
+    node["started"] = _now()
+    p["log"].append({"time": _now(), "action": "start", "task": task_id, "detail": node["name"]})
     _save(p)
-    return task
+    return node
 
 
 def done_task(project_id: str, task_id: str, note: str = "", force: bool = False) -> dict:
     p = _load(project_id)
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    phase, task = flowmod.find_task(fl, task_id)
-    if not task:
+    node = _find_node(p, task_id)
+    if not node:
         raise ValueError(f"任务不存在: {task_id}")
-
-    entry = _task_entry(p, task_id)
-    if entry["status"] == "done":
+    if node.get("status") == "done":
         raise ValueError(f"任务已完成: {task_id}")
 
     # 检查依赖是否满足
-    deps = task.get("depends", [])
+    deps = node.get("depends", [])
     if deps and not force:
-        undone = [d for d in deps if p.get("tasks", {}).get(d, {}).get("status") != "done"]
+        undone = [d for d in deps if _find_node(p, d) and
+                  _find_node(p, d).get("status") != "done"]
         if undone:
-            raise ValueError(f"依赖未完成: {', '.join(undone)}。使用 --force 强制完成")
+            names = [_find_node(p, d).get("name", d) for d in undone]
+            raise ValueError(f"依赖未完成: {', '.join(names)}。使用 --force 强制完成")
 
-    entry["status"] = "done"
-    entry["completed"] = _now()
+    node["status"] = "done"
+    node["completed"] = _now()
     if note:
-        entry["note"] = note
-    p["log"].append({"time": _now(), "action": "done", "task": task_id, "detail": note or task["name"]})
+        node["note"] = note
+    p["log"].append({"time": _now(), "action": "done", "task": task_id,
+                     "detail": note or node["name"]})
     _save(p)
-    return check_phase(project_id)
+
+    # 返回进度信息
+    total = len(p["nodes"])
+    done_count = sum(1 for n in p["nodes"] if n.get("status") == "done")
+    remaining = [n["name"] for n in p["nodes"]
+                 if n.get("status") != "done" and
+                 all(_find_node(p, d) is None or _find_node(p, d).get("status") == "done"
+                     for d in n.get("depends", []))]
+    return {
+        "progress": f"{done_count}/{total}",
+        "remaining_ready": remaining[:3],
+    }
 
 
 def block_task(project_id: str, task_id: str, reason: str) -> dict:
     p = _load(project_id)
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    _, task = flowmod.find_task(fl, task_id)
-    if not task:
+    node = _find_node(p, task_id)
+    if not node:
         raise ValueError(f"任务不存在: {task_id}")
 
-    entry = _task_entry(p, task_id)
-    entry["status"] = "blocked"
-    entry["blocked_reason"] = reason
+    node["status"] = "blocked"
+    node["blocked_reason"] = reason
     p["blockers"].append({"task_id": task_id, "reason": reason, "date": _now()})
     p["log"].append({"time": _now(), "action": "block", "task": task_id, "detail": reason})
     _save(p)
@@ -190,12 +229,14 @@ def block_task(project_id: str, task_id: str, reason: str) -> dict:
 
 def unblock_task(project_id: str, task_id: str) -> dict:
     p = _load(project_id)
-    entry = _task_entry(p, task_id)
-    if entry["status"] != "blocked":
+    node = _find_node(p, task_id)
+    if not node:
+        raise ValueError(f"任务不存在: {task_id}")
+    if node.get("status") != "blocked":
         raise ValueError(f"任务未阻塞: {task_id}")
-    entry["status"] = "in_progress"
-    entry.pop("blocked_reason", None)
-    # 标记 blocker 已解决
+
+    node["status"] = "in_progress"
+    node.pop("blocked_reason", None)
     for b in p.get("blockers", []):
         if b["task_id"] == task_id and not b.get("resolved"):
             b["resolved"] = _now()
@@ -211,58 +252,64 @@ def add_note(project_id: str, text: str):
     _save(p)
 
 
-# ── 子任务 ────────────────────────────────────────────
+# ── 子任务（兼容旧接口，但数据存在节点里） ────────────
 
 def add_subtask(project_id: str, parent_id: str, subtask_id: str, name: str, **kwargs) -> dict:
-    """给流程任务添加自定义子任务"""
+    """添加子任务 — 作为一等节点插入"""
     p = _load(project_id)
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    _, parent = flowmod.find_task(fl, parent_id)
+    parent = _find_node(p, parent_id)
     if not parent:
         raise ValueError(f"父任务不存在: {parent_id}")
 
-    entry = _task_entry(p, parent_id)
-    if "subtasks" not in entry:
-        entry["subtasks"] = {}
-
     full_id = f"{parent_id}.{subtask_id}"
-    if subtask_id in entry["subtasks"]:
+    if _find_node(p, full_id):
         raise ValueError(f"子任务已存在: {full_id}")
 
-    sub = {"name": name, "status": "pending", "created": _now()}
-    for k in ("owner", "note", "depends"):
+    sub_node = {
+        "id": full_id,
+        "name": name,
+        "type": "task",
+        "phase": parent.get("phase", ""),
+        "parent": parent_id,
+        "status": "pending",
+        "created": _now(),
+    }
+    for k in ("owner", "days", "depends", "deliverables", "description"):
         if k in kwargs and kwargs[k]:
-            sub[k] = kwargs[k]
-    entry["subtasks"][subtask_id] = sub
+            sub_node[k] = kwargs[k]
+
+    p["nodes"].append(sub_node)
 
     # 父任务自动变为 in_progress
-    if entry["status"] == "pending":
-        entry["status"] = "in_progress"
-        entry["started"] = _now()
+    if parent.get("status") == "pending":
+        parent["status"] = "in_progress"
+        parent["started"] = _now()
 
     p["log"].append({"time": _now(), "action": "subtask_add", "task": full_id, "detail": name})
     _save(p)
-    return sub
+    return sub_node
 
 
 def done_subtask(project_id: str, full_id: str, note: str = "") -> dict:
-    """完成子任务。full_id 格式: parent_id.subtask_id"""
-    parent_id, sub_id = _split_subtask_id(full_id)
+    """完成子任务"""
     p = _load(project_id)
-    entry = _task_entry(p, parent_id)
-    subs = entry.get("subtasks", {})
-    if sub_id not in subs:
+    node = _find_node(p, full_id)
+    if not node:
         raise ValueError(f"子任务不存在: {full_id}")
 
-    subs[sub_id]["status"] = "done"
-    subs[sub_id]["completed"] = _now()
+    node["status"] = "done"
+    node["completed"] = _now()
     if note:
-        subs[sub_id]["note"] = note
+        node["note"] = note
 
-    p["log"].append({"time": _now(), "action": "subtask_done", "task": full_id, "detail": note or subs[sub_id]["name"]})
+    p["log"].append({"time": _now(), "action": "subtask_done", "task": full_id,
+                     "detail": note or node["name"]})
 
-    # 检查所有子任务是否完成
-    all_done = all(s["status"] == "done" for s in subs.values())
+    # 检查同父的所有子任务是否完成
+    parent_id = node.get("parent", full_id.rsplit(".", 1)[0])
+    siblings = [n for n in p["nodes"] if n.get("parent") == parent_id]
+    all_done = all(s.get("status") == "done" for s in siblings)
+
     result = {"subtask": full_id, "all_subtasks_done": all_done}
     if all_done:
         result["hint"] = f"所有子任务已完成，可以运行: pt done {parent_id}"
@@ -272,96 +319,76 @@ def done_subtask(project_id: str, full_id: str, note: str = "") -> dict:
 
 
 def block_subtask(project_id: str, full_id: str, reason: str):
-    parent_id, sub_id = _split_subtask_id(full_id)
     p = _load(project_id)
-    entry = _task_entry(p, parent_id)
-    subs = entry.get("subtasks", {})
-    if sub_id not in subs:
+    node = _find_node(p, full_id)
+    if not node:
         raise ValueError(f"子任务不存在: {full_id}")
-    subs[sub_id]["status"] = "blocked"
-    subs[sub_id]["blocked_reason"] = reason
+    node["status"] = "blocked"
+    node["blocked_reason"] = reason
     p["log"].append({"time": _now(), "action": "subtask_block", "task": full_id, "detail": reason})
     _save(p)
 
 
 def list_subtasks(project_id: str, parent_id: str) -> list[dict]:
+    """列出某个父任务的所有子任务"""
     p = _load(project_id)
-    entry = p.get("tasks", {}).get(parent_id, {})
-    subs = entry.get("subtasks", {})
-    result = []
-    for sid, s in subs.items():
-        result.append({"id": f"{parent_id}.{sid}", **s})
-    return result
+    return [n for n in p.get("nodes", []) if n.get("parent") == parent_id]
 
 
 def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> dict:
-    """从模板批量导入子任务到指定主任务
-
-    Args:
-        project_id: 项目ID
-        parent_id: 主任务ID
-        template_id: 模板ID (对应 flows/subtasks/<template_id>.yaml)
-
-    Returns:
-        {"loaded": int, "template": str, "parent": str}
-    """
+    """从模板批量导入子任务 — 作为一等节点插入"""
     import os
     p = _load(project_id)
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    _, parent = flowmod.find_task(fl, parent_id)
+    parent = _find_node(p, parent_id)
     if not parent:
         raise ValueError(f"父任务不存在: {parent_id}")
 
-    # 加载模板
     template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                                   "flows", "subtasks", f"{template_id}.yaml")
     if not os.path.exists(template_path):
-        # 列出可用模板
         tpl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "flows", "subtasks")
         available = [f.replace(".yaml", "") for f in os.listdir(tpl_dir) if f.endswith(".yaml")]
         raise ValueError(f"模板不存在: {template_id}。可用: {', '.join(available)}")
 
-    import yaml
     with open(template_path, "r", encoding="utf-8") as f:
         template = yaml.safe_load(f)
-
-    entry = _task_entry(p, parent_id)
-    if "subtasks" not in entry:
-        entry["subtasks"] = {}
 
     count = 0
     for phase in template.get("phases", []):
         for task in phase.get("tasks", []):
-            tid = task["id"]
-            if tid in entry["subtasks"]:
-                continue  # 跳过已存在的
+            full_id = f"{parent_id}.{task['id']}"
+            if _find_node(p, full_id):
+                continue  # 跳过已存在
 
-            sub = {
+            sub_node = {
+                "id": full_id,
                 "name": task["name"],
+                "type": "task",
+                "phase": parent.get("phase", ""),
+                "parent": parent_id,
                 "status": "pending",
                 "created": _now(),
-                "phase": phase.get("name", ""),
             }
             if task.get("owner"):
-                sub["owner"] = task["owner"]
+                sub_node["owner"] = task["owner"]
             if task.get("days"):
-                sub["days"] = task["days"]
+                sub_node["days"] = task["days"]
             if task.get("depends"):
-                sub["depends"] = task["depends"]
+                # 子任务依赖加前缀
+                sub_node["depends"] = [f"{parent_id}.{d}" for d in task["depends"]]
             if task.get("deliverables"):
-                sub["deliverables"] = task["deliverables"]
+                sub_node["deliverables"] = task["deliverables"]
             if task.get("critical"):
-                sub["critical"] = True
+                sub_node["critical"] = True
             if task.get("description"):
-                sub["description"] = task["description"]
+                sub_node["description"] = task["description"]
 
-            entry["subtasks"][tid] = sub
+            p["nodes"].append(sub_node)
             count += 1
 
-    # 父任务自动变为 in_progress
-    if entry["status"] == "pending" and count > 0:
-        entry["status"] = "in_progress"
-        entry["started"] = _now()
+    if parent.get("status") == "pending" and count > 0:
+        parent["status"] = "in_progress"
+        parent["started"] = _now()
 
     p["log"].append({
         "time": _now(), "action": "subtask_template_load",
@@ -375,7 +402,7 @@ def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> 
 
 def list_subtask_templates() -> list[dict]:
     """列出所有可用的子任务模板"""
-    import os, yaml
+    import os
     tpl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "flows", "subtasks")
     if not os.path.exists(tpl_dir):
         return []
@@ -398,61 +425,45 @@ def list_subtask_templates() -> list[dict]:
     return result
 
 
-def _split_subtask_id(full_id: str) -> tuple[str, str]:
-    parts = full_id.rsplit(".", 1)
-    if len(parts) != 2:
-        raise ValueError(f"子任务ID格式错误，应为 parent.sub: {full_id}")
-    return parts[0], parts[1]
+# ── 阶段/里程碑 ──────────────────────────────────────
 
-
-# ── 阶段推进 ──────────────────────────────────────────
-
-def check_phase(project_id: str) -> dict:
+def check_phase(project_id: str, phase_id: str = None) -> dict:
+    """检查某阶段的完成情况"""
     p = _load(project_id)
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    phases = flowmod.get_phases(fl)
-    order = flowmod.get_phase_order(fl)
-    phase = phases.get(p["current_phase"], {})
-    tasks = phase.get("tasks", [])
-    task_status = p.get("tasks", {})
+    nodes = p.get("nodes", [])
 
-    done = [t for t in tasks if task_status.get(t["id"], {}).get("status") == "done"]
-    remaining = [t for t in tasks if task_status.get(t["id"], {}).get("status") != "done"]
+    if phase_id:
+        phase_nodes = [n for n in nodes if n.get("phase") == phase_id]
+    else:
+        phase_nodes = nodes
 
-    idx = order.index(p["current_phase"])
-    next_phase = order[idx + 1] if idx + 1 < len(order) else None
+    done = [n for n in phase_nodes if n.get("status") == "done"]
+    remaining = [n for n in phase_nodes if n.get("status") != "done"]
 
     return {
         "complete": len(remaining) == 0,
-        "progress": f"{len(done)}/{len(tasks)}",
-        "remaining": [t["name"] for t in remaining],
-        "next_phase": next_phase,
-        "milestone": phase.get("milestone", ""),
+        "progress": f"{len(done)}/{len(phase_nodes)}",
+        "remaining": [n["name"] for n in remaining[:5]],
+        "phase": phase_id,
     }
 
 
-def advance(project_id: str, force: bool = False) -> dict:
-    p = _load(project_id)
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    order = flowmod.get_phase_order(fl)
-    phases = flowmod.get_phases(fl)
-
-    idx = order.index(p["current_phase"])
-    if idx + 1 >= len(order):
-        raise ValueError("已是最后阶段")
-
-    if not force:
-        result = check_phase(project_id)
-        if not result["complete"]:
-            raise ValueError(f"当前阶段未完成 ({result['progress']})，剩余: {', '.join(result['remaining'][:3])}... 使用 --force 强制推进")
-
-    old = p["current_phase"]
-    new = order[idx + 1]
-    phase = phases.get(old, {})
-    if phase.get("milestone"):
-        p["milestones"][phase["milestone"]] = _now()
-
-    p["current_phase"] = new
-    p["log"].append({"time": _now(), "action": "advance", "detail": f"{old} → {new}"})
-    _save(p)
-    return {"from": old, "to": new, "milestone": phase.get("milestone", "")}
+def get_phase_progress(project: dict) -> list[dict]:
+    """获取所有阶段的进度"""
+    nodes = project.get("nodes", [])
+    phases = project.get("phases", [])
+    result = []
+    for phase in phases:
+        pid = phase["id"]
+        phase_nodes = [n for n in nodes if n.get("phase") == pid]
+        done = sum(1 for n in phase_nodes if n.get("status") == "done")
+        total = len(phase_nodes)
+        result.append({
+            "id": pid,
+            "name": phase.get("name", pid),
+            "done": done,
+            "total": total,
+            "progress": f"{done}/{total}",
+            "complete": done == total and total > 0,
+        })
+    return result

@@ -1,6 +1,6 @@
-"""项目管理命令: init, list, switch, status, phases, advance, note, log"""
+"""项目管理命令: init, list, switch, status, phases, note, log"""
 import sys
-from .. import core, flow as flowmod
+from .. import core
 
 
 def _icon(status: str) -> str:
@@ -9,9 +9,9 @@ def _icon(status: str) -> str:
 
 def cmd_init(args):
     try:
-        p = core.init_project(args.id, args.name, args.phase, args.flow)
+        p = core.init_project(args.id, args.name, args.flow)
         print(f"✅ 项目已创建: {p['id']} ({p['name']})")
-        print(f"   起始阶段: {p['current_phase']}")
+        print(f"   流程: {p['flow']}, {len(p['nodes'])} 个节点")
     except ValueError as e:
         print(f"❌ {e}")
         sys.exit(1)
@@ -24,7 +24,9 @@ def cmd_list(args):
         return
     for p in projects:
         marker = " ◀" if p.get("_active") else ""
-        print(f"  {'●' if p.get('_active') else '○'} {p['id']} | {p['name']} | {p['current_phase']}{marker}")
+        total = len(p.get("nodes", []))
+        done = sum(1 for n in p.get("nodes", []) if n.get("status") == "done")
+        print(f"  {'●' if p.get('_active') else '○'} {p['id']} | {p['name']} | {done}/{total}{marker}")
 
 
 def cmd_switch(args):
@@ -39,66 +41,66 @@ def cmd_switch(args):
 def cmd_status(args):
     p = _require()
     info = core.get_status(p)
-    phase = info["phase"]
-    cat = info["categorized"]
+    classified = info["classified"]
+    cpm = info["cpm"]
 
     print(f"\n📋 {p['name']} ({p['id']})")
-    print(f"📍 阶段: {phase.get('name', '')} ({p['current_phase']})")
-    if phase.get("milestone"):
-        print(f"🎯 里程碑: {phase['milestone']}")
     print(f"📊 进度: {info['done_count']}/{info['total']}")
+    print(f"⏱️  总工期: {cpm['total_days']:.0f} 天")
 
-    for label, key, icon in [("🚫 阻塞", "blockers", None), ("🔄 进行中", "in_progress", None),
-                              ("✅ 已完成", "done", None), ("⏳ 待开始", "pending", None)]:
-        if key == "blockers":
-            items = info[key]
-            if items:
-                print(f"\n{label} ({len(items)}):")
-                for b in items:
-                    print(f"   {b['task_id']}: {b['reason']}")
-        else:
-            items = cat[key]
-            if items:
-                print(f"\n{label} ({len(items)}):")
-                for t in items:
-                    line = f"   [{t['id']}] {t['name']}"
-                    if key == "pending" and t.get("owner"):
-                        line += f"  ← {t['owner']}"
-                    print(line)
+    # 阶段进度
+    phase_progress = core.get_phase_progress(p)
+    if phase_progress:
+        print(f"\n📍 阶段进度:")
+        for ph in phase_progress:
+            bar = "█" * ph["done"] + "░" * (ph["total"] - ph["done"])
+            check = " ✅" if ph["complete"] else ""
+            print(f"   {ph['name']}: [{bar}] {ph['progress']}{check}")
+
+    # 关键路径
+    if cpm["critical_path"]:
+        print(f"\n🔴 关键路径 ({len(cpm['critical_path'])} 节点):")
+        graph_nodes = {n["id"]: n for n in p["nodes"]}
+        for nid in cpm["critical_path"][:8]:
+            node = graph_nodes.get(nid, {})
+            r = cpm["nodes"][nid]
+            print(f"   [{nid}] {node.get('name','')} ({r['days']:.0f}天, ES={r['es']:.0f})")
+        if len(cpm["critical_path"]) > 8:
+            print(f"   ... 共 {len(cpm['critical_path'])} 个")
+
+    # 阻塞
+    if info["blockers"]:
+        print(f"\n🚫 阻塞 ({len(info['blockers'])}):")
+        for b in info["blockers"]:
+            print(f"   {b['task_id']}: {b['reason']}")
+
+    # 可执行任务
+    ready = classified["ready"]
+    if ready:
+        print(f"\n✅ 可执行 ({len(ready)}):")
+        for t in ready[:5]:
+            slack = cpm["nodes"].get(t["id"], {}).get("slack", 0)
+            crit = " 🔴" if cpm["nodes"].get(t["id"], {}).get("critical") else ""
+            print(f"   [{t['id']}] {t['name']}  ← {t.get('owner','?')} (slack={slack:.0f}天){crit}")
+        if len(ready) > 5:
+            print(f"   ... 共 {len(ready)} 个")
+
     print()
 
 
 def cmd_phases(args):
     p = _require()
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
-    order = flowmod.get_phase_order(fl)
-    phases = flowmod.get_phases(fl)
-    current = p["current_phase"]
+    phase_progress = core.get_phase_progress(p)
+    if not phase_progress:
+        print("没有阶段信息")
+        return
 
-    print(f"\n📋 {p['name']} - 流程阶段\n")
-    for pid in order:
-        ph = phases[pid]
-        if pid == current:
-            marker = " ◀ 当前"
-        elif order.index(pid) < order.index(current):
-            marker = " ✅"
-        else:
-            marker = ""
-        ms = f" [{ph['milestone']}]" if ph.get("milestone") else ""
-        print(f"  {'●' if pid == current else '○'} {pid} - {ph['name']}{ms}{marker}")
+    print(f"\n📋 {p['name']} - 阶段进度\n")
+    for ph in phase_progress:
+        pct = (ph["done"] / ph["total"] * 100) if ph["total"] > 0 else 0
+        check = " ✅" if ph["complete"] else ""
+        print(f"  {'●' if 0 < pct < 100 else '○'} {ph['id']} - {ph['name']} [{ph['progress']}] {pct:.0f}%{check}")
     print()
-
-
-def cmd_advance(args):
-    try:
-        p = _require()
-        result = core.advance(p["id"], force=args.force)
-        print(f"⏩ 阶段推进: {result['from']} → {result['to']}")
-        if result["milestone"]:
-            print(f"🎯 里程碑达成: {result['milestone']}")
-    except (RuntimeError, ValueError) as e:
-        print(f"❌ {e}")
-        sys.exit(1)
 
 
 def cmd_note(args):
@@ -116,7 +118,8 @@ def cmd_log(args):
     logs = p.get("log", [])
     n = args.n or 20
     icons = {"init": "🆕", "start": "🔄", "done": "✅", "block": "🚫", "unblock": "🔓",
-             "advance": "⏩", "note": "📝", "subtask_add": "➕", "subtask_done": "✅", "subtask_block": "🚫"}
+             "note": "📝", "subtask_add": "➕", "subtask_done": "✅", "subtask_block": "🚫",
+             "subtask_template_load": "📦"}
     for entry in logs[-n:]:
         icon = icons.get(entry.get("action", ""), "•")
         task = f" [{entry['task']}]" if entry.get("task") else ""

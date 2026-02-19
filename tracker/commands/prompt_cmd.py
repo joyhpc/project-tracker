@@ -1,6 +1,6 @@
 """Prompt 导出命令"""
 import sys
-from .. import core, flow as flowmod
+from .. import core
 from ..prompt import generate_prompt, list_templates
 
 
@@ -18,13 +18,13 @@ def cmd_prompt(args):
         print(f"❌ {e}")
         sys.exit(1)
 
-    fl = flowmod.load_flow(p.get("flow", "duxin"))
+    flow = core._project_as_flow(p)
     question = args.question
     if not question:
         print("❌ 请输入问题: pt prompt \"PCB Layout 被阻塞了怎么办？\"")
         sys.exit(1)
 
-    result = generate_prompt(question, p, fl)
+    result = generate_prompt(question, p, flow)
 
     if args.system:
         print(f"--- System ---\n{result['system']}\n")
