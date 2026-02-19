@@ -85,6 +85,8 @@ nodes:
   deliverables:
   - 《新器件选型说明》
   reviewer: 研发经理/主管/项目成员
+  depends:
+  - requirement_review
 - id: sw_feasibility
   name: 软件可行性评估
   type: task
@@ -163,6 +165,8 @@ nodes:
   - 《项目立项书》
   - 《产品专用物料跟进表》
   reviewer: 产品经理
+  depends:
+  - feasibility_review
 - id: init_approval
   name: 立项审批
   type: task
@@ -198,11 +202,15 @@ nodes:
   deliverables:
   - 《概要设计》
   reviewer: 产品经理/架构师/经理/主管/项目成员
+  depends:
+  - init_approval
 - id: struct_outline
   name: 结构概要设计
   type: task
   phase: OUTLINE
   owner: 结构工程师
+  depends:
+  - init_approval
 - id: fw_outline
   name: 固件概要设计
   type: task
@@ -213,6 +221,8 @@ nodes:
   type: task
   phase: OUTLINE
   owner: 软件工程师
+  depends:
+  - init_approval
 - id: app_outline
   name: 应用软件概要设计
   type: task
@@ -226,6 +236,8 @@ nodes:
   deliverables:
   - 《结构.exe》
   reviewer: 硬件/PCB/主管/专家
+  depends:
+  - struct_outline
 - id: struct_review
   name: 结构评审
   type: task
@@ -254,6 +266,8 @@ nodes:
   - 新器件选型调查表
   - 新器件说明
   reviewer: 硬件主管/经理
+  depends:
+  - hw_outline
 - id: schematic_design
   name: 原理图设计
   type: task
@@ -400,6 +414,8 @@ nodes:
   deliverables:
   - 《PCB制样资料.ZIP》
   reviewer: PCB组长
+  depends:
+  - design_archive
 - id: pcb_eq
   name: PCB EQ确认
   type: task
@@ -419,6 +435,8 @@ nodes:
   - 《XX单板BOM.xlsx》
   gate: CIS检查link完全
   reviewer: 硬件主管
+  depends:
+  - design_archive
 - id: smt_data
   name: 贴片资料
   type: task
@@ -476,6 +494,9 @@ nodes:
   - 《关键模块功能设计文档》
   gate: FPGA概要设计通过
   reviewer: 研发经理/FPGA组长
+  depends:
+  - fw_outline
+  - pcba_test
 - id: fpga_review
   name: FPGA代码评审
   type: task
@@ -496,6 +517,9 @@ nodes:
   - 《关键模块功能设计文档》
   gate: MCU概要设计通过
   reviewer: 单片机组长/研发经理/总监
+  depends:
+  - fw_outline
+  - pcba_test
 - id: mcu_review
   name: MCU代码评审
   type: task
@@ -516,6 +540,9 @@ nodes:
   - 《关键模块功能设计文档》
   gate: 概要设计通过
   reviewer: 研发经理/总监
+  depends:
+  - sw_outline
+  - app_outline
 - id: hw_sw_integration
   name: 软硬件联调
   type: task
@@ -523,6 +550,10 @@ nodes:
   owner: FPGA/单片机/硬件原理
   gate: 硬件板子寄到长沙
   reviewer: 研发经理/研发主管/FPGA组长
+  depends:
+  - mcu_review
+  - fpga_review
+  - pcba_test
 - id: dev_selftest
   name: 开发自测
   type: task
@@ -569,6 +600,8 @@ nodes:
   deliverables:
   - 《硬件测试报告》
   reviewer: 硬件/主管
+  depends:
+  - hw_sw_integration
 - id: system_test_a
   name: 整机测试
   type: task
@@ -577,6 +610,8 @@ nodes:
   deliverables:
   - 《A版本测试简报》
   - 《缺陷清单》
+  depends:
+  - hw_sw_integration
 - id: spec_draft
   name: 初版规格书输出
   type: task
@@ -604,6 +639,9 @@ nodes:
   - 《缺陷清单_日期》
   gate: 问题解决率>80%
   reviewer: 测试组长
+  depends:
+  - system_test_a
+  - hw_fix
 - id: test_b_report
   name: B版本测试简报
   type: task
@@ -633,6 +671,9 @@ nodes:
   - 《缺陷清单_日期》
   gate: 缺陷待回归占比90%以上
   reviewer: 测试组长
+  depends:
+  - test_b
+  - sample_delivery
 - id: final_report_review
   name: 完整报告评审
   type: task
@@ -662,6 +703,8 @@ nodes:
   - 《可生产性测试报告》
   gate: 研发测试报告评审通过
   reviewer: PMO
+  depends:
+  - product_acceptance
 - id: trial_data_prep
   name: 试产资料准备
   type: task
@@ -727,6 +770,8 @@ nodes:
   deliverables:
   - 最终BOM
   reviewer: 主管
+  depends:
+  - trial_issue_fix
 - id: prod_data
   name: 生产资料
   type: task
@@ -768,6 +813,8 @@ nodes:
   phase: RELEASE
   owner: 测试负责人
   reviewer: 金蝶流程审批
+  depends:
+  - trial_issue_fix
 - id: product_entry
   name: 系统建立成品资料
   type: task
@@ -794,6 +841,9 @@ nodes:
   owner: PMO
   deliverables:
   - 《项目验收报告.docx》
+  depends:
+  - cis_entry
+  - launch_training
 - id: doc_archive
   name: 项目资料归档
   type: task
