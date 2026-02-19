@@ -119,6 +119,7 @@ def main():
     p_prompt.add_argument("question", nargs="?", help="你的问题")
     p_prompt.add_argument("--list", "-l", action="store_true", help="列出支持的问题类型")
     p_prompt.add_argument("--system", action="store_true", help="显示 system prompt")
+    p_prompt.add_argument("--full", action="store_true", help="完整输出（system+prompt，方便复制）")
     p_prompt.add_argument("--save", "-s", help="保存到文件")
 
     # ── 文档管理 ──

@@ -324,19 +324,131 @@ def build_context(question, project, flow):
 
 
 def generate_prompt(question, project=None, flow=None):
-    """生成精准 prompt"""
+    """生成高质量 prompt — 可直接丢给超级 LLM"""
     if project and flow:
         context = build_context(question, project, flow)
+        deep = _build_deep_prompt(question, project, flow)
     else:
         context = "(无活跃项目)"
+        deep = ""
+
+    system = _build_system_prompt(project, flow)
 
     prompt = f"""{context}
+{deep}
 问题：{question}"""
 
     return {
-        "system": "你是一位资深硬件项目管理专家。基于提供的项目数据回答问题。只使用给定数据，不编造。给出具体可执行的建议。",
+        "system": system,
         "prompt": prompt,
     }
+
+
+def _build_system_prompt(project, flow):
+    """构建高质量 system prompt"""
+    if not project:
+        return "你是一位资深硬件产品专家。"
+
+    # 获取项目阶段
+    task_status = {n["id"]: {"status": n.get("status", "pending")} for n in flow.get("nodes", [])}
+    cpm = compute_cpm(flow, task_status)
+    total = len(flow.get("nodes", []))
+    done = sum(1 for n in flow["nodes"] if n.get("status") == "done")
+
+    # 判断当前阶段
+    current_phase = None
+    for phase in flow.get("phases", []):
+        pid = phase["id"]
+        phase_nodes = [n for n in flow["nodes"] if n.get("phase") == pid]
+        phase_done = sum(1 for n in phase_nodes if n.get("status") == "done")
+        if phase_done < len(phase_nodes):
+            current_phase = phase
+            break
+
+    phase_name = current_phase.get("name", "") if current_phase else "未知"
+
+    return f"""你是一位同时精通硬件产品开发、商业策略和供应链管理的顶级产品操盘手。
+
+你的思维框架：
+1. 先判断问题的本质 — 是技术问题、商业问题还是执行问题
+2. 给出结论性判断，不要模棱两可
+3. 每个建议必须可执行（谁做、做什么、多久、交付物是什么）
+4. 主动识别提问者可能忽略的盲区和风险
+5. 如果涉及决策，给出选项对比表（优劣势 + 推荐）
+
+当前项目背景：
+- 产品：{project['name']}
+- 进度：{done}/{total}（当前在{phase_name}）
+- 总工期：{cpm['total_days']:.0f}天
+- 关键路径：{len(cpm['critical_path'])}个节点
+
+回答要求：
+- 用中文回答
+- 结构清晰，用标题分层
+- 给出具体数据和参考（而非空泛建议）
+- 如果信息不足以做判断，明确指出需要补充什么"""
+
+
+def _build_deep_prompt(question, project, flow):
+    """根据项目状态生成深度上下文 — 让超级 LLM 有足够信息做深度分析"""
+    lines = []
+    task_status = {n["id"]: {"status": n.get("status", "pending")} for n in flow.get("nodes", [])}
+    cpm = compute_cpm(flow, task_status)
+
+    # 注入已完成任务的决策记录（note + note_file）
+    completed_notes = []
+    for n in flow.get("nodes", []):
+        if n.get("status") == "done" and (n.get("note") or n.get("note_file")):
+            note_text = n.get("note", "")
+            if n.get("note_file"):
+                # 尝试读取备注文件内容
+                repo = project.get("repo", "")
+                if repo:
+                    from pathlib import Path
+                    note_path = Path(repo) / n["note_file"]
+                    if note_path.exists():
+                        content = note_path.read_text(encoding="utf-8")
+                        # 截取前 2000 字符避免过长
+                        if len(content) > 2000:
+                            content = content[:2000] + "\n... (截断)"
+                        note_text = content
+            if note_text:
+                completed_notes.append(f"[{n['name']}] {note_text}")
+
+    if completed_notes:
+        lines.append("\n--- 已完成阶段的关键结论 ---")
+        for note in completed_notes:
+            lines.append(note)
+        lines.append("")
+
+    # 注入下一步待决策的任务
+    classified = classify_tasks(flow, task_status)
+    ready = classified.get("ready", [])
+    if ready:
+        lines.append("--- 当前待推进的任务 ---")
+        for t in ready[:5]:
+            slack = cpm["nodes"].get(t["id"], {}).get("slack", 0)
+            crit = " 🔴关键路径" if slack == 0 else f" (slack={slack:.0f}天)"
+            delivs = ", ".join(t.get("deliverables", []))
+            gate = t.get("gate", "")
+            line = f"[{t['name']}]{crit}"
+            if delivs:
+                line += f" — 交付物: {delivs}"
+            if gate:
+                line += f" — 准入: {gate}"
+            lines.append(line)
+        lines.append("")
+
+    # 注入风险提示
+    risk = assess_project_risk(flow, task_status)
+    top_risks = risk.get("top_risks", [])[:3]
+    if top_risks:
+        lines.append("--- 当前 Top 风险 ---")
+        for r in top_risks:
+            lines.append(f"[{r['name']}] 风险分{r['score']}: {'; '.join(r['factors'][:2])}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def list_templates():
