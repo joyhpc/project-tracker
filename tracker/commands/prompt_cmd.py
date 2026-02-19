@@ -20,7 +20,7 @@ def cmd_prompt(args):
 
     flow = core._project_as_flow(p)
 
-    # --auto 模式：自动生成问题
+    # --auto 模式
     if getattr(args, "auto", False):
         questions = auto_generate_questions(p, flow)
         if not questions:
@@ -31,41 +31,31 @@ def cmd_prompt(args):
         for i, q in enumerate(questions, 1):
             print(f"  {i}. {q['priority']} {q['question']}")
             print(f"     ↳ 原因: {q['why']}")
-            if q.get("hint"):
-                print(f"     ↳ 提示: {q['hint']}")
             print()
 
-        # 提示用户选择
-        print("💡 使用方法:")
-        print('   pt prompt "复制上面的问题" --full    → 生成完整 prompt')
-        print('   pt prompt "复制上面的问题" --full --save prompt.md')
+        print("💡 使用: pt prompt \"复制上面的问题\" --full")
         return
 
     question = args.question
     if not question:
         print('❌ 请输入问题，或使用 --auto 自动生成')
-        print('   pt prompt "概念设计怎么做" --full')
-        print('   pt prompt --auto')
         sys.exit(1)
 
     result = generate_prompt(question, p, flow)
 
     if getattr(args, "full", False):
+        # 完整输出，直接复制
         print("=" * 60)
         print("  📋 复制以下内容到超级 LLM")
         print("=" * 60)
         print()
-        print(f"[System Prompt]\n{result['system']}")
-        print()
-        print(f"[User Prompt]\n{result['prompt']}")
+        print(result["prompt"])
         print()
         print("=" * 60)
     else:
-        if args.system:
-            print(f"--- System ---\n{result['system']}\n")
-        print(f"--- Prompt ---\n{result['prompt']}")
+        print(result["prompt"])
 
     if args.save:
         with open(args.save, "w", encoding="utf-8") as f:
-            f.write(f"[System Prompt]\n{result['system']}\n\n[User Prompt]\n{result['prompt']}\n")
+            f.write(result["prompt"] + "\n")
         print(f"\n💾 已保存: {args.save}")
