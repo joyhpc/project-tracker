@@ -324,131 +324,219 @@ def build_context(question, project, flow):
 
 
 def generate_prompt(question, project=None, flow=None):
-    """生成高质量 prompt — 可直接丢给超级 LLM"""
-    if project and flow:
-        context = build_context(question, project, flow)
-        deep = _build_deep_prompt(question, project, flow)
-    else:
-        context = "(无活跃项目)"
-        deep = ""
+    """生成精简高质量 prompt — 可直接丢给超级 LLM"""
+    if not project or not flow:
+        return {"system": "你是一位资深硬件产品专家。", "prompt": question}
 
-    system = _build_system_prompt(project, flow)
-
-    prompt = f"""{context}
-{deep}
-问题：{question}"""
-
-    return {
-        "system": system,
-        "prompt": prompt,
-    }
-
-
-def _build_system_prompt(project, flow):
-    """构建高质量 system prompt"""
-    if not project:
-        return "你是一位资深硬件产品专家。"
-
-    # 获取项目阶段
     task_status = {n["id"]: {"status": n.get("status", "pending")} for n in flow.get("nodes", [])}
     cpm = compute_cpm(flow, task_status)
+
+    # 检测问题类型
+    qtype = _detect_question_type(question)
+
+    # 构建精简 system prompt（不超过 200 字）
+    system = _build_system_prompt(project, flow, cpm, qtype)
+
+    # 构建精简 user prompt（指标卡 + 聚焦问题）
+    context_card = _build_context_card(project, flow, cpm, task_status)
+    focused_context = _build_focused_context(question, project, flow, cpm, task_status, qtype)
+
+    prompt = f"""{context_card}
+{focused_context}
+{question}"""
+
+    return {"system": system, "prompt": prompt}
+
+
+def _detect_question_type(question):
+    """检测问题类型"""
+    q = question.lower()
+    # 决策类优先匹配（但排除"选型"）
+    if any(w in q for w in ["决策", "拍板", "a/b/c", "推荐组合"]):
+        return "decision"
+    if "选" in q and "选型" not in q:
+        return "decision"
+    if any(w in q for w in ["方案", "怎么做", "架构", "选型", "设计"]):
+        return "solution"
+    if any(w in q for w in ["风险", "失败", "避坑", "教训", "问题"]):
+        return "risk"
+    if any(w in q for w in ["战略", "方向", "定位", "长期"]):
+        return "strategy"
+    return "general"
+
+
+def _build_system_prompt(project, flow, cpm, qtype):
+    """精简 system prompt — 角色 + 思维框架，不超过 200 字"""
     total = len(flow.get("nodes", []))
     done = sum(1 for n in flow["nodes"] if n.get("status") == "done")
 
     # 判断当前阶段
-    current_phase = None
+    phase_name = "未知"
     for phase in flow.get("phases", []):
-        pid = phase["id"]
-        phase_nodes = [n for n in flow["nodes"] if n.get("phase") == pid]
-        phase_done = sum(1 for n in phase_nodes if n.get("status") == "done")
-        if phase_done < len(phase_nodes):
-            current_phase = phase
+        phase_nodes = [n for n in flow["nodes"] if n.get("phase") == phase["id"]]
+        if sum(1 for n in phase_nodes if n.get("status") == "done") < len(phase_nodes):
+            phase_name = phase.get("name", "")
             break
 
-    phase_name = current_phase.get("name", "") if current_phase else "未知"
+    role_map = {
+        "decision": "你是产品决策顾问。对每个选项做权衡分析，给出明确推荐和理由。不要模棱两可。",
+        "solution": "你是硬件产品架构师。给出具体可执行的技术方案，包含选型对比、成本预估和时间线。",
+        "risk": "你是产品风险评估专家。扮演红队角色，对计划做压力测试，找出盲区。",
+        "strategy": "你是产品战略顾问。聚焦长期视角，链接市场趋势与自身能力，给出方向性判断。",
+        "general": "你是资深硬件产品专家。给出具体、可执行的建议。",
+    }
 
-    return f"""你是一位同时精通硬件产品开发、商业策略和供应链管理的顶级产品操盘手。
+    return f"""{role_map[qtype]}
 
-你的思维框架：
-1. 先判断问题的本质 — 是技术问题、商业问题还是执行问题
-2. 给出结论性判断，不要模棱两可
-3. 每个建议必须可执行（谁做、做什么、多久、交付物是什么）
-4. 主动识别提问者可能忽略的盲区和风险
-5. 如果涉及决策，给出选项对比表（优劣势 + 推荐）
+项目：{project['name']} | {phase_name} | 进度 {done}/{total} | 工期 {cpm['total_days']:.0f}天
 
-当前项目背景：
-- 产品：{project['name']}
-- 进度：{done}/{total}（当前在{phase_name}）
-- 总工期：{cpm['total_days']:.0f}天
-- 关键路径：{len(cpm['critical_path'])}个节点
-
-回答要求：
-- 用中文回答
-- 结构清晰，用标题分层
-- 给出具体数据和参考（而非空泛建议）
-- 如果信息不足以做判断，明确指出需要补充什么"""
+要求：中文回答，结论先行，每个建议必须可执行。信息不足时明确指出。"""
 
 
-def _build_deep_prompt(question, project, flow):
-    """根据项目状态生成深度上下文 — 让超级 LLM 有足够信息做深度分析"""
-    lines = []
-    task_status = {n["id"]: {"status": n.get("status", "pending")} for n in flow.get("nodes", [])}
-    cpm = compute_cpm(flow, task_status)
+def _build_context_card(project, flow, cpm, task_status):
+    """构建精简的项目指标卡 — 不超过 10 行"""
+    lines = ["## 项目指标卡"]
 
-    # 注入已完成任务的决策记录（note + note_file）
-    completed_notes = []
+    # 已完成任务的关键结论（只提取摘要，不放原文）
+    summaries = []
     for n in flow.get("nodes", []):
-        if n.get("status") == "done" and (n.get("note") or n.get("note_file")):
-            note_text = n.get("note", "")
-            if n.get("note_file"):
-                # 尝试读取备注文件内容
-                repo = project.get("repo", "")
-                if repo:
-                    from pathlib import Path
-                    note_path = Path(repo) / n["note_file"]
-                    if note_path.exists():
-                        content = note_path.read_text(encoding="utf-8")
-                        # 截取前 2000 字符避免过长
-                        if len(content) > 2000:
-                            content = content[:2000] + "\n... (截断)"
-                        note_text = content
-            if note_text:
-                completed_notes.append(f"[{n['name']}] {note_text}")
+        if n.get("status") == "done":
+            if n.get("note"):
+                summaries.append(f"- {n['name']}: {n['note']}")
+    if summaries:
+        lines.append("已完成:")
+        lines.extend(summaries[:3])
 
-    if completed_notes:
-        lines.append("\n--- 已完成阶段的关键结论 ---")
-        for note in completed_notes:
-            lines.append(note)
-        lines.append("")
-
-    # 注入下一步待决策的任务
+    # 当前瓶颈
     classified = classify_tasks(flow, task_status)
     ready = classified.get("ready", [])
     if ready:
-        lines.append("--- 当前待推进的任务 ---")
-        for t in ready[:5]:
-            slack = cpm["nodes"].get(t["id"], {}).get("slack", 0)
-            crit = " 🔴关键路径" if slack == 0 else f" (slack={slack:.0f}天)"
-            delivs = ", ".join(t.get("deliverables", []))
-            gate = t.get("gate", "")
-            line = f"[{t['name']}]{crit}"
-            if delivs:
-                line += f" — 交付物: {delivs}"
-            if gate:
-                line += f" — 准入: {gate}"
-            lines.append(line)
-        lines.append("")
+        crit_tasks = [t["name"] for t in ready
+                      if cpm["nodes"].get(t["id"], {}).get("slack", 1) == 0]
+        if crit_tasks:
+            lines.append(f"关键瓶颈: {', '.join(crit_tasks[:3])}")
 
-    # 注入风险提示
+    # Top 风险（一行）
     risk = assess_project_risk(flow, task_status)
-    top_risks = risk.get("top_risks", [])[:3]
-    if top_risks:
-        lines.append("--- 当前 Top 风险 ---")
-        for r in top_risks:
-            lines.append(f"[{r['name']}] 风险分{r['score']}: {'; '.join(r['factors'][:2])}")
-        lines.append("")
+    top = risk.get("top_risks", [])[:2]
+    if top:
+        risk_str = "; ".join(f"{r['name']}({r['score']}分)" for r in top)
+        lines.append(f"Top风险: {risk_str}")
 
     return "\n".join(lines)
+
+
+def _build_focused_context(question, project, flow, cpm, task_status, qtype):
+    """根据问题类型，注入聚焦的上下文（而非全部数据）"""
+    lines = []
+
+    if qtype == "decision":
+        # 决策类：只注入待决策的选项，从 note_file 中提取决策段落
+        decisions = _extract_decisions(project, flow)
+        if decisions:
+            lines.append("\n## 待决策项")
+            lines.append(decisions)
+
+    elif qtype == "solution":
+        # 方案类：注入约束条件和交付物要求
+        ready = [t for t in flow.get("nodes", [])
+                 if t.get("status") != "done"
+                 and all(_find_done(flow, d) for d in t.get("depends", []))]
+        for t in ready[:2]:
+            if cpm["nodes"].get(t["id"], {}).get("slack", 1) == 0:
+                delivs = ", ".join(t.get("deliverables", []))
+                lines.append(f"\n## 待输出: [{t['name']}]")
+                if delivs:
+                    lines.append(f"交付物: {delivs}")
+                if t.get("gate"):
+                    lines.append(f"准入条件: {t['gate']}")
+
+    elif qtype == "risk":
+        # 风险类：注入即将执行的计划
+        graph = build_graph(flow)
+        ready = [t for t in flow.get("nodes", [])
+                 if t.get("status") != "done"
+                 and cpm["nodes"].get(t["id"], {}).get("slack", 1) == 0]
+        if ready:
+            lines.append("\n## 即将执行的关键路径任务")
+            for t in ready[:5]:
+                ds = count_downstream(t["id"], graph["rdeps"])
+                lines.append(f"- {t['name']} (阻塞下游{ds}个任务)")
+
+    elif qtype == "strategy":
+        # 战略类：注入市场洞察摘要
+        insights = _extract_market_insights(project, flow)
+        if insights:
+            lines.append("\n## 市场关键洞察")
+            lines.append(insights)
+
+    return "\n".join(lines)
+
+
+def _find_done(flow, dep_id):
+    for n in flow.get("nodes", []):
+        if n["id"] == dep_id:
+            return n.get("status") == "done"
+    return False
+
+
+def _extract_decisions(project, flow):
+    """从已完成任务的 note_file 中提取待决策段落"""
+    from pathlib import Path
+    repo = project.get("repo", "")
+    if not repo:
+        return ""
+
+    for n in flow.get("nodes", []):
+        if n.get("status") == "done" and n.get("note_file"):
+            path = Path(repo) / n["note_file"]
+            if not path.exists():
+                continue
+            content = path.read_text(encoding="utf-8")
+            # 提取"决策"相关段落
+            lines = content.split("\n")
+            capture = False
+            result = []
+            for line in lines:
+                if any(w in line for w in ["决策", "待拍板", "选项", "Q1", "Q2", "Q3"]):
+                    capture = True
+                if capture:
+                    result.append(line)
+                    # 遇到分隔线或新的一级标题停止
+                    if line.startswith("---") and len(result) > 3:
+                        break
+                    if line.startswith("## ") and len(result) > 5:
+                        break
+            if result:
+                # 限制 800 字符
+                text = "\n".join(result)
+                return text[:800] if len(text) > 800 else text
+    return ""
+
+
+def _extract_market_insights(project, flow):
+    """从市场调研中提取关键洞察（最多 5 条 bullet points）"""
+    from pathlib import Path
+    repo = project.get("repo", "")
+    if not repo:
+        return ""
+
+    for n in flow.get("nodes", []):
+        if n.get("status") == "done" and "调研" in n.get("name", "") and n.get("note_file"):
+            path = Path(repo) / n["note_file"]
+            if not path.exists():
+                continue
+            content = path.read_text(encoding="utf-8")
+            # 提取降维打击的核心结论
+            insights = []
+            for line in content.split("\n"):
+                if "降维打击" in line or "认知壁垒" in line:
+                    # 提取冒号后的内容
+                    clean = line.strip().lstrip("- 🔪🛡️ *")
+                    if len(clean) > 10:
+                        insights.append(f"- {clean[:120]}")
+            return "\n".join(insights[:5]) if insights else ""
+    return ""
 
 
 def auto_generate_questions(project, flow):
