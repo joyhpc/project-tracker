@@ -7,6 +7,7 @@ from .commands.guide_cmd import cmd_guide
 from .commands.risk_cmd import cmd_risk
 from .commands.conflict_cmd import cmd_conflict
 from .commands.prompt_cmd import cmd_prompt
+from .commands.docs_cmd import cmd_docs
 
 
 def main():
@@ -18,6 +19,7 @@ def main():
     p_init.add_argument("id", help="项目ID")
     p_init.add_argument("--name", "-n", required=True, help="项目名称")
     p_init.add_argument("--flow", "-f", default="duxin", help="流程定义")
+    p_init.add_argument("--repo", help="关联本地仓库路径")
 
     sub.add_parser("list", aliases=["ls"], help="列出所有项目")
 
@@ -118,6 +120,16 @@ def main():
     p_prompt.add_argument("--system", action="store_true", help="显示 system prompt")
     p_prompt.add_argument("--save", "-s", help="保存到文件")
 
+    # ── 文档管理 ──
+    p_docs = sub.add_parser("docs", help="文档管理")
+    p_docs.add_argument("task", nargs="?", help="查看指定任务的文档")
+    p_docs.add_argument("--link", help="关联本地仓库路径")
+    p_docs.add_argument("--attach", help="关联文档到任务 (任务ID)")
+    p_docs.add_argument("--file", help="文档文件路径 (相对于仓库根)")
+    p_docs.add_argument("--desc", help="文档描述")
+    p_docs.add_argument("--sync", action="store_true", help="同步项目到仓库")
+    p_docs.add_argument("--load", help="从仓库加载项目 (仓库路径)")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -144,6 +156,7 @@ def main():
         "guide": cmd_guide, "risk": cmd_risk,
         "conflict": cmd_conflict, "cf": cmd_conflict,
         "prompt": cmd_prompt,
+        "docs": cmd_docs,
     }
 
     fn = CMD.get(args.command)

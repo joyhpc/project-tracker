@@ -9,9 +9,12 @@ def _icon(status: str) -> str:
 
 def cmd_init(args):
     try:
-        p = core.init_project(args.id, args.name, args.flow)
+        repo = getattr(args, "repo", "") or ""
+        p = core.init_project(args.id, args.name, args.flow, repo=repo)
         print(f"✅ 项目已创建: {p['id']} ({p['name']})")
         print(f"   流程: {p['flow']}, {len(p['nodes'])} 个节点")
+        if repo:
+            print(f"   仓库: {repo}")
     except ValueError as e:
         print(f"❌ {e}")
         sys.exit(1)

@@ -45,7 +45,7 @@ def _set_active(project_id: str):
 
 # ── 项目管理 ──────────────────────────────────────────
 
-def init_project(project_id: str, name: str, flow_name: str = "duxin") -> dict:
+def init_project(project_id: str, name: str, flow_name: str = "duxin", repo: str = "") -> dict:
     """创建项目 — 从模板 deep copy 完整图"""
     if _load(project_id):
         raise ValueError(f"项目已存在: {project_id}")
@@ -65,6 +65,7 @@ def init_project(project_id: str, name: str, flow_name: str = "duxin") -> dict:
         "name": name,
         "flow": flow_name,
         "created": _now(),
+        "repo": repo,
         "phases": phases,
         "nodes": nodes,
         "blockers": [],
@@ -515,3 +516,147 @@ def get_phase_progress(project: dict) -> list[dict]:
             "complete": done == total and total > 0,
         })
     return result
+
+
+# ── 文档管理 ──────────────────────────────────────────
+
+def get_repo_path(project: dict) -> Path | None:
+    """获取项目关联的仓库路径"""
+    repo = project.get("repo", "")
+    if not repo:
+        return None
+    p = Path(repo).expanduser()
+    if p.exists():
+        return p
+    return None
+
+
+def set_repo(project_id: str, repo_path: str):
+    """关联项目到本地仓库"""
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    rp = Path(repo_path).expanduser().resolve()
+    if not rp.exists():
+        raise ValueError(f"路径不存在: {rp}")
+    p["repo"] = str(rp)
+    p["log"].append({"time": _now(), "action": "repo_link", "detail": f"关联仓库: {rp}"})
+    _save(p)
+    return str(rp)
+
+
+def attach_doc(project_id: str, task_id: str, file_path: str, description: str = ""):
+    """给任务关联文档文件（相对于仓库根目录的路径）"""
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    node = _find_node(p, task_id)
+    if not node:
+        raise ValueError(f"任务不存在: {task_id}")
+
+    docs = node.get("docs", [])
+    if any(d["path"] == file_path for d in docs):
+        raise ValueError(f"文档已关联: {file_path}")
+
+    docs.append({"path": file_path, "desc": description, "added": _now()})
+    node["docs"] = docs
+    p["log"].append({
+        "time": _now(), "action": "doc_attach",
+        "task": task_id, "detail": f"关联文档: {file_path}",
+    })
+    _save(p)
+    return node
+
+
+def list_task_docs(project: dict, task_id: str = None) -> list[dict]:
+    """列出任务关联的文档。task_id=None 时列出所有。"""
+    result = []
+    repo = get_repo_path(project)
+    for n in project.get("nodes", []):
+        if task_id and n["id"] != task_id:
+            continue
+        for doc in n.get("docs", []):
+            exists = (repo / doc["path"]).exists() if repo else False
+            result.append({
+                "task_id": n["id"], "task_name": n.get("name", ""),
+                "path": doc["path"], "desc": doc.get("desc", ""),
+                "exists": exists,
+            })
+    return result
+
+
+def sync_project_to_repo(project_id: str) -> dict:
+    """将项目状态文件同步到关联仓库的 .pt/ 目录"""
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    repo = get_repo_path(p)
+    if not repo:
+        raise ValueError("项目未关联仓库。使用: pt docs --link <path>")
+
+    import shutil
+    pt_dir = repo / ".pt"
+    pt_dir.mkdir(exist_ok=True)
+    src = _project_file(project_id)
+    dst = pt_dir / f"{project_id}.yaml"
+    shutil.copy2(src, dst)
+
+    _update_readme_status(p, repo)
+    return {"synced": str(dst), "repo": str(repo)}
+
+
+def _update_readme_status(project: dict, repo: Path):
+    """更新仓库 README 中的项目状态表格"""
+    import re
+    from . import engine
+    flow = _project_as_flow(project)
+    task_status = _get_task_status(project)
+    cpm = engine.compute_cpm(flow, task_status)
+
+    nodes = project.get("nodes", [])
+    total = len(nodes)
+    done = sum(1 for n in nodes if n.get("status") == "done")
+
+    lines = [
+        "## 项目状态", "",
+        f"- 进度: {done}/{total}",
+        f"- 总工期: {cpm['total_days']:.0f} 天",
+        f"- 关键路径: {len(cpm['critical_path'])} 个节点", "",
+        "| 阶段 | 进度 | 状态 |",
+        "|------|------|------|",
+    ]
+    for ph in get_phase_progress(project):
+        pct = (ph["done"] / ph["total"] * 100) if ph["total"] > 0 else 0
+        icon = "✅" if ph["complete"] else ("🔄" if ph["done"] > 0 else "⏳")
+        lines.append(f"| {ph['name']} | {ph['progress']} ({pct:.0f}%) | {icon} |")
+
+    status_block = "\n".join(lines)
+
+    readme = repo / "README.md"
+    if not readme.exists():
+        return
+    content = readme.read_text(encoding="utf-8")
+    pattern = r"## 项目状态\n.*?(?=\n## |\Z)"
+    if re.search(pattern, content, re.DOTALL):
+        content = re.sub(pattern, status_block, content, flags=re.DOTALL)
+    else:
+        content = content.rstrip() + "\n\n" + status_block + "\n"
+    readme.write_text(content, encoding="utf-8")
+
+
+def load_from_repo(repo_path: str) -> dict:
+    """从仓库的 .pt/ 目录加载项目（换电脑时用）"""
+    rp = Path(repo_path).expanduser().resolve()
+    pt_dir = rp / ".pt"
+    if not pt_dir.exists():
+        raise ValueError(f"仓库中没有 .pt/ 目录: {rp}")
+    yamls = list(pt_dir.glob("*.yaml"))
+    if not yamls:
+        raise ValueError(f".pt/ 目录中没有项目文件")
+
+    with open(yamls[0], "r", encoding="utf-8") as f:
+        project = yaml.safe_load(f)
+    project["repo"] = str(rp)
+    _save(project)
+    _set_active(project["id"])
+    return project
