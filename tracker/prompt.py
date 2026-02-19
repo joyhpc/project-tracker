@@ -69,22 +69,29 @@ def _build_product_background(project, flow, cpm):
     product_def = ""
     insights = []
 
-    # 从已完成任务的 note_file 中提取产品定义和关键洞察
+    # 从已完成任务中提取产品定义和关键洞察
     for n in flow.get("nodes", []):
-        if n.get("status") != "done" or not n.get("note_file") or not repo:
+        if n.get("status") != "done":
+            continue
+
+        # 从 note 中提取一行结论
+        note = n.get("note", "")
+        if note and len(note) > 10:
+            insights.append(f"[{n['name']}] {note}")
+
+        if not n.get("note_file") or not repo:
             continue
         path = Path(repo) / n["note_file"]
         if not path.exists():
             continue
         content = path.read_text(encoding="utf-8")
 
-        # 提取产品定义（只取前两个引用块，通常是产品定义和技术路径）
+        # 提取产品定义（引用块，取前两个有意义的）
         if not product_def:
             quote_count = 0
             for line in content.split("\n"):
                 if line.strip().startswith(">") and len(line.strip()) > 15:
                     clean = line.strip().lstrip("> ").strip()
-                    # 跳过非定义性的引用（如等待决策、行动项等）
                     if any(w in clean for w in ["等待", "⏳", "⚡", "Slack", "任务"]):
                         continue
                     if product_def:
@@ -95,28 +102,45 @@ def _build_product_background(project, flow, cpm):
                     if quote_count >= 2:
                         break
 
-        # 提取关键洞察
+        # 通用洞察提取：从 note_file 中提取关键结论
+        # 策略：提取包含信号词的行的核心内容
+        _SIGNAL_WORDS = [
+            # 市场洞察
+            "降维打击", "认知壁垒", "核心痛点", "差异化",
+            # 技术结论
+            "唯一解", "推荐", "淘汰", "Go/No-Go", "Conditional",
+            # 决策
+            "决策", "拍板", "结论", "共识",
+            # 风险
+            "致命", "生死线", "红线",
+            # 数据
+            "BOM", "毛利", "成本",
+        ]
+        file_insight_count = 0
         for line in content.split("\n"):
-            for keyword in ["降维打击", "认知壁垒"]:
-                if keyword not in line:
-                    continue
-                # 提取冒号后的核心内容
-                for sep in ["**：", "：", ":"]:
-                    if sep in line:
-                        core = line.split(sep, 1)[1].strip().rstrip("。")
-                        break
-                else:
-                    continue
-                core = core.replace("**", "").replace("*", "").replace("「", "").replace("」", "")
-                if 15 < len(core) < 150:
-                    insights.append(core)
+            if file_insight_count >= 3:
+                break
+            line_clean = line.strip()
+            if len(line_clean) < 15 or line_clean.startswith("#") or line_clean.startswith("|"):
+                continue
+            matched = any(w in line_clean for w in _SIGNAL_WORDS)
+            if not matched:
+                continue
+            # 清理 markdown 格式
+            core = line_clean
+            for ch in ["**", "*", "- ", "  ", "📄", "📎", "✅", "❌", "⚠️", "🔴", "🎯"]:
+                core = core.replace(ch, "")
+            core = core.strip().rstrip("。")
+            if 15 < len(core) < 200 and core not in insights:
+                insights.append(core)
+                file_insight_count += 1
 
     if product_def:
         lines.append(f"- **核心定义**：{product_def}")
 
     if insights:
-        lines.append("- **关键市场洞察**：")
-        for ins in insights[:6]:
+        lines.append("- **已有结论**：")
+        for ins in insights[:8]:
             lines.append(f"    - {ins}")
 
     # 当前阶段
