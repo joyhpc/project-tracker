@@ -1,14 +1,15 @@
-"""Prompt 导出引擎 v3 — 高质量 prompt 生成
+"""Prompt 导出引擎 v4 — BM25 知识检索 + 角色聚焦
 
 设计理念：
-- 不是堆数据，而是用自然语言描述项目背景
-- 从 note_file 中智能提取关键洞察（不是原文也不是一行摘要）
-- 不同问题类型用不同角色和上下文结构
+- 用 BM25 检索替代信号词匹配，自动适应任何项目
+- 保留 v3 的角色设定和问题类型聚焦
+- 从 note_file 中按标题切块，保留表格等结构化数据
 - 输出可直接复制给超级 LLM
 """
 from pathlib import Path
 from .engine import compute_cpm, build_graph, classify_tasks, count_downstream
 from .risk import assess_project_risk
+from .knowledge import retrieve_context
 
 
 # ── 主入口 ──────────────────────────────────────────
@@ -39,7 +40,7 @@ def generate_prompt(question, project=None, flow=None):
     qtype = _detect_question_type(question)
 
     role = _get_role(qtype)
-    background = _build_product_background(project, flow, cpm)
+    background = _build_product_background(question, project, flow, cpm)
     focused = _build_focused_context(question, project, flow, cpm, task_status, qtype)
     instruction = _build_task_instruction(question, qtype)
 
@@ -60,33 +61,22 @@ def _get_role(qtype):
 
 # ── 产品背景（自然语言）──────────────────────────────
 
-def _build_product_background(project, flow, cpm):
-    """用自然语言构建产品背景 — 让 LLM 理解这是什么产品"""
+def _build_product_background(question, project, flow, cpm):
+    """用自然语言构建产品背景 + BM25 检索相关知识"""
     lines = ["**项目背景**："]
     lines.append(f"我们正在开发一款「{project['name']}」。")
 
     repo = project.get("repo", "")
+
+    # 提取产品定义（引用块 — 仍用规则，因为这是固定格式）
     product_def = ""
-    insights = []
-
-    # 从已完成任务中提取产品定义和关键洞察
     for n in flow.get("nodes", []):
-        if n.get("status") != "done":
-            continue
-
-        # 从 note 中提取一行结论
-        note = n.get("note", "")
-        if note and len(note) > 10:
-            insights.append(f"[{n['name']}] {note}")
-
-        if not n.get("note_file") or not repo:
+        if n.get("status") != "done" or not n.get("note_file") or not repo:
             continue
         path = Path(repo) / n["note_file"]
         if not path.exists():
             continue
         content = path.read_text(encoding="utf-8")
-
-        # 提取产品定义（引用块，取前两个有意义的）
         if not product_def:
             quote_count = 0
             for line in content.split("\n"):
@@ -101,47 +91,34 @@ def _build_product_background(project, flow, cpm):
                     quote_count += 1
                     if quote_count >= 2:
                         break
-
-        # 通用洞察提取：从 note_file 中提取关键结论
-        # 策略：提取包含信号词的行的核心内容
-        _SIGNAL_WORDS = [
-            # 市场洞察
-            "降维打击", "认知壁垒", "核心痛点", "差异化",
-            # 技术结论
-            "唯一解", "推荐", "淘汰", "Go/No-Go", "Conditional",
-            # 决策
-            "决策", "拍板", "结论", "共识",
-            # 风险
-            "致命", "生死线", "红线",
-            # 数据
-            "BOM", "毛利", "成本",
-        ]
-        file_insight_count = 0
-        for line in content.split("\n"):
-            if file_insight_count >= 3:
-                break
-            line_clean = line.strip()
-            if len(line_clean) < 15 or line_clean.startswith("#") or line_clean.startswith("|"):
-                continue
-            matched = any(w in line_clean for w in _SIGNAL_WORDS)
-            if not matched:
-                continue
-            # 清理 markdown 格式
-            core = line_clean
-            for ch in ["**", "*", "- ", "  ", "📄", "📎", "✅", "❌", "⚠️", "🔴", "🎯"]:
-                core = core.replace(ch, "")
-            core = core.strip().rstrip("。")
-            if 15 < len(core) < 200 and core not in insights:
-                insights.append(core)
-                file_insight_count += 1
+        if product_def:
+            break
 
     if product_def:
         lines.append(f"- **核心定义**：{product_def}")
 
-    if insights:
-        lines.append("- **已有结论**：")
-        for ins in insights[:8]:
-            lines.append(f"    - {ins}")
+    # BM25 检索相关知识块
+    current_task = None
+    for n in flow.get("nodes", []):
+        if n.get("status") == "in_progress":
+            current_task = n
+            break
+
+    chunks = retrieve_context(question, project, flow, current_task, top_k=5)
+    if chunks:
+        lines.append("- **相关历史结论**：")
+        for chunk in chunks:
+            path_str = " > ".join(chunk.path) if chunk.path else ""
+            source = f"[{chunk.task_name}]"
+            if path_str:
+                source += f" {path_str}"
+            # 截取内容摘要（保留结构但限制长度）
+            content = chunk.content
+            if len(content) > 300:
+                content = content[:300] + "..."
+            lines.append(f"\n<reference source=\"{source}\">")
+            lines.append(content)
+            lines.append("</reference>")
 
     # 当前阶段
     total = len(flow.get("nodes", []))
@@ -152,7 +129,7 @@ def _build_product_background(project, flow, cpm):
         if sum(1 for n in phase_nodes if n.get("status") == "done") < len(phase_nodes):
             phase_name = phase.get("name", "")
             break
-    lines.append(f"- **当前阶段**：{phase_name}（进度 {done}/{total}，总工期 {cpm['total_days']:.0f}天）")
+    lines.append(f"\n- **当前阶段**：{phase_name}（进度 {done}/{total}，总工期 {cpm['total_days']:.0f}天）")
 
     return "\n".join(lines)
 
