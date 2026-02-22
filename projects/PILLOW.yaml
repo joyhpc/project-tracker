@@ -1,0 +1,486 @@
+id: PILLOW
+name: 智能助眠枕头
+flow: generic
+created: 2026-02-19 17:58
+repo: /home/hpc/.openclaw/workspace/smart-sleep-pillow
+phases:
+- id: CONCEPT
+  name: 概念阶段
+- id: DESIGN
+  name: 设计阶段
+  milestone: M1
+- id: PROTO
+  name: 原型阶段
+  milestone: M2
+- id: TEST
+  name: 测试阶段
+- id: MASS
+  name: 量产阶段
+  milestone: M3
+nodes:
+- id: market_research
+  name: 市场调研
+  type: task
+  phase: CONCEPT
+  owner: 产品经理
+  deliverables:
+  - 市场分析报告
+  status: done
+  docs:
+  - path: docs/concept/market-research.md
+    desc: 市场调研报告
+    added: 2026-02-19 17:58
+  - path: docs/concept/01-decision-result.md
+    desc: 决策拍板结果(A-B-A)+Nova批判分析
+    added: 2026-02-20 00:10
+  started: 2026-02-20 00:10
+  completed: 2026-02-20 00:10
+  note: 品类降维分析完成,决策已拍板:A-B-A
+  note_file: docs/concept/market-research.md
+- id: concept_design
+  name: 概念设计
+  type: task
+  phase: CONCEPT
+  owner: 系统架构师
+  depends:
+  - market_research
+  deliverables:
+  - 概念设计文档
+  status: done
+  docs:
+  - path: docs/concept/concept-design.md
+    desc: 概念设计方案
+    added: 2026-02-19 17:58
+  - path: docs/concept/02-concept-design-result.md
+    desc: 概念设计方案(LLM回复+Nova分析)
+    added: 2026-02-20 00:24
+  - path: docs/concept/03-risk-analysis-result.md
+    desc: 风险评估(红队+Nova分析)
+    added: 2026-02-20 00:24
+  - path: docs/concept/04-strategy-result.md
+    desc: 战略定位(LLM回复+Nova分析)
+    added: 2026-02-20 00:24
+  - path: docs/concept/05-tech-feasibility-result.md
+    desc: 技术可行性(Conditional GO+Nova分析)
+    added: 2026-02-20 00:24
+  started: 2026-02-20 01:04
+  completed: 2026-02-20 01:07
+  note: 概念设计完成:分体式架构(主机+弱电枕),VCM体感+偶极子声场,BOM~520,Conditional GO待PoC验证
+  note_file: docs/concept/concept-design.md
+- id: feasibility
+  name: 可行性分析
+  type: task
+  phase: CONCEPT
+  owner: 技术负责人
+  depends:
+  - concept_design
+  deliverables:
+  - 可行性报告
+  critical: true
+  status: done
+  started: 2026-02-22 18:20
+  completed: 2026-02-22 18:20
+  note: 'Conditional GO: 14GO/10CAUTION/6NO-GO, 6个NO-GO已有对策(D1-D4), 3个PoC待验证'
+  note_file: docs/feasibility/feasibility-report.md
+  docs:
+  - path: docs/feasibility/feasibility-report.md
+    desc: 完成备注
+    added: 2026-02-22 18:20
+- id: hw_design
+  name: 硬件设计
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  deliverables:
+  - 原理图
+  - PCB
+  gate: 概念设计评审通过
+  depends:
+  - feasibility
+  status: pending
+  docs:
+  - path: docs/design/01-主控音频电路-result.md
+    desc: 完成备注
+    added: 2026-02-22 18:26
+- id: fw_design
+  name: 固件设计
+  type: task
+  phase: DESIGN
+  owner: 固件工程师
+  deliverables:
+  - 固件架构文档
+  depends:
+  - feasibility
+  status: pending
+  docs:
+  - path: docs/design/04-固件架构-result.md
+    desc: 完成备注
+    added: 2026-02-22 18:26
+- id: mech_design
+  name: 结构设计
+  type: task
+  phase: DESIGN
+  owner: 结构工程师
+  deliverables:
+  - 3D模型
+  depends:
+  - feasibility
+  status: pending
+  docs:
+  - path: docs/design/06-结构设计-result.md
+    desc: 完成备注
+    added: 2026-02-22 18:26
+- id: hw_review
+  name: 硬件评审
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_design
+  deliverables:
+  - 评审报告
+  critical: true
+  reviewer: 技术负责人
+  status: pending
+  docs:
+  - path: docs/design/07-硬件评审-result.md
+    desc: 完成备注
+    added: 2026-02-22 18:28
+- id: pcb_layout
+  name: PCB Layout
+  type: task
+  phase: DESIGN
+  owner: PCB工程师
+  depends:
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB文件
+  status: pending
+- id: bom_prep
+  name: BOM整理
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_review
+  deliverables:
+  - BOM清单
+  status: pending
+- id: ms_design
+  name: 设计阶段 里程碑
+  type: milestone
+  phase: DESIGN
+  depends:
+  - fw_design
+  - pcb_layout
+  - bom_prep
+  status: pending
+- id: pcb_fab
+  name: PCB打样
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_layout
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB板
+  status: pending
+- id: component_buy
+  name: 物料采购
+  type: task
+  phase: PROTO
+  owner: 采购
+  depends:
+  - bom_prep
+  deliverables:
+  - 物料
+  status: pending
+- id: smt
+  name: SMT贴片
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_fab
+  - component_buy
+  status: pending
+- id: fw_dev
+  name: 固件开发
+  type: task
+  phase: PROTO
+  owner: 固件工程师
+  depends:
+  - fw_design
+  deliverables:
+  - 固件
+  status: pending
+- id: bringup
+  name: 板级调试
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - smt
+  - fw_dev
+  critical: true
+  status: pending
+- id: ms_proto
+  name: 原型阶段 里程碑
+  type: milestone
+  phase: PROTO
+  depends:
+  - bringup
+  status: pending
+- id: func_test
+  name: 功能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  deliverables:
+  - 测试报告
+  depends:
+  - bringup
+  status: pending
+  docs:
+  - path: docs/test/08-功能测试-result.md
+    desc: 完成备注
+    added: 2026-02-22 18:29
+- id: perf_test
+  name: 性能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - func_test
+  - bringup
+  deliverables:
+  - 性能报告
+  status: pending
+- id: cert_test
+  name: 认证测试
+  type: task
+  phase: TEST
+  owner: 认证工程师
+  depends:
+  - func_test
+  deliverables:
+  - 认证报告
+  gate: 需要送第三方实验室
+  status: pending
+- id: reliability
+  name: 可靠性测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - perf_test
+  deliverables:
+  - 可靠性报告
+  critical: true
+  status: pending
+- id: tooling
+  name: 模具开发
+  type: task
+  phase: MASS
+  owner: 结构工程师
+  deliverables:
+  - 模具
+  gate: 结构设计冻结
+  depends:
+  - reliability
+  status: pending
+- id: pilot_run
+  name: 试产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - tooling
+  deliverables:
+  - 试产报告
+  status: pending
+- id: mass_prod
+  name: 量产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - pilot_run
+  critical: true
+  status: pending
+- id: ms_mass
+  name: 量产阶段 里程碑
+  type: milestone
+  phase: MASS
+  depends:
+  - mass_prod
+  status: pending
+blockers: []
+log:
+- time: 2026-02-19 17:58
+  action: init
+  detail: '项目创建，流程: generic'
+- time: 2026-02-19 17:58
+  action: doc_attach
+  task: market_research
+  detail: '关联文档: docs/concept/market-research.md'
+- time: 2026-02-19 17:58
+  action: doc_attach
+  task: concept_design
+  detail: '关联文档: docs/concept/concept-design.md'
+- time: 2026-02-20 00:10
+  action: start
+  task: market_research
+  detail: 市场调研
+- time: 2026-02-20 00:10
+  action: done
+  task: market_research
+  detail: 品类降维分析完成,决策已拍板:A-B-A
+- time: 2026-02-20 00:10
+  action: doc_attach
+  task: market_research
+  detail: '关联文档: docs/concept/01-decision-result.md'
+- time: 2026-02-20 00:24
+  action: doc_attach
+  task: concept_design
+  detail: '关联文档: docs/concept/02-concept-design-result.md'
+- time: 2026-02-20 00:24
+  action: doc_attach
+  task: concept_design
+  detail: '关联文档: docs/concept/03-risk-analysis-result.md'
+- time: 2026-02-20 00:24
+  action: doc_attach
+  task: concept_design
+  detail: '关联文档: docs/concept/04-strategy-result.md'
+- time: 2026-02-20 00:24
+  action: doc_attach
+  task: concept_design
+  detail: '关联文档: docs/concept/05-tech-feasibility-result.md'
+- time: 2026-02-20 01:04
+  action: start
+  task: concept_design
+  detail: 概念设计
+- time: 2026-02-20 01:07
+  action: done
+  task: concept_design
+  detail: 概念设计完成:分体式架构(主机+弱电枕),VCM体感+偶极子声场,BOM~520,Conditional GO待PoC验证
+- time: 2026-02-22 18:20
+  action: start
+  task: feasibility
+  detail: 可行性分析
+- time: 2026-02-22 18:20
+  action: done
+  task: feasibility
+  detail: 'Conditional GO: 14GO/10CAUTION/6NO-GO, 6个NO-GO已有对策(D1-D4), 3个PoC待验证'
+reviews:
+- file: docs/feasibility/03-分体架构工程可行性-result.md
+  task: feasibility
+  verdicts:
+  - topic: 磁吸 Pogo-pin 连接器翻身拉扯可靠性（10 万次）
+    verdict: CAUTION
+  - topic: V 安全低压编织线压降和发热
+    verdict: GO
+  - topic: ESP32 + DSP + Class-D 功放总功耗与散热（主机端）
+    verdict: CAUTION
+  - topic: DSP 高频信号对 PVDF 传感器的 EMC 干扰
+    verdict: NO-GO
+  source: super-llm
+- file: docs/feasibility/04-BOM成本验证-result.md
+  task: feasibility
+  verdicts:
+  - topic: 模块具体型号与实际报价（10K量级）
+    verdict: GO
+  - topic: K vs 1K 量级价差验证
+    verdict: NO-GO
+  - topic: 模具费明细核算（声学、底座、外壳）
+    verdict: CAUTION
+  - topic: 总 NRE（一次性研发）预算评估
+    verdict: CAUTION
+  - topic: 📊 综合判定
+    verdict: CONDITIONAL GO
+  source: super-llm
+- file: docs/feasibility/05-PoC搭建方案-result.md
+  task: feasibility
+  verdicts:
+  - topic: 一、 完整物料采购清单与预算评估
+    verdict: GO
+  - topic: 二、 原型机搭建步骤（结构集成可行性）
+    verdict: CAUTION
+  - topic: 三、 测试方案设计（参数与量化点位）
+    verdict: GO
+  - topic: 四、 Go/No-Go 判定标准（生死红线）
+    verdict: GO
+  source: super-llm
+- file: docs/feasibility/01-VCM体感可行性-result.md
+  task: feasibility
+  verdicts:
+  - topic: 评估点一：15mm Sorbothane 阻尼垫向床垫的漏震衰减量
+    verdict: CAUTION
+  - topic: 评估点二：人头5kg压实后记忆棉对VCM推力的阻尼影响
+    verdict: CAUTION
+  - topic: 评估点三：两颗VCM在柔性波导板上的振动均匀性
+    verdict: NO-GO
+  source: super-llm
+- file: docs/feasibility/02-偶极子声场可行性-result.md
+  task: feasibility
+  verdicts:
+  - topic: cm距离实际隔离度 (dB)
+    verdict: CAUTION
+  - topic: 侧睡压住一侧喇叭后声场对称性破坏程度
+    verdict: NO-GO
+  - topic: 记忆棉对中高频的吸收损耗
+    verdict: CAUTION
+  - topic: 硅胶导音管声学传输效率
+    verdict: NO-GO
+  - topic: 供应商方案成熟度评估
+    verdict: NO-GO
+  - topic: 📊 综合判定
+    verdict: 高风险
+  source: super-llm
+decisions:
+- id: 1
+  title: 枕端微型有源化
+  source: feasibility-03
+  impact: BOM+¥4-6,解决EMC干扰
+  status: active
+  date: '2026-02-22'
+- id: 2
+  title: 废弃硅胶导音管,改双色注塑微音腔
+  source: feasibility-02
+  impact: 声学传输效率从-12dB改善到-3dB
+  status: active
+  date: '2026-02-22'
+- id: 3
+  title: Poron替代Sorbothane
+  source: feasibility-01,04
+  impact: 阻尼垫成本降75%
+  status: active
+  date: '2026-02-22'
+- id: 4
+  title: Gen1放弃偶极子DSP,改姿态闭环+单侧近场
+  source: feasibility-02
+  impact: 降低声学复杂度,侧睡不破坏声场
+  status: active
+  date: '2026-02-22'
+pocs:
+- id: 1
+  title: 体感舒适度
+  metric: 盲测均分≥4.0/5,0人眩晕
+  status: pending
+  date: '2026-02-22'
+  result_date: '2026-02-22'
+- id: 2
+  title: 漏震阻断
+  metric: 40cm水杯驻波=0
+  status: pending
+  date: '2026-02-22'
+  result_date: '2026-02-22'
+- id: 3
+  title: 定向漏音
+  metric: 30cm漏音≤底噪+3dBA
+  status: pending
+  date: '2026-02-22'
+  result_date: '2026-02-22'

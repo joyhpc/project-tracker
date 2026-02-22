@@ -108,6 +108,18 @@ def cmd_done(args):
     try:
         p = _require()
         note_file = getattr(args, 'note_file', '') or ''
+
+        # 检查该任务是否有未审核的 review
+        reviews = p.get("reviews", [])
+        unreviewed = [r for r in reviews if r.get("task") == args.task_id and r.get("reviewed") is False]
+        if unreviewed:
+            print(f"  ⚠️ {len(unreviewed)} 份回复未审核:")
+            for r in unreviewed:
+                print(f"     - {r['file']}")
+            print(f"  使用 pt review --approve <file> 审核，或 --force 强制完成")
+            if not getattr(args, 'force', False):
+                sys.exit(1)
+
         result = core.done_task(p["id"], args.task_id, args.note or "",
                                 force=getattr(args, 'force', False),
                                 note_file=note_file)

@@ -14,6 +14,8 @@ def cmd_review(args):
     """review 命令入口"""
     if args.add:
         _add(args)
+    elif args.approve:
+        _approve(args)
     elif args.report:
         _report(args)
     elif args.analyze:
@@ -56,6 +58,8 @@ def _add(args):
             "verdicts": verdicts,
             "source": args.source or "super-llm",
         }
+        if hasattr(args, "unreviewed") and args.unreviewed:
+            review["reviewed"] = False
 
         if "reviews" not in p:
             p["reviews"] = []
@@ -65,12 +69,57 @@ def _add(args):
         core._save(p)
 
         print(f"✅ 已收录: {rel_path}")
+        if review.get("reviewed") is False:
+            print(f"  ⚠️ 未审核 (--unreviewed)")
         if verdicts:
             for v in verdicts:
                 icon = {"go": "🟢", "caution": "🟡", "no-go": "🔴"}.get(v["verdict"].lower(), "⚪")
                 print(f"  {icon} {v['topic']}: {v['verdict']}")
         if task_id:
             print(f"  📎 关联任务: {task_id}")
+
+    except (ValueError, RuntimeError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+
+def _approve(args):
+    """批准审核一份回复"""
+    try:
+        p = core.require_active()
+        reviews = p.get("reviews", [])
+        target = args.approve
+
+        found = False
+        for r in reviews:
+            if target in r["file"] or target == r["file"]:
+                if r.get("reviewed") is False:
+                    r.pop("reviewed")
+                    core._save(p)
+                    print(f"✅ 已审核通过: {r['file']}")
+                else:
+                    print(f"ℹ️ 已是审核状态: {r['file']}")
+                found = True
+                break
+
+        if not found:
+            # 尝试匹配序号
+            if target.isdigit():
+                idx = int(target) - 1
+                if 0 <= idx < len(reviews):
+                    r = reviews[idx]
+                    if r.get("reviewed") is False:
+                        r.pop("reviewed")
+                        core._save(p)
+                        print(f"✅ 已审核通过: {r['file']}")
+                    else:
+                        print(f"ℹ️ 已是审核状态: {r['file']}")
+                    found = True
+
+        if not found:
+            print(f"❌ 未找到匹配的回复: {target}")
+            print("  使用 pt review --list 查看所有回复")
+            sys.exit(1)
 
     except (ValueError, RuntimeError) as e:
         print(f"❌ {e}")
@@ -202,7 +251,8 @@ def _list_reviews(args):
             nogo = sum(1 for v in verdicts if v["verdict"] in ("NO-GO", "HIGH RISK"))
             summary = f"🟢{go} 🟡{caution} 🔴{nogo}" if verdicts else "未分析"
             task = f" → [{r['task']}]" if r.get("task") else ""
-            print(f"  📄 {r['file']}{task}  {summary}")
+            status = " ⚠️未审核" if r.get("reviewed") is False else ""
+            print(f"  📄 {r['file']}{task}  {summary}{status}")
 
         print()
 
@@ -226,6 +276,11 @@ def _report(args):
 
         lines = [f"# 可行性分析报告 — {p['name']}\n"]
 
+        # 未审核警告
+        unreviewed = [r for r in reviews if r.get("reviewed") is False]
+        if unreviewed:
+            lines.append(f"> ⚠️ **{len(unreviewed)} 份回复未经人工审核**，仅供参考\n")
+
         # 一、判定汇总表
         lines.append("## 一、评估判定汇总\n")
         lines.append("| # | 评估主题 | 评估点 | 判定 |")
@@ -234,13 +289,14 @@ def _report(args):
         all_verdicts = []
         for i, r in enumerate(reviews, 1):
             fname = os.path.basename(r["file"]).replace("-result.md", "")
+            unrev = " ⚠️" if r.get("reviewed") is False else ""
             for v in r.get("verdicts", []):
                 if v["topic"].startswith("📊"):
                     continue
                 icon = {"GO": "🟢", "CAUTION": "🟡", "NO-GO": "🔴",
                          "HIGH RISK": "🔴", "CONDITIONAL GO": "🟡",
                          "HIGHLY FEASIBLE": "🟢"}.get(v["verdict"], "⚪")
-                lines.append(f"| {i} | {fname} | {v['topic']} | {icon} {v['verdict']} |")
+                lines.append(f"| {i} | {fname}{unrev} | {v['topic']} | {icon} {v['verdict']} |")
                 all_verdicts.append(v)
 
         go = sum(1 for v in all_verdicts if v["verdict"] in ("GO", "HIGHLY FEASIBLE"))
