@@ -9,6 +9,9 @@ from .commands.conflict_cmd import cmd_conflict
 from .commands.prompt_cmd import cmd_prompt
 from .commands.docs_cmd import cmd_docs
 from .commands.log_cmd import cmd_log as cmd_brief
+from .commands.review_cmd import cmd_review
+from .commands.decision_cmd import cmd_decision
+from .commands.poc_cmd import cmd_poc
 
 
 def main():
@@ -128,6 +131,32 @@ def main():
     p_brief = sub.add_parser("brief", aliases=["br"], help="项目推进简报")
     p_brief.add_argument("--save", "-s", help="保存到文件")
 
+    # ── Review ──
+    p_review = sub.add_parser("review", aliases=["rv"], help="LLM 回复管理与交叉验证")
+    p_review.add_argument("--add", "-a", help="收录回复文件 (相对于仓库根)")
+    p_review.add_argument("--task", "-t", help="关联任务ID")
+    p_review.add_argument("--source", default="super-llm", help="来源标记")
+    p_review.add_argument("--analyze", action="store_true", help="交叉验证分析")
+    p_review.add_argument("--list", "-l", action="store_true", help="列出已收录回复")
+
+    # ── Decision ──
+    p_dec = sub.add_parser("decision", aliases=["dec"], help="决策登记簿")
+    p_dec.add_argument("--add", "-a", help="添加决策")
+    p_dec.add_argument("--update", "-u", help="更新决策 (ID)")
+    p_dec.add_argument("--source", help="决策来源")
+    p_dec.add_argument("--impact", help="影响范围")
+    p_dec.add_argument("--status", help="状态 (active/superseded/reverted/pending)")
+    p_dec.add_argument("--note", help="备注")
+
+    # ── PoC ──
+    p_poc = sub.add_parser("poc", help="PoC 验证追踪")
+    p_poc.add_argument("--add", "-a", help="添加验证项")
+    p_poc.add_argument("--update", "-u", help="更新验证项 (ID)")
+    p_poc.add_argument("--metric", "-m", help="Go/No-Go 红线指标")
+    p_poc.add_argument("--result", help="验证结果")
+    p_poc.add_argument("--status", help="状态 (pending/go/no-go/caution)")
+    p_poc.add_argument("--summary", action="store_true", help="验证汇总")
+
     # ── 文档管理 ──
     p_docs = sub.add_parser("docs", help="文档管理")
     p_docs.add_argument("task", nargs="?", help="查看指定任务的文档")
@@ -167,6 +196,9 @@ def main():
         "prompt": cmd_prompt,
         "docs": cmd_docs,
         "brief": cmd_brief, "br": cmd_brief,
+        "review": cmd_review, "rv": cmd_review,
+        "decision": cmd_decision, "dec": cmd_decision,
+        "poc": cmd_poc,
     }
 
     fn = CMD.get(args.command)
