@@ -188,14 +188,20 @@ def _build_task_instruction(question, qtype):
     """构建聚焦的任务指令"""
     base = f"\n**你的任务**：\n{question}\n"
 
-    # 如果用户问题本身已包含具体输出要求，不再追加模板
+    # 如果用户问题本身已包含具体输出要求，生成匹配的格式引导
     has_explicit_requirements = any(p in question for p in [
         "1)", "2)", "3)", "1）", "2）", "需要：", "需要:", "给出：", "给出:",
         "评估：", "评估:", "包含：", "包含:",
     ])
 
     if has_explicit_requirements:
-        return base + "\n要求：中文回答，结论先行，每个建议必须可执行。不要泛泛而谈。"
+        # 根据问题内容生成匹配的输出引导
+        guide = "\n**输出要求**：\n"
+        guide += "请针对上述每个评估点逐一给出明确结论，格式如下：\n"
+        guide += "- 每个评估点：结论（GO/CAUTION/NO-GO） + 关键数据/依据 + 风险与对策\n"
+        guide += "- 最终给出综合判定和下一步行动建议\n"
+        guide += "\n要求：中文回答，结论先行，必须给出具体数值而非定性描述。"
+        return base + guide
 
     suffix = {
         "decision": "\n请推荐最优组合，并提供：\n1. 选择该组合的核心逻辑\n2. 潜在风险与对策\n\n要求分析犀利、客观，直接切入商业本质。",
