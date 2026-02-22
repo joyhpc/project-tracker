@@ -137,6 +137,7 @@ def main():
     p_review.add_argument("--task", "-t", help="关联任务ID")
     p_review.add_argument("--source", default="super-llm", help="来源标记")
     p_review.add_argument("--analyze", action="store_true", help="交叉验证分析")
+    p_review.add_argument("--report", nargs="?", const="auto", help="生成可行性分析报告 (默认auto保存)")
     p_review.add_argument("--list", "-l", action="store_true", help="列出已收录回复")
 
     # ── Decision ──

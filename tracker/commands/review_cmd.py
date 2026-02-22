@@ -14,6 +14,8 @@ def cmd_review(args):
     """review 命令入口"""
     if args.add:
         _add(args)
+    elif args.report:
+        _report(args)
     elif args.analyze:
         _analyze(args)
     elif args.list:
@@ -203,6 +205,118 @@ def _list_reviews(args):
             print(f"  📄 {r['file']}{task}  {summary}")
 
         print()
+
+    except (ValueError, RuntimeError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+
+def _report(args):
+    """生成可行性分析报告（汇总所有 review 的判定+决策+PoC）"""
+    try:
+        p = core.require_active()
+        repo = core.get_repo_path(p)
+        reviews = p.get("reviews", [])
+        decisions = p.get("decisions", [])
+        pocs = p.get("pocs", [])
+
+        if not reviews:
+            print("❌ 没有已收录的回复。先用 pt review --add 收录。")
+            sys.exit(1)
+
+        lines = [f"# 可行性分析报告 — {p['name']}\n"]
+
+        # 一、判定汇总表
+        lines.append("## 一、评估判定汇总\n")
+        lines.append("| # | 评估主题 | 评估点 | 判定 |")
+        lines.append("|---|---------|--------|------|")
+
+        all_verdicts = []
+        for i, r in enumerate(reviews, 1):
+            fname = os.path.basename(r["file"]).replace("-result.md", "")
+            for v in r.get("verdicts", []):
+                if v["topic"].startswith("📊"):
+                    continue
+                icon = {"GO": "🟢", "CAUTION": "🟡", "NO-GO": "🔴",
+                         "HIGH RISK": "🔴", "CONDITIONAL GO": "🟡",
+                         "HIGHLY FEASIBLE": "🟢"}.get(v["verdict"], "⚪")
+                lines.append(f"| {i} | {fname} | {v['topic']} | {icon} {v['verdict']} |")
+                all_verdicts.append(v)
+
+        go = sum(1 for v in all_verdicts if v["verdict"] in ("GO", "HIGHLY FEASIBLE"))
+        caution = sum(1 for v in all_verdicts if v["verdict"] in ("CAUTION", "CONDITIONAL GO"))
+        nogo = sum(1 for v in all_verdicts if v["verdict"] in ("NO-GO", "HIGH RISK"))
+        lines.append(f"\n**统计**：🟢 GO: {go}  🟡 CAUTION: {caution}  🔴 NO-GO: {nogo}\n")
+
+        # 综合判定
+        for r in reviews:
+            for v in r.get("verdicts", []):
+                if v["topic"].startswith("📊"):
+                    fname = os.path.basename(r["file"]).replace("-result.md", "")
+                    lines.append(f"- **{fname}** 综合判定：{v['verdict']}")
+
+        # 二、关键风险（NO-GO 项）
+        nogo_items = [v for v in all_verdicts if v["verdict"] in ("NO-GO", "HIGH RISK")]
+        if nogo_items:
+            lines.append("\n## 二、🔴 关键风险（需立即处理）\n")
+            for v in nogo_items:
+                lines.append(f"- **{v['topic']}**")
+        else:
+            lines.append("\n## 二、关键风险\n")
+            lines.append("无 NO-GO 项。")
+
+        # 三、架构决策
+        if decisions:
+            lines.append(f"\n## 三、架构决策（{len(decisions)} 项）\n")
+            lines.append("| # | 决策 | 来源 | 影响 | 状态 |")
+            lines.append("|---|------|------|------|------|")
+            for d in decisions:
+                icon = {"active": "🟢", "superseded": "⚫", "reverted": "🔴", "pending": "🟡"}.get(d.get("status", "active"), "⚪")
+                lines.append(f"| D{d['id']} | {d['title']} | {d.get('source', '')} | {d.get('impact', '')} | {icon} {d.get('status', 'active')} |")
+
+        # 四、PoC 验证项
+        if pocs:
+            lines.append(f"\n## 四、PoC 验证项（{len(pocs)} 项）\n")
+            lines.append("| # | 验证项 | Go/No-Go 红线 | 状态 | 结果 |")
+            lines.append("|---|--------|--------------|------|------|")
+            for poc in pocs:
+                icon = {"go": "🟢", "no-go": "🔴", "pending": "⏳", "caution": "🟡"}.get(poc["status"], "⚪")
+                result = poc.get("result", "—")
+                lines.append(f"| P{poc['id']} | {poc['title']} | {poc.get('metric', '')} | {icon} {poc['status']} | {result} |")
+
+            poc_go = sum(1 for x in pocs if x["status"] == "go")
+            poc_nogo = sum(1 for x in pocs if x["status"] == "no-go")
+            poc_pending = sum(1 for x in pocs if x["status"] == "pending")
+            lines.append(f"\n**PoC 状态**：🟢 GO: {poc_go}  🔴 NO-GO: {poc_nogo}  ⏳ 待验证: {poc_pending}")
+
+        # 五、回复文件索引
+        lines.append(f"\n## 五、详细分析文件\n")
+        for r in reviews:
+            lines.append(f"- [{os.path.basename(r['file'])}]({r['file']})")
+
+        content = "\n".join(lines)
+
+        # 保存
+        save_path = args.report
+        if save_path == "auto":
+            if repo:
+                task_id = reviews[0].get("task", "")
+                phase_dir = "docs/feasibility" if "feasib" in task_id else "docs"
+                save_path = os.path.join(str(repo), phase_dir, "feasibility-report.md")
+            else:
+                save_path = "feasibility-report.md"
+
+        if not os.path.isabs(save_path) and repo:
+            save_path = os.path.join(str(repo), save_path)
+
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        rel = os.path.relpath(save_path, str(repo)) if repo else save_path
+        print(f"📄 可行性分析报告已生成: {rel}")
+        print(f"   评估项: {len(all_verdicts)}  决策: {len(decisions)}  PoC: {len(pocs)}")
+        print(f"   判定: 🟢{go} 🟡{caution} 🔴{nogo}")
 
     except (ValueError, RuntimeError) as e:
         print(f"❌ {e}")
