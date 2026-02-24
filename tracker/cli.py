@@ -12,6 +12,7 @@ from .commands.log_cmd import cmd_log as cmd_brief
 from .commands.review_cmd import cmd_review
 from .commands.decision_cmd import cmd_decision
 from .commands.poc_cmd import cmd_poc
+from .commands.propose_cmd import cmd_propose
 
 
 def main():
@@ -171,6 +172,11 @@ def main():
     p_docs.add_argument("--push", action="store_true", help="同步后自动 git commit + push")
     p_docs.add_argument("--load", help="从仓库加载项目 (仓库路径)")
 
+    # ── 方案推荐 ──
+    p_propose = sub.add_parser("propose", aliases=["pp"], help="基于 review 回复生成方案推荐 prompt")
+    p_propose.add_argument("--full", action="store_true", help="完整输出（方便复制）")
+    p_propose.add_argument("--save", "-s", help="保存到文件")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -198,6 +204,7 @@ def main():
         "conflict": cmd_conflict, "cf": cmd_conflict,
         "prompt": cmd_prompt,
         "docs": cmd_docs,
+        "propose": cmd_propose, "pp": cmd_propose,
         "brief": cmd_brief, "br": cmd_brief,
         "review": cmd_review, "rv": cmd_review,
         "decision": cmd_decision, "dec": cmd_decision,
