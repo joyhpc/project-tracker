@@ -1,5 +1,7 @@
 """Prompt 导出命令"""
 import sys
+import os
+import re
 from .. import core
 from ..prompt import generate_prompt, list_templates, auto_generate_questions
 
@@ -44,7 +46,6 @@ def cmd_prompt(args):
     result = generate_prompt(question, p, flow)
 
     if getattr(args, "full", False):
-        # 完整输出，直接复制
         print("=" * 60)
         print("  📋 复制以下内容到超级 LLM")
         print("=" * 60)
@@ -55,7 +56,35 @@ def cmd_prompt(args):
     else:
         print(result["prompt"])
 
-    if args.save:
-        with open(args.save, "w", encoding="utf-8") as f:
+    # 自动保存
+    repo = core.get_repo_path(p)
+    if repo:
+        save_path = args.save if args.save else None
+        if not save_path:
+            # 自动生成文件名：按序号递增
+            prompt_dir = os.path.join(str(repo), "docs", "prompts")
+            os.makedirs(prompt_dir, exist_ok=True)
+            # 找下一个序号
+            existing = [f for f in os.listdir(prompt_dir) if f.endswith("-prompt.md")]
+            next_num = len(existing) + 1
+            # 从问题中提取简短文件名
+            slug = _slugify(question)
+            save_path = os.path.join(prompt_dir, f"{next_num:02d}-{slug}-prompt.md")
+
+        if not os.path.isabs(save_path):
+            save_path = os.path.join(str(repo), save_path)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "w", encoding="utf-8") as f:
             f.write(result["prompt"] + "\n")
-        print(f"\n💾 已保存: {args.save}")
+        rel = os.path.relpath(save_path, str(repo))
+        print(f"\n📄 已保存: {rel}")
+
+
+def _slugify(text, max_len=30):
+    """从问题文本生成简短文件名"""
+    # 去掉特殊字符，保留中文和英文
+    text = re.sub(r'[^\w\u4e00-\u9fa5]', '-', text)
+    text = re.sub(r'-+', '-', text).strip('-')
+    if len(text) > max_len:
+        text = text[:max_len].rstrip('-')
+    return text or "prompt"
