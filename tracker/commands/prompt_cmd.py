@@ -3,7 +3,7 @@ import sys
 import os
 import re
 from .. import core
-from ..prompt import generate_prompt, list_templates, auto_generate_questions
+from ..prompt import generate_prompt, generate_deep_prompt, list_templates, auto_generate_questions
 
 
 def cmd_prompt(args):
@@ -43,7 +43,7 @@ def cmd_prompt(args):
         print('❌ 请输入问题，或使用 --auto 自动生成')
         sys.exit(1)
 
-    result = generate_prompt(question, p, flow)
+    result = generate_deep_prompt(question, p, flow) if getattr(args, "deep", False) else generate_prompt(question, p, flow)
 
     if getattr(args, "full", False):
         print("=" * 60)

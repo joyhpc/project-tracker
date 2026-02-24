@@ -126,6 +126,7 @@ def main():
     p_prompt.add_argument("--auto", action="store_true", help="自动生成最有价值的问题")
     p_prompt.add_argument("--system", action="store_true", help="显示 system prompt")
     p_prompt.add_argument("--full", action="store_true", help="完整输出（system+prompt，方便复制）")
+    p_prompt.add_argument("--deep", action="store_true", help="深度模式：生成 meta-prompt，让 LLM 做矛盾识别+盲区发现")
     p_prompt.add_argument("--save", "-s", help="保存到文件")
 
     # ── 简报 ──

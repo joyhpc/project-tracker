@@ -5,11 +5,13 @@
 - 保留 v3 的角色设定和问题类型聚焦
 - 从 note_file 中按标题切块，保留表格等结构化数据
 - 输出可直接复制给超级 LLM
+- v5: --deep 模式 — 生成 meta-prompt，让 LLM 做矛盾识别+盲区发现+深度 prompt 生成
 """
+import os
 from pathlib import Path
 from .engine import compute_cpm, build_graph, classify_tasks, count_downstream
 from .risk import assess_project_risk
-from .knowledge import retrieve_context
+from .knowledge import retrieve_context, build_knowledge_base, BM25
 
 
 # ── 主入口 ──────────────────────────────────────────
@@ -323,3 +325,146 @@ def list_templates():
         {"key": "status", "label": "状态汇报", "example": "帮我写一份项目状态汇报"},
         {"key": "any", "label": "任意问题", "example": "原理图设计需要注意什么？"},
     ]
+
+
+# ── Deep Prompt (v5) ──────────────────────────────────
+
+def generate_deep_prompt(question, project, flow):
+    """生成 meta-prompt — 让 LLM 做矛盾识别+盲区发现，输出深度 prompt"""
+    if not project or not flow:
+        return {"prompt": question}
+
+    repo = project.get("repo", "")
+    reviews = project.get("reviews", [])
+    decisions = project.get("decisions", [])
+    pocs = project.get("pocs", [])
+
+    task_status = {n["id"]: {"status": n.get("status", "pending")} for n in flow.get("nodes", [])}
+    cpm = compute_cpm(flow, task_status)
+
+    lines = []
+
+    # ── 角色 ──
+    lines.append("**角色**：你是一位顶级 Prompt 工程专家，同时精通硬件产品开发全流程。")
+    lines.append("你的任务是：基于以下项目的完整分析上下文，生成一个极具深度和针对性的 prompt，")
+    lines.append("用于向另一个超级 LLM 提问，以获得最高质量的回答。")
+    lines.append("")
+
+    # ── 项目概况 ──
+    total = len(flow.get("nodes", []))
+    done = sum(1 for n in flow["nodes"] if n.get("status") == "done")
+    lines.append(f"## 项目：{project['name']}")
+    lines.append(f"进度：{done}/{total}，总工期 {cpm['total_days']:.0f} 天")
+    lines.append("")
+
+    # ── 已拍板决策 ──
+    if decisions:
+        lines.append("## 已拍板决策")
+        for d in decisions:
+            if d.get("status", "active") == "active":
+                lines.append(f"- **D{d['id']}: {d['title']}** — {d.get('impact', '')} (来源: {d.get('source', '')})")
+        lines.append("")
+
+    # ── PoC 状态 ──
+    if pocs:
+        lines.append("## PoC 验证状态")
+        for poc in pocs:
+            icon = {"go": "🟢", "no-go": "🔴", "pending": "⏳", "caution": "🟡"}.get(poc["status"], "⚪")
+            lines.append(f"- {icon} P{poc['id']}: {poc['title']} — 红线: {poc.get('metric', '')} — {poc['status']}")
+        lines.append("")
+
+    # ── 所有 review 判定汇总 ──
+    if reviews:
+        lines.append("## 已完成的可行性分析（判定汇总）")
+        lines.append("")
+        all_verdicts = []
+        for r in reviews:
+            fname = os.path.basename(r["file"]).replace("-result.md", "")
+            for v in r.get("verdicts", []):
+                icon = {"GO": "🟢", "CAUTION": "🟡", "NO-GO": "🔴",
+                        "HIGH RISK": "🔴", "CONDITIONAL GO": "🟡",
+                        "HIGHLY FEASIBLE": "🟢"}.get(v["verdict"], "⚪")
+                lines.append(f"- {icon} [{fname}] {v['topic']}: **{v['verdict']}**")
+                all_verdicts.append({**v, "source": fname})
+
+        go = sum(1 for v in all_verdicts if v["verdict"] in ("GO", "HIGHLY FEASIBLE"))
+        caution = sum(1 for v in all_verdicts if v["verdict"] in ("CAUTION", "CONDITIONAL GO"))
+        nogo = sum(1 for v in all_verdicts if v["verdict"] in ("NO-GO", "HIGH RISK"))
+        lines.append(f"\n统计：🟢 GO: {go}  🟡 CAUTION: {caution}  🔴 NO-GO: {nogo}")
+        lines.append("")
+
+        # ── 矛盾检测提示 ──
+        # 找出同一主题在不同回复中判定不一致的情况
+        nogo_topics = [v for v in all_verdicts if v["verdict"] in ("NO-GO", "HIGH RISK")]
+        go_topics = [v for v in all_verdicts if v["verdict"] in ("GO", "HIGHLY FEASIBLE")]
+        if nogo_topics:
+            lines.append("## ⚠️ 需要特别关注的 NO-GO 项")
+            for v in nogo_topics:
+                lines.append(f"- [{v['source']}] {v['topic']}")
+            lines.append("")
+
+    # ── BM25 检索：与问题相关的完整上下文 ──
+    all_chunks = build_knowledge_base(project, flow)
+    if all_chunks:
+        engine = BM25(all_chunks)
+        # 多维度查询
+        queries = [
+            question,
+            f"{question} 矛盾 冲突 不一致",
+            f"{question} 风险 盲区 未验证",
+        ]
+        seen = set()
+        merged = []
+        for q in queries:
+            for chunk in engine.search(q, top_k=8):
+                key = chunk.content[:80]
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(chunk)
+
+        if merged:
+            lines.append("## 相关分析内容（BM25 检索，完整保留）")
+            lines.append("")
+            for i, chunk in enumerate(merged[:12], 1):
+                source = f"[{chunk.task_name}]"
+                if chunk.path:
+                    source += f" {' > '.join(chunk.path)}"
+                lines.append(f"<reference id=\"deep-{i}\" source=\"{source}\">")
+                content = chunk.content
+                if len(content) > 1000:
+                    content = content[:1000] + "\n... (截断)"
+                lines.append(content)
+                lines.append("</reference>")
+                lines.append("")
+
+    # ── 关键路径信息 ──
+    crit = [t for t in flow.get("nodes", [])
+            if t.get("status") != "done"
+            and cpm["nodes"].get(t["id"], {}).get("slack", 0) == 0]
+    if crit:
+        lines.append("## 关键路径（slack=0，延迟直接影响总工期）")
+        for t in crit[:5]:
+            lines.append(f"- {t['name']} ({t.get('phase', '')})")
+        lines.append("")
+
+    # ── 核心指令 ──
+    lines.append("---")
+    lines.append("")
+    lines.append(f"## 用户想要深入探讨的问题")
+    lines.append(f"**{question}**")
+    lines.append("")
+    lines.append("## 你的任务")
+    lines.append("基于以上完整项目上下文，生成一个极具深度的 prompt，用于向超级 LLM 提问。")
+    lines.append("")
+    lines.append("**生成 prompt 时必须做到：**")
+    lines.append("")
+    lines.append("1. **矛盾识别**：找出不同回复之间的结论冲突（如 A 报告说 GO，B 报告说 NO-GO），在 prompt 中明确指出这些矛盾，要求超级 LLM 调和或给出取舍建议")
+    lines.append("2. **盲区发现**：找出所有回复都没有讨论但对项目成败至关重要的问题（如可靠性、量产一致性、供应链风险、法规合规等），在 prompt 中要求超级 LLM 补充分析")
+    lines.append("3. **数据锚定**：prompt 中必须引用具体数据（型号、价格、参数、判定结论），不允许泛泛而谈")
+    lines.append("4. **决策约束**：prompt 中必须引用已拍板决策（D1/D2/...）作为约束条件，要求回答在这些约束下给出方案")
+    lines.append("5. **量化要求**：要求超级 LLM 的回答必须包含具体数值、对比表格、GO/NO-GO 判定，不接受定性描述")
+    lines.append("6. **可执行性**：prompt 的最终输出必须是可直接执行的行动计划，不是分析报告")
+    lines.append("")
+    lines.append("**输出格式**：直接输出生成的深度 prompt（不需要解释你的思考过程），prompt 开头设定角色，结尾明确输出格式要求。")
+
+    return {"prompt": "\n".join(lines)}
