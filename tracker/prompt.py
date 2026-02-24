@@ -380,7 +380,13 @@ def generate_deep_prompt(question, project, flow):
         all_verdicts = []
         for r in reviews:
             fname = os.path.basename(r["file"]).replace("-result.md", "")
-            for v in r.get("verdicts", []):
+            raw_verdicts = r.get("verdicts", [])
+            # 兼容两种格式: list[{verdict, topic}] 或 dict{verdict: count}
+            if isinstance(raw_verdicts, dict):
+                verdict_list = [{"verdict": k, "topic": "(scan)"} for k, cnt in raw_verdicts.items() for _ in range(cnt)]
+            else:
+                verdict_list = raw_verdicts
+            for v in verdict_list:
                 icon = {"GO": "🟢", "CAUTION": "🟡", "NO-GO": "🔴",
                         "HIGH RISK": "🔴", "CONDITIONAL GO": "🟡",
                         "HIGHLY FEASIBLE": "🟢"}.get(v["verdict"], "⚪")
