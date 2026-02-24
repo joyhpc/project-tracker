@@ -403,11 +403,28 @@ def generate_deep_prompt(question, project, flow):
                 lines.append(f"- [{v['source']}] {v['topic']}")
             lines.append("")
 
-    # ── BM25 检索：与问题相关的完整上下文 ──
+    # ── 完整 review 原文（深度模式核心：把所有分析原文喂给 LLM）──
+    if reviews and repo:
+        lines.append("## 完整分析原文")
+        lines.append("")
+        for r in reviews:
+            fpath = Path(repo) / r["file"]
+            if not fpath.exists():
+                continue
+            fname = os.path.basename(r["file"]).replace("-result.md", "")
+            content = fpath.read_text(encoding="utf-8")
+            # 截取合理长度（每份最多 3000 字符，保留核心内容）
+            if len(content) > 3000:
+                content = content[:3000] + "\n\n... (截断，完整内容见原文件)"
+            lines.append(f"<review source=\"{fname}\">")
+            lines.append(content)
+            lines.append("</review>")
+            lines.append("")
+
+    # ── BM25 检索：补充 note_file / docs 中与问题相关的上下文 ──
     all_chunks = build_knowledge_base(project, flow)
     if all_chunks:
         engine = BM25(all_chunks)
-        # 多维度查询
         queries = [
             question,
             f"{question} 矛盾 冲突 不一致",
@@ -415,6 +432,8 @@ def generate_deep_prompt(question, project, flow):
         ]
         seen = set()
         merged = []
+        # 排除已在 review 原文中出现的内容
+        review_files = {os.path.basename(r["file"]) for r in reviews} if reviews else set()
         for q in queries:
             for chunk in engine.search(q, top_k=8):
                 key = chunk.content[:80]
@@ -423,19 +442,29 @@ def generate_deep_prompt(question, project, flow):
                     merged.append(chunk)
 
         if merged:
-            lines.append("## 相关分析内容（BM25 检索，完整保留）")
+            lines.append("## 补充上下文（BM25 检索，来自项目文档）")
             lines.append("")
-            for i, chunk in enumerate(merged[:12], 1):
+            for i, chunk in enumerate(merged[:8], 1):
                 source = f"[{chunk.task_name}]"
                 if chunk.path:
                     source += f" {' > '.join(chunk.path)}"
-                lines.append(f"<reference id=\"deep-{i}\" source=\"{source}\">")
+                lines.append(f"<reference id=\"ctx-{i}\" source=\"{source}\">")
                 content = chunk.content
-                if len(content) > 1000:
-                    content = content[:1000] + "\n... (截断)"
+                if len(content) > 800:
+                    content = content[:800] + "\n... (截断)"
                 lines.append(content)
                 lines.append("</reference>")
                 lines.append("")
+
+    # ── 已完成任务的结论摘要 ──
+    done_notes = []
+    for n in flow.get("nodes", []):
+        if n.get("status") == "done" and n.get("note"):
+            done_notes.append(f"- [{n['name']}] {n['note']}")
+    if done_notes:
+        lines.append("## 已完成任务结论")
+        lines.extend(done_notes)
+        lines.append("")
 
     # ── 关键路径信息 ──
     crit = [t for t in flow.get("nodes", [])
