@@ -48,6 +48,13 @@ nodes:
   status: done
   completed: 2026-02-24 22:56
   note: 需求调研完成 2025-09
+  docs:
+  - path: 01_需求阶段_Requirements/01_调研与分析_Research/A57车载测试盒功能需求.md
+    desc: 功能需求矩阵
+    added: 2026-02-24 23:17
+  - path: 01_需求阶段_Requirements/01_调研与分析_Research/需求调研报告.md
+    desc: 需求调研报告
+    added: 2026-02-24 23:17
 - id: requirement_review
   name: 需求评审
   type: task
@@ -197,6 +204,10 @@ nodes:
   status: done
   completed: 2026-02-24 22:56
   note: 可行性评审完成 2025-11-03
+  docs:
+  - path: 02_可行性评估_Feasibility/A57可行性评估报告.md
+    desc: 可行性评估报告
+    added: 2026-02-24 23:17
 - id: init_doc_prep
   name: 立项资料准备
   type: task
@@ -211,6 +222,10 @@ nodes:
   status: done
   completed: 2026-02-24 22:56
   note: 立项资料准备完成 2025-11-13
+  docs:
+  - path: 00_项目管理_Management/05_立项资料_Initiation/立项书.md
+    desc: 立项书
+    added: 2026-02-24 23:17
 - id: init_approval
   name: 立项审批
   type: task
@@ -238,6 +253,10 @@ nodes:
   status: done
   completed: 2026-02-24 22:56
   note: 项目计划表输出 2025-11-17
+  docs:
+  - path: 00_项目管理_Management/01_计划与排期_Planning/项目计划表.md
+    desc: WBS项目计划表
+    added: 2026-02-24 23:17
 - id: ms_init
   name: 立项 里程碑
   type: milestone
@@ -362,6 +381,13 @@ nodes:
   status: done
   completed: 2026-02-24 23:01
   note: DCURX核心板+OLDI解码板+EDP解码板原理图设计完成
+  docs:
+  - path: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/域控测试盒主板原理图设计说明.md
+    desc: DCURX核心板原理图设计说明
+    added: 2026-02-24 23:17
+  - path: CAMRX/CAMRX_MAIN/00 A57 CAMRX MAIN README.md
+    desc: CAMRX板卡设计总览
+    added: 2026-02-24 23:17
 - id: schematic_review
   name: 原理图审核
   type: task
@@ -490,6 +516,10 @@ nodes:
   status: done
   completed: 2026-02-24 23:02
   note: PCB布线完成
+  docs:
+  - path: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/PCB Layout说明.md
+    desc: DCURX PCB Layout说明
+    added: 2026-02-24 23:17
 - id: pin_confirm
   name: 最终管脚确认
   type: task
@@ -1293,6 +1323,43 @@ log:
 - time: 2026-02-24 23:04
   action: repo_link
   detail: '关联仓库: /tmp/A57-docs'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: requirement_research
+  detail: '关联文档: 01_需求阶段_Requirements/01_调研与分析_Research/A57车载测试盒功能需求.md'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: requirement_research
+  detail: '关联文档: 01_需求阶段_Requirements/01_调研与分析_Research/需求调研报告.md'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: feasibility_review
+  detail: '关联文档: 02_可行性评估_Feasibility/A57可行性评估报告.md'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: init_doc_prep
+  detail: '关联文档: 00_项目管理_Management/05_立项资料_Initiation/立项书.md'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: project_plan
+  detail: '关联文档: 00_项目管理_Management/01_计划与排期_Planning/项目计划表.md'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: schematic_design
+  detail: '关联文档: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/域控测试盒主板原理图设计说明.md'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: schematic_design
+  detail: '关联文档: CAMRX/CAMRX_MAIN/00 A57 CAMRX MAIN README.md'
+- time: 2026-02-24 23:17
+  action: doc_attach
+  task: pcb_routing
+  detail: '关联文档: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/PCB
+    Layout说明.md'
+- time: 2026-02-24 23:18
+  action: note
+  detail: '【多机型结构】A57包含两个板型: DCURX(域控接收板,eDP+OLDI) 和 CAMRX(摄像头接收板,MIPI)。共享核心板设计,差异在接口协议和解码板。WBS
+    7=核心板, WBS 8=OLDI解码板, WBS 9=EDP解码板, CAMRX为核心板变体。'
 reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   task: null
