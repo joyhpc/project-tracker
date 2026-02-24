@@ -55,7 +55,25 @@ def cmd_propose(args):
         # 3. 组装 prompt
         prompt = _build_prompt(p, ready_tasks, engine, reviews, decisions, pocs)
 
-        # 4. 输出
+        # 4. 自动保存
+        save_path = getattr(args, "save", None)
+        if not save_path:
+            phase = ready_tasks[0].get("phase", "").lower() if ready_tasks else ""
+            phase_dir_map = {
+                "concept": "docs/concept", "design": "docs/design",
+                "proto": "docs/prototype", "test": "docs/test",
+                "mass": "docs/production",
+            }
+            phase_dir = phase_dir_map.get(phase, "docs/design")
+            save_path = os.path.join(str(repo), phase_dir, "propose-prompt.md")
+        if not os.path.isabs(save_path):
+            save_path = os.path.join(str(repo), save_path)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(prompt + "\n")
+        rel = os.path.relpath(save_path, str(repo))
+
+        # 5. 输出
         if getattr(args, "full", False):
             print("=" * 60)
             print("  📋 复制以下内容到超级 LLM")
@@ -67,17 +85,9 @@ def cmd_propose(args):
         else:
             print(prompt)
 
-        if getattr(args, "save", None):
-            save_path = args.save
-            if not os.path.isabs(save_path):
-                save_path = os.path.join(str(repo), save_path)
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            with open(save_path, "w", encoding="utf-8") as f:
-                f.write(prompt + "\n")
-            print(f"\n💾 已保存: {save_path}")
-
         # 统计
-        print(f"\n📊 基于 {len(reviews)} 份回复, {len(decisions)} 个已拍板决策")
+        print(f"\n📄 已保存: {rel}")
+        print(f"📊 基于 {len(reviews)} 份回复, {len(decisions)} 个已拍板决策")
         print(f"   待决策任务: {', '.join(t['name'] for t in ready_tasks)}")
 
     except (ValueError, RuntimeError) as e:
