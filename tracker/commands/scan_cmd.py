@@ -164,17 +164,22 @@ def cmd_scan(args):
 
         registered = 0
         existing = {r["file"] for r in p.get("reviews", [])}
+        if "reviews" not in p:
+            p["reviews"] = []
         for r in reviews:
             rel = os.path.relpath(r["path"], repo)
             if rel not in existing:
-                # 调用 review --add 的逻辑
-                from .review_cmd import _register_review
-                ok = _register_review(p, rel)
-                if ok:
-                    registered += 1
+                review_entry = {
+                    "file": rel,
+                    "task": None,
+                    "verdicts": r.get("verdicts", {}),
+                    "source": "scan",
+                }
+                p["reviews"].append(review_entry)
+                registered += 1
 
         if registered:
-            core.save_project(p)
+            core._save(p)
             print(f"\n✅ 自动注册了 {registered} 个 review 文件")
         else:
             print("\n✅ 所有 review 文件已注册，无需操作")
