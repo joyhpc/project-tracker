@@ -13,6 +13,7 @@ from .commands.review_cmd import cmd_review
 from .commands.decision_cmd import cmd_decision
 from .commands.poc_cmd import cmd_poc
 from .commands.propose_cmd import cmd_propose
+from .commands.scan_cmd import cmd_scan
 
 
 def main():
@@ -127,6 +128,7 @@ def main():
     p_prompt.add_argument("--system", action="store_true", help="显示 system prompt")
     p_prompt.add_argument("--full", action="store_true", help="完整输出（system+prompt，方便复制）")
     p_prompt.add_argument("--deep", action="store_true", help="深度模式：生成 meta-prompt，让 LLM 做矛盾识别+盲区发现")
+    p_prompt.add_argument("--deep-all", action="store_true", help="批量生成所有关键问题的 deep meta-prompt")
     p_prompt.add_argument("--save", "-s", help="保存到文件")
 
     # ── 简报 ──
@@ -178,6 +180,12 @@ def main():
     p_propose.add_argument("--full", action="store_true", help="完整输出（方便复制）")
     p_propose.add_argument("--save", "-s", help="保存到文件")
 
+    # ── 扫描导入 ──
+    p_scan = sub.add_parser("scan", help="扫描仓库文档，自动识别 review/决策/PoC（中途接入项目用）")
+    p_scan.add_argument("--repo", "-r", help="仓库路径（默认用当前项目的 repo）")
+    p_scan.add_argument("--auto-register", action="store_true", help="自动注册发现的 review 文件")
+    p_scan.add_argument("--onboard", action="store_true", help="生成项目导入 prompt（喂给 LLM 生成项目 YAML）")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -206,6 +214,7 @@ def main():
         "prompt": cmd_prompt,
         "docs": cmd_docs,
         "propose": cmd_propose, "pp": cmd_propose,
+        "scan": cmd_scan,
         "brief": cmd_brief, "br": cmd_brief,
         "review": cmd_review, "rv": cmd_review,
         "decision": cmd_decision, "dec": cmd_decision,

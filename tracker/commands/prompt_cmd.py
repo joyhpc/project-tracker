@@ -38,6 +38,11 @@ def cmd_prompt(args):
         print("💡 使用: pt prompt \"复制上面的问题\" --full")
         return
 
+    # --deep-all 模式：自动生成所有关键问题的 deep meta-prompt
+    if getattr(args, "deep_all", False):
+        _cmd_deep_all(p, flow, args)
+        return
+
     question = args.question
     if not question:
         print('❌ 请输入问题，或使用 --auto 自动生成')
@@ -61,15 +66,17 @@ def cmd_prompt(args):
     if repo:
         save_path = args.save if args.save else None
         if not save_path:
-            # 自动生成文件名：按序号递增
-            prompt_dir = os.path.join(str(repo), "docs", "prompts")
+            # deep 模式保存到 meta/ 子目录
+            is_deep = getattr(args, "deep", False)
+            sub = "meta" if is_deep else ""
+            prompt_dir = os.path.join(str(repo), "docs", "prompts", sub) if sub else os.path.join(str(repo), "docs", "prompts")
             os.makedirs(prompt_dir, exist_ok=True)
             # 找下一个序号
-            existing = [f for f in os.listdir(prompt_dir) if f.endswith("-prompt.md")]
+            existing = [f for f in os.listdir(prompt_dir) if f.endswith("-prompt.md") or f.endswith("-meta.md")]
             next_num = len(existing) + 1
-            # 从问题中提取简短文件名
             slug = _slugify(question)
-            save_path = os.path.join(prompt_dir, f"{next_num:02d}-{slug}-prompt.md")
+            suffix = "meta" if is_deep else "prompt"
+            save_path = os.path.join(prompt_dir, f"{next_num:02d}-{slug}-{suffix}.md")
 
         if not os.path.isabs(save_path):
             save_path = os.path.join(str(repo), save_path)
@@ -88,3 +95,81 @@ def _slugify(text, max_len=30):
     if len(text) > max_len:
         text = text[:max_len].rstrip('-')
     return text or "prompt"
+
+
+def _cmd_deep_all(p, flow, args):
+    """批量生成所有关键问题的 deep meta-prompt"""
+    from ..prompt import generate_deep_prompt, auto_generate_questions
+
+    questions = auto_generate_questions(p, flow)
+
+    # 补充基于 review 的深度问题
+    reviews = p.get("reviews", [])
+    decisions = p.get("decisions", [])
+    pocs = p.get("pocs", [])
+
+    # 从 NO-GO 项生成问题
+    for r in reviews:
+        for v in r.get("verdicts", []):
+            if v["verdict"] in ("NO-GO", "HIGH RISK"):
+                q_text = f"{v['topic']}被判定为{v['verdict']}，如何解决？"
+                if not any(v["topic"][:10] in q.get("question", "") for q in questions):
+                    questions.append({
+                        "priority": "🔴 NO-GO",
+                        "question": q_text,
+                        "why": f"来自 review: {v['verdict']}",
+                    })
+
+    # 从 PoC 生成问题
+    for poc in pocs:
+        if poc.get("status") == "pending":
+            q_text = f"PoC验证项「{poc['title']}」的具体执行方案，红线: {poc.get('metric', '')}"
+            if not any(poc["title"][:8] in q.get("question", "") for q in questions):
+                questions.append({
+                    "priority": "🧪 PoC",
+                    "question": q_text,
+                    "why": f"待验证 PoC",
+                })
+
+    # 去重，限制 5 个
+    seen = set()
+    unique = []
+    for q in questions:
+        key = q["question"][:30]
+        if key not in seen:
+            seen.add(key)
+            unique.append(q)
+    questions = unique[:5]
+
+    if not questions:
+        print("✅ 当前没有需要生成 deep prompt 的问题。")
+        return
+
+    repo = core.get_repo_path(p)
+    if not repo:
+        print("❌ 项目未关联仓库")
+        return
+
+    meta_dir = os.path.join(str(repo), "docs", "prompts", "meta")
+    os.makedirs(meta_dir, exist_ok=True)
+
+    # 清理旧的 meta 文件
+    for f in os.listdir(meta_dir):
+        if f.endswith("-meta.md"):
+            os.remove(os.path.join(meta_dir, f))
+
+    print(f"\n🧠 {p['name']} — 批量生成 {len(questions)} 个 deep meta-prompt\n")
+
+    for i, q in enumerate(questions, 1):
+        result = generate_deep_prompt(q["question"], p, flow)
+        slug = _slugify(q["question"])
+        save_path = os.path.join(meta_dir, f"{i:02d}-{slug}-meta.md")
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(result["prompt"] + "\n")
+        rel = os.path.relpath(save_path, str(repo))
+        print(f"  {i}. {q['priority']} {q['question'][:50]}...")
+        print(f"     📄 {rel}")
+        print()
+
+    print(f"✅ 已生成 {len(questions)} 个 meta-prompt 到 docs/prompts/meta/")
+    print(f"💡 下一步: 将 meta-prompt 喂给 LLM，生成 deep prompt 保存到 docs/prompts/deep/")

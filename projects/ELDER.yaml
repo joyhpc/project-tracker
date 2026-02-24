@@ -294,3 +294,82 @@ log:
   action: done
   task: concept_design
   detail: 方案确定
+reviews:
+- file: docs/feasibility/01-语音延迟-result.md
+  task: null
+  verdicts:
+  - topic: 评估点一：RK3308 本地 VAD 检测延迟和误唤醒率
+    verdict: GO
+  - topic: 评估点二：云端 ASR 识别延迟和准确率
+    verdict: CAUTION
+  - topic: 评估点三：LLM 首 token 延迟
+    verdict: CAUTION
+  - topic: 评估点四：云端 TTS 首帧延迟和自然度
+    verdict: GO
+  - topic: 评估点五：端到端延迟能否控制在 2 秒内
+    verdict: CONDITIONAL GO
+  - topic: 📊 综合判定
+    verdict: CONDITIONAL GO
+  source: super-llm
+- file: docs/feasibility/02-方言识别-result.md
+  task: null
+  verdicts:
+  - topic: 评估点一：主流 ASR 引擎对 5 种方言的识别准确率
+    verdict: CAUTION
+  - topic: 评估点二：老年人语音特征对 ASR 的影响
+    verdict: CAUTION
+  - topic: 评估点三：方言混合普通话的处理策略
+    verdict: CAUTION
+  - topic: 评估点四：端侧语音增强预处理
+    verdict: GO
+  - topic: 📊 综合判定
+    verdict: CONDITIONAL GO
+  source: super-llm
+- file: docs/feasibility/03-eSIM方案-result.md
+  task: null
+  verdicts:
+  - topic: 评估点一：eSIM vs 实体SIM vs 纯WiFi 成本对比
+    verdict: CAUTION
+  - topic: 评估点二：语音数据月均流量消耗
+    verdict: GO
+  - topic: 评估点三：eSIM 供应商选择
+    verdict: GO
+  - topic: 评估点四：首年流量含在售价中的财务模型
+    verdict: GO
+  - topic: 评估点五：断网场景的降级策略
+    verdict: GO
+  - topic: 📊 综合判定
+    verdict: GO
+  source: super-llm
+- file: docs/feasibility/04-LLM引擎-result.md
+  task: null
+  verdicts:
+  - topic: 评估点一：国产 LLM vs GPT-4o-mini 对比
+    verdict: GO
+  - topic: 评估点二：System Prompt 设计
+    verdict: GO
+  - topic: 评估点三：医疗建议红线的技术实现
+    verdict: CAUTION
+  - topic: 评估点四：对话成本估算
+    verdict: GO
+  - topic: 评估点五：对话记录→子女摘要自动化
+    verdict: GO
+  - topic: 📊 综合判定
+    verdict: GO
+  source: super-llm
+- file: docs/feasibility/05-BOM与工业设计-result.md
+  task: null
+  verdicts:
+  - topic: 评估点一：RK3308+Air780E+双麦方案的实际 BOM
+    verdict: GO
+  - topic: 评估点二：木纹注塑+织物网罩的模具和工艺
+    verdict: CAUTION
+  - topic: 评估点三：3W 喇叭在小腔体内的声学表现
+    verdict: CAUTION
+  - topic: 评估点四：大按键+大旋钮的触感设计
+    verdict: GO
+  - topic: 评估点五：整机尺寸和重量
+    verdict: GO
+  - topic: 📊 综合判定
+    verdict: GO
+  source: super-llm
