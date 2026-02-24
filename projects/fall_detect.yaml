@@ -1,0 +1,363 @@
+id: fall_detect
+name: 智能老人跌倒检测报警器
+flow: generic
+created: 2026-02-22 17:05
+repo: /home/hpc/.openclaw/workspace/elderly-fall-detector
+phases:
+- id: CONCEPT
+  name: 概念阶段
+- id: DESIGN
+  name: 设计阶段
+  milestone: M1
+- id: PROTO
+  name: 原型阶段
+  milestone: M2
+- id: TEST
+  name: 测试阶段
+- id: MASS
+  name: 量产阶段
+  milestone: M3
+nodes:
+- id: market_research
+  name: 市场调研
+  type: task
+  phase: CONCEPT
+  owner: 产品经理
+  deliverables:
+  - 市场分析报告
+  status: done
+  started: 2026-02-22 17:05
+  completed: 2026-02-22 17:05
+  note: 市场调研完成:¥300-500空白价位段,手腕式+4G Cat.1+¥299月费模式
+  note_file: docs/concept/market-research.md
+  docs:
+  - path: docs/concept/market-research.md
+    desc: 完成备注
+    added: 2026-02-22 17:05
+- id: concept_design
+  name: 概念设计
+  type: task
+  phase: CONCEPT
+  owner: 系统架构师
+  depends:
+  - market_research
+  deliverables:
+  - 概念设计文档
+  status: done
+  started: 2026-02-22 17:05
+  completed: 2026-02-22 17:05
+  note: 概念设计完成:nRF5340+Air780E+BMI270+气压计三级确认,BOM¥165,毛利44.8%
+  note_file: docs/concept/concept-design.md
+  docs:
+  - path: docs/concept/concept-design.md
+    desc: 完成备注
+    added: 2026-02-22 17:05
+- id: feasibility
+  name: 可行性分析
+  type: task
+  phase: CONCEPT
+  owner: 技术负责人
+  depends:
+  - concept_design
+  deliverables:
+  - 可行性报告
+  critical: true
+  status: in_progress
+  started: 2026-02-22 17:05
+- id: hw_design
+  name: 硬件设计
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  deliverables:
+  - 原理图
+  - PCB
+  gate: 概念设计评审通过
+  depends:
+  - feasibility
+  status: pending
+- id: fw_design
+  name: 固件设计
+  type: task
+  phase: DESIGN
+  owner: 固件工程师
+  deliverables:
+  - 固件架构文档
+  depends:
+  - feasibility
+  status: pending
+- id: mech_design
+  name: 结构设计
+  type: task
+  phase: DESIGN
+  owner: 结构工程师
+  deliverables:
+  - 3D模型
+  depends:
+  - feasibility
+  status: pending
+- id: hw_review
+  name: 硬件评审
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_design
+  deliverables:
+  - 评审报告
+  critical: true
+  reviewer: 技术负责人
+  status: pending
+- id: pcb_layout
+  name: PCB Layout
+  type: task
+  phase: DESIGN
+  owner: PCB工程师
+  depends:
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB文件
+  status: pending
+- id: bom_prep
+  name: BOM整理
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_review
+  deliverables:
+  - BOM清单
+  status: pending
+- id: ms_design
+  name: 设计阶段 里程碑
+  type: milestone
+  phase: DESIGN
+  depends:
+  - fw_design
+  - pcb_layout
+  - bom_prep
+  status: pending
+- id: pcb_fab
+  name: PCB打样
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_layout
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB板
+  status: pending
+- id: component_buy
+  name: 物料采购
+  type: task
+  phase: PROTO
+  owner: 采购
+  depends:
+  - bom_prep
+  deliverables:
+  - 物料
+  status: pending
+- id: smt
+  name: SMT贴片
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_fab
+  - component_buy
+  status: pending
+- id: fw_dev
+  name: 固件开发
+  type: task
+  phase: PROTO
+  owner: 固件工程师
+  depends:
+  - fw_design
+  deliverables:
+  - 固件
+  status: pending
+- id: bringup
+  name: 板级调试
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - smt
+  - fw_dev
+  critical: true
+  status: pending
+- id: ms_proto
+  name: 原型阶段 里程碑
+  type: milestone
+  phase: PROTO
+  depends:
+  - bringup
+  status: pending
+- id: func_test
+  name: 功能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  deliverables:
+  - 测试报告
+  depends:
+  - bringup
+  status: pending
+- id: perf_test
+  name: 性能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - func_test
+  - bringup
+  deliverables:
+  - 性能报告
+  status: pending
+- id: cert_test
+  name: 认证测试
+  type: task
+  phase: TEST
+  owner: 认证工程师
+  depends:
+  - func_test
+  deliverables:
+  - 认证报告
+  gate: 需要送第三方实验室
+  status: pending
+- id: reliability
+  name: 可靠性测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - perf_test
+  deliverables:
+  - 可靠性报告
+  critical: true
+  status: pending
+- id: tooling
+  name: 模具开发
+  type: task
+  phase: MASS
+  owner: 结构工程师
+  deliverables:
+  - 模具
+  gate: 结构设计冻结
+  depends:
+  - reliability
+  status: pending
+- id: pilot_run
+  name: 试产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - tooling
+  deliverables:
+  - 试产报告
+  status: pending
+- id: mass_prod
+  name: 量产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - pilot_run
+  critical: true
+  status: pending
+- id: ms_mass
+  name: 量产阶段 里程碑
+  type: milestone
+  phase: MASS
+  depends:
+  - mass_prod
+  status: pending
+blockers: []
+log:
+- time: 2026-02-22 17:05
+  action: init
+  detail: '项目创建，流程: generic'
+- time: 2026-02-22 17:05
+  action: start
+  task: market_research
+  detail: 市场调研
+- time: 2026-02-22 17:05
+  action: done
+  task: market_research
+  detail: 市场调研完成:¥300-500空白价位段,手腕式+4G Cat.1+¥299月费模式
+- time: 2026-02-22 17:05
+  action: start
+  task: concept_design
+  detail: 概念设计
+- time: 2026-02-22 17:05
+  action: done
+  task: concept_design
+  detail: 概念设计完成:nRF5340+Air780E+BMI270+气压计三级确认,BOM¥165,毛利44.8%
+- time: 2026-02-22 17:05
+  action: start
+  task: feasibility
+  detail: 可行性分析
+reviews:
+- file: docs/feasibility/01-续航可行性-result.md
+  task: feasibility
+  verdicts:
+  - topic: 评估点一：4G Cat.1 模组待机功耗和间歇上报的平均电流
+    verdict: CAUTION
+  - topic: 评估点二：IMU + 气压计持续采样的功耗预算
+    verdict: GO
+  - topic: 评估点三：GPS 定位的功耗峰值及占空比优化策略
+    verdict: CAUTION
+  - topic: 📊 综合判定
+    verdict: CONDITIONAL GO
+  source: super-llm
+- file: docs/feasibility/02-跌倒检测算法-result.md
+  task: feasibility
+  verdicts:
+  - topic: 评估点一：BMI270+BMP390 多传感器融合 vs 纯加速度计的误报率改善
+    verdict: GO
+  - topic: 评估点二：老人日常动作的误触发概率
+    verdict: CAUTION
+  - topic: 评估点三：nRF5340 双核架构能否实时运行轻量 CNN 推理
+    verdict: GO
+  - topic: 📊 综合判定
+    verdict: CONDITIONAL GO
+  source: super-llm
+decisions:
+- id: 1
+  title: GPS按需启动策略
+  source: feasibility-01
+  impact: 基站定位优先,跌倒时才开GPS
+  status: active
+  date: '2026-02-22'
+- id: 2
+  title: 1D-CNN替代阈值法
+  source: feasibility-02
+  impact: 误报率从15%降至3-5%,模型15KB
+  status: active
+  date: '2026-02-22'
+- id: 3
+  title: 静止检测补偿慢跌倒
+  source: feasibility-02
+  impact: 覆盖20-30%慢跌倒漏检
+  status: active
+  date: '2026-02-22'
+pocs:
+- id: 1
+  title: 7天续航
+  metric: nRF5340+Air780E实测续航≥5天
+  status: pending
+  date: '2026-02-22'
+- id: 2
+  title: 跌倒检测灵敏度
+  metric: SisFall数据集灵敏度>95%
+  status: pending
+  date: '2026-02-22'
+- id: 3
+  title: 日常动作误报率
+  metric: 10种动作×20次,误报率<5%
+  status: pending
+  date: '2026-02-22'
