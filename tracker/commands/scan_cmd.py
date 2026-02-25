@@ -44,11 +44,16 @@ def cmd_scan(args):
     if getattr(args, "onboard", False):
         _do_onboard(result)
 
+    # --arch
+    if getattr(args, "arch", False):
+        _do_arch(result)
+
     # 提示下一步
     if not getattr(args, "auto_register", False) and result["reviews"]:
         print("💡 下一步:")
         print("  pt scan --auto-register  — 自动注册所有 review 文件")
         print("  pt scan --onboard        — 生成项目导入 prompt（喂给 LLM 生成项目配置）")
+        print("  pt scan --arch           — 生成项目架构理解 prompt（中途介入第一步）")
 
 
 def _print_scan_result(result: dict):
@@ -131,3 +136,24 @@ def _do_onboard(result: dict):
 
     rel_path = onboard.save_onboard_prompt(repo, prompt_text)
     print(f"\n📄 已保存: {rel_path}")
+
+
+def _do_arch(result: dict):
+    """生成项目架构理解 prompt"""
+    repo = result["repo"]
+    prompt_text = onboard.generate_arch_prompt(repo, result)
+
+    print("\n" + "=" * 60)
+    print("  🏗️  项目架构理解 Prompt（中途介入第一步）")
+    print("=" * 60)
+    print()
+    print(prompt_text)
+
+    # 保存
+    save_path = os.path.join(repo, "docs", "arch-prompt.md")
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(prompt_text + "\n")
+    rel = os.path.relpath(save_path, repo)
+    print(f"\n📄 已保存: {rel}")
+    print("💡 下一步: 将此 prompt 喂给 LLM，输出 PROJECT_STRUCTURE.md，人工确认后存档")

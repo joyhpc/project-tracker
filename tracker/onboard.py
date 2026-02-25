@@ -263,3 +263,141 @@ def save_onboard_prompt(repo_path: str, prompt_text: str) -> str:
     save_path.parent.mkdir(parents=True, exist_ok=True)
     save_path.write_text(prompt_text, encoding="utf-8")
     return os.path.relpath(save_path, repo)
+
+
+# ── 架构理解 Prompt ──────────────────────────────────
+
+def generate_arch_prompt(repo_path: str, scan_result: dict) -> str:
+    """生成项目架构理解 prompt — 中途介入项目时的第一步
+
+    扫描仓库目录结构和文档内容，生成一个 prompt 让 LLM 输出结构化的
+    项目架构理解文档，供人工确认后存档。
+
+    Returns:
+        prompt 文本
+    """
+    repo = Path(repo_path)
+    results = scan_result["files"]
+
+    lines = []
+    lines.append("**角色**：你是一位资深硬件系统架构师，精通多产品线项目的架构分析。")
+    lines.append("")
+    lines.append("## 任务")
+    lines.append("基于以下项目仓库的目录结构和文档内容，输出一份**项目架构理解文档**。")
+    lines.append("这是中途介入项目时的第一步，目的是建立正确的全局理解，避免错误假设。")
+    lines.append("")
+
+    # 目录树（只展示前3层）
+    lines.append("## 仓库目录结构")
+    lines.append("```")
+    dir_tree = _build_dir_tree(repo, max_depth=3)
+    lines.append(dir_tree)
+    lines.append("```")
+    lines.append("")
+
+    # 关键文档内容摘要
+    lines.append("## 关键文档内容")
+    lines.append("")
+
+    # 优先读 README、架构、需求、接口定义等关键文件
+    priority_keywords = ["readme", "架构", "architecture", "需求", "requirement",
+                         "接口", "interface", "差异", "总览", "overview", "dashboard",
+                         "设计说明", "功能需求"]
+    key_files = []
+    other_files = []
+    for r in results:
+        rel = os.path.relpath(r["path"], repo)
+        is_key = any(kw in rel.lower() or kw in r.get("title", "").lower()
+                     for kw in priority_keywords)
+        if is_key:
+            key_files.append(r)
+        else:
+            other_files.append(r)
+
+    # 注入关键文件内容（最多10个，每个最多1500字符）
+    for r in key_files[:10]:
+        rel = os.path.relpath(r["path"], repo)
+        try:
+            content = Path(r["path"]).read_text(encoding="utf-8")
+            if len(content) > 1500:
+                content = content[:1500] + "\n... (截断)"
+            lines.append(f'<file path="{rel}" title="{r.get("title", "")}">')
+            lines.append(content)
+            lines.append("</file>")
+            lines.append("")
+        except Exception:
+            pass
+
+    # 列出其他文件（仅路径和标题）
+    if other_files:
+        lines.append("## 其他文档（仅列出路径）")
+        for r in other_files[:30]:
+            rel = os.path.relpath(r["path"], repo)
+            lines.append(f"- `{rel}` — {r.get('title', '(无标题)')}")
+        if len(other_files) > 30:
+            lines.append(f"- ... 还有 {len(other_files) - 30} 个")
+        lines.append("")
+
+    # 输出要求
+    lines.append("## 输出要求")
+    lines.append("")
+    lines.append("请输出一份 **PROJECT_STRUCTURE.md**，必须包含以下章节：")
+    lines.append("")
+    lines.append("### 1. 产品定位")
+    lines.append("一句话描述这个项目是什么。")
+    lines.append("")
+    lines.append("### 2. 产品线/子系统")
+    lines.append("列出所有独立的产品线或子系统，每个包含：")
+    lines.append("- 名称和缩写")
+    lines.append("- 是独立产品还是共用模块？")
+    lines.append("- 核心硬件（主芯片、连接器等）")
+    lines.append("- 当前状态")
+    lines.append("")
+    lines.append("### 3. 模块关系图")
+    lines.append("用文本描述各子系统/模块之间的关系（共用什么、独立什么、接口是什么）。")
+    lines.append("特别注意：哪些是独立 PCB？哪些共用 PCB？哪些共用固件？")
+    lines.append("")
+    lines.append("### 4. 接口定义")
+    lines.append("列出关键接口（板间连接器、通信协议、电源域）。")
+    lines.append("")
+    lines.append("### 5. 待确认项")
+    lines.append("列出你不确定的地方，标注 `[待确认]`。")
+    lines.append("")
+    lines.append("**关键原则**：")
+    lines.append("- 不确定的就标 `[待确认]`，绝对不要猜")
+    lines.append("- 区分「独立产品」和「共用模块」是最重要的判断")
+    lines.append("- 输出 markdown 格式，可直接保存为 `docs/PROJECT_STRUCTURE.md`")
+
+    return "\n".join(lines)
+
+
+def _build_dir_tree(root: Path, max_depth: int = 3, prefix: str = "") -> str:
+    """生成目录树字符串（只展示目录，不展示文件）"""
+    lines = []
+    if not prefix:
+        lines.append(root.name + "/")
+
+    try:
+        entries = sorted(root.iterdir())
+    except PermissionError:
+        return "\n".join(lines)
+
+    dirs = [e for e in entries if e.is_dir() and e.name not in EXCLUDE_DIRS
+            and not e.name.startswith(".")]
+    files_md = [e for e in entries if e.is_file() and e.suffix == ".md"]
+
+    items = dirs + files_md
+    for i, item in enumerate(items):
+        is_last = (i == len(items) - 1)
+        connector = "└── " if is_last else "├── "
+        if item.is_dir():
+            lines.append(f"{prefix}{connector}{item.name}/")
+            if max_depth > 1:
+                extension = "    " if is_last else "│   "
+                subtree = _build_dir_tree(item, max_depth - 1, prefix + extension)
+                if subtree:
+                    lines.append(subtree)
+        else:
+            lines.append(f"{prefix}{connector}{item.name}")
+
+    return "\n".join(lines)

@@ -185,6 +185,7 @@ def main():
     p_scan.add_argument("--repo", "-r", help="仓库路径（默认用当前项目的 repo）")
     p_scan.add_argument("--auto-register", action="store_true", help="自动注册发现的 review 文件")
     p_scan.add_argument("--onboard", action="store_true", help="生成项目导入 prompt（喂给 LLM 生成项目 YAML）")
+    p_scan.add_argument("--arch", action="store_true", help="生成项目架构理解 prompt（中途介入第一步）")
 
     # ── 路由 ──
     args = parser.parse_args()
