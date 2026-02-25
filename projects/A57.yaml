@@ -1123,6 +1123,59 @@ nodes:
   - sw_review
   reviewer: 软件主管
   status: pending
+- id: fpga_dev.mipi_3g5_verify
+  name: 3.5Gbps/lane MIPI DPHY 8通道验证
+  type: task
+  phase: SW_DEV
+  parent: fpga_dev
+  status: in_progress
+  created: 2026-02-25 11:33
+  started: 2026-02-25 11:33
+- id: fpga_dev.mipi_3g5_verify.adapter_design
+  name: A57-DCU↔A39-Sony解码板 转接板设计
+  type: task
+  phase: SW_DEV
+  parent: fpga_dev.mipi_3g5_verify
+  status: in_progress
+  created: 2026-02-25 11:33
+  docs:
+  - path: CAMRX/02_Architecture/01_Interface/Main_to_Des_Interface.md
+    desc: CAMRX MAIN↔DES接口定义(PCIE X16 164PIN, MIPI pinout)
+    added: 2026-02-25 11:34
+  - path: CAMRX/CAMRX_MAIN/camrx to des.md
+    desc: CAMRX主板到解码板信号定义(MIPI/QSPI/I2C/PoC)
+    added: 2026-02-25 11:34
+  - path: CAMRX/CAMRX_MAIN/dcurx to des.md
+    desc: DCURX主板到解码板信号定义(OLDI/eDP/MIPI)
+    added: 2026-02-25 11:34
+  started: 2026-02-25 11:34
+- id: fpga_dev.mipi_3g5_verify.topo_bringup
+  name: 3.5Gbps验证拓扑搭建与调试
+  type: task
+  phase: SW_DEV
+  parent: fpga_dev.mipi_3g5_verify
+  status: pending
+  created: 2026-02-25 11:33
+  depends:
+  - fpga_dev.mipi_3g5_verify.adapter_design
+- id: fpga_dev.mipi_3g5_verify.si_test
+  name: 8通道信号完整性测试
+  type: task
+  phase: SW_DEV
+  parent: fpga_dev.mipi_3g5_verify
+  status: pending
+  created: 2026-02-25 11:33
+  depends:
+  - fpga_dev.mipi_3g5_verify.topo_bringup
+- id: fpga_dev.mipi_3g5_verify.verdict
+  name: 验证结论与GO/NO-GO判定
+  type: task
+  phase: SW_DEV
+  parent: fpga_dev.mipi_3g5_verify
+  status: pending
+  created: 2026-02-25 11:34
+  depends:
+  - fpga_dev.mipi_3g5_verify.si_test
 blockers: []
 log:
 - time: 2026-02-24 22:52
@@ -1397,6 +1450,42 @@ log:
   action: doc_attach
   task: fpga_dev
   detail: '关联文档: CAMRX/01_Requirements/3.5Gbps DPHY FPGA寻样.md'
+- time: 2026-02-25 11:33
+  action: subtask_add
+  task: fpga_dev.mipi_3g5_verify
+  detail: 3.5Gbps/lane MIPI DPHY 8通道验证
+- time: 2026-02-25 11:33
+  action: subtask_add
+  task: fpga_dev.mipi_3g5_verify.adapter_design
+  detail: A57-DCU↔A39-Sony解码板 转接板设计
+- time: 2026-02-25 11:33
+  action: subtask_add
+  task: fpga_dev.mipi_3g5_verify.topo_bringup
+  detail: 3.5Gbps验证拓扑搭建与调试
+- time: 2026-02-25 11:33
+  action: subtask_add
+  task: fpga_dev.mipi_3g5_verify.si_test
+  detail: 8通道信号完整性测试
+- time: 2026-02-25 11:34
+  action: subtask_add
+  task: fpga_dev.mipi_3g5_verify.verdict
+  detail: 验证结论与GO/NO-GO判定
+- time: 2026-02-25 11:34
+  action: doc_attach
+  task: fpga_dev.mipi_3g5_verify.adapter_design
+  detail: '关联文档: CAMRX/02_Architecture/01_Interface/Main_to_Des_Interface.md'
+- time: 2026-02-25 11:34
+  action: doc_attach
+  task: fpga_dev.mipi_3g5_verify.adapter_design
+  detail: '关联文档: CAMRX/CAMRX_MAIN/camrx to des.md'
+- time: 2026-02-25 11:34
+  action: doc_attach
+  task: fpga_dev.mipi_3g5_verify.adapter_design
+  detail: '关联文档: CAMRX/CAMRX_MAIN/dcurx to des.md'
+- time: 2026-02-25 11:34
+  action: start
+  task: fpga_dev.mipi_3g5_verify.adapter_design
+  detail: A57-DCU↔A39-Sony解码板 转接板设计
 reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   task: null
