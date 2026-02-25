@@ -91,6 +91,22 @@ def cmd_status(args):
     # 子任务模板提示：in_progress 且未展开的任务
     _print_template_hints(p)
 
+    # 完整性告警
+    warnings = info.get("warnings", [])
+    if warnings:
+        critical = [w for w in warnings if w["severity"] == "critical"]
+        errors = [w for w in warnings if w["severity"] == "error"]
+        warns = [w for w in warnings if w["severity"] == "warning"]
+        print(f"\n⚠️  完整性检查 ({len(warnings)} 个问题):")
+        for w in critical:
+            print(f"   🔴 {w['message']}")
+        for w in errors:
+            print(f"   ❌ {w['message']}")
+        for w in warns[:3]:
+            print(f"   ⚠️  {w['message']}")
+        if len(warns) > 3:
+            print(f"   ... 还有 {len(warns)-3} 个警告")
+
     print()
 
 

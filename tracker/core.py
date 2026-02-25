@@ -166,6 +166,9 @@ def get_status(project: dict) -> dict:
     done_count = sum(1 for n in nodes if n.get("status") == "done")
     active_blockers = [b for b in project.get("blockers", []) if not b.get("resolved")]
 
+    # 完整性检查
+    warnings = check_integrity(project, cpm)
+
     return {
         "project": project,
         "classified": classified,
@@ -173,7 +176,80 @@ def get_status(project: dict) -> dict:
         "blockers": active_blockers,
         "total": total,
         "done_count": done_count,
+        "warnings": warnings,
     }
+
+
+def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
+    """项目完整性检查 — 检测结构性问题
+
+    检查项:
+    1. 孤立终点: 非里程碑节点没有后继，且不是项目最终节点
+    2. 悬空依赖: depends 引用了不存在的节点
+    3. 里程碑缺上游: 里程碑节点没有 depends
+    4. 关键路径断裂: 关键路径上有孤立终点（最严重）
+    """
+    nodes = project.get("nodes", [])
+    node_ids = {n["id"] for n in nodes}
+    nodes_map = {n["id"]: n for n in nodes}
+
+    # 构建后继表
+    successors = {n["id"]: [] for n in nodes}
+    for n in nodes:
+        for dep in n.get("depends", []):
+            if dep in successors:
+                successors[dep].append(n["id"])
+
+    # 找项目终点（最后阶段的里程碑，或最大 EF 的节点）
+    phases = project.get("phases", [])
+    last_phase_id = phases[-1]["id"] if phases else None
+    final_milestones = {n["id"] for n in nodes
+                        if n.get("type") == "milestone"
+                        and n.get("phase") == last_phase_id}
+
+    warnings = []
+
+    # 1. 孤立终点检测
+    for n in nodes:
+        nid = n["id"]
+        if not successors[nid] and nid not in final_milestones:
+            # 没有后继，且不是最终里程碑
+            if n.get("type") == "milestone":
+                continue  # 中间里程碑允许无后继（阶段门控）
+            if n.get("status") == "done":
+                continue  # 已完成的孤立节点不告警
+            severity = "critical" if (cpm and cpm.get("nodes", {}).get(nid, {}).get("critical")) else "warning"
+            warnings.append({
+                "type": "orphan_terminal",
+                "severity": severity,
+                "node": nid,
+                "name": n.get("name", ""),
+                "message": f"[{nid}] {n.get('name','')} 没有后继节点 — 可能未接入下游流程",
+            })
+
+    # 2. 悬空依赖检测
+    for n in nodes:
+        for dep in n.get("depends", []):
+            if dep not in node_ids:
+                warnings.append({
+                    "type": "dangling_dep",
+                    "severity": "error",
+                    "node": n["id"],
+                    "dep": dep,
+                    "message": f"[{n['id']}] 依赖 [{dep}] 不存在",
+                })
+
+    # 3. 里程碑缺上游
+    for n in nodes:
+        if n.get("type") == "milestone" and not n.get("depends"):
+            warnings.append({
+                "type": "milestone_no_deps",
+                "severity": "warning",
+                "node": n["id"],
+                "message": f"里程碑 [{n['id']}] 没有上游依赖",
+            })
+
+    return warnings
 
 
 def start_task(project_id: str, task_id: str) -> dict:
