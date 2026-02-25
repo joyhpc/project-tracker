@@ -9,6 +9,7 @@
 """
 import os
 from pathlib import Path
+from . import core
 from .engine import compute_cpm, build_graph, classify_tasks, count_downstream
 from .risk import assess_project_risk
 from .knowledge import retrieve_context, build_knowledge_base, BM25
@@ -380,12 +381,7 @@ def generate_deep_prompt(question, project, flow):
         all_verdicts = []
         for r in reviews:
             fname = os.path.basename(r["file"]).replace("-result.md", "")
-            raw_verdicts = r.get("verdicts", [])
-            # 兼容两种格式: list[{verdict, topic}] 或 dict{verdict: count}
-            if isinstance(raw_verdicts, dict):
-                verdict_list = [{"verdict": k, "topic": "(scan)"} for k, cnt in raw_verdicts.items() for _ in range(cnt)]
-            else:
-                verdict_list = raw_verdicts
+            verdict_list = core.normalize_verdicts(r.get("verdicts", []))
             for v in verdict_list:
                 icon = {"GO": "🟢", "CAUTION": "🟡", "NO-GO": "🔴",
                         "HIGH RISK": "🔴", "CONDITIONAL GO": "🟡",

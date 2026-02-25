@@ -3,6 +3,23 @@ import yaml
 import copy
 from datetime import datetime
 from pathlib import Path
+
+
+# ── 数据格式工具 ──────────────────────────────────────
+
+def normalize_verdicts(raw) -> list[dict]:
+    """统一 verdicts 格式为 list[{verdict, topic}]
+
+    兼容两种来源：
+    - 标准格式: list[{"verdict": "GO", "topic": "..."}]
+    - 旧版 scan 格式: dict{"GO": 1, "CAUTION": 2}
+
+    所有消费 verdicts 的代码应通过此函数获取数据。
+    """
+    if isinstance(raw, dict):
+        return [{"verdict": k, "topic": f"(legacy, {cnt}次)"}
+                for k, cnt in raw.items() for _ in range(cnt)]
+    return raw or []
 from . import flow as flowmod
 
 PROJECTS_DIR = Path(__file__).parent.parent / "projects"

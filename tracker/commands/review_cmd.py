@@ -132,12 +132,6 @@ def _extract_verdicts(content):
     lines = content.split("\n")
 
 
-def _normalize_verdicts(raw):
-    """兼容两种 verdicts 格式: list[{verdict,topic}] 或 dict{verdict:count}"""
-    if isinstance(raw, dict):
-        return [{"verdict": k, "topic": "(scan)"} for k, cnt in raw.items() for _ in range(cnt)]
-    return raw or []
-
     for i, line in enumerate(lines):
         # 匹配 "结论：GO" / "结论：【GO】" / "结论：CAUTION（...）" 等
         m = re.search(r'结论[：:]\s*[【\[]?\s*(GO|CAUTION|NO-GO|NO GO|HIGH RISK|CONDITIONAL GO|HIGHLY FEASIBLE)', line, re.IGNORECASE)
@@ -186,7 +180,7 @@ def _analyze(args):
         for r in reviews:
             fname = os.path.basename(r["file"])
             print(f"\n📄 {fname}")
-            for v in _normalize_verdicts(r.get("verdicts", [])):
+            for v in core.normalize_verdicts(r.get("verdicts", [])):
                 icon = {"GO": "🟢", "CAUTION": "🟡", "NO-GO": "🔴",
                          "HIGH RISK": "🔴", "CONDITIONAL GO": "🟡",
                          "HIGHLY FEASIBLE": "🟢"}.get(v["verdict"], "⚪")
@@ -252,12 +246,7 @@ def _list_reviews(args):
 
         print(f"\n📋 {p['name']} — 已收录回复 ({len(reviews)})\n")
         for r in reviews:
-            raw_verdicts = r.get("verdicts", [])
-            # 兼容两种格式: list[{verdict, topic}] 或 dict{verdict: count}
-            if isinstance(raw_verdicts, dict):
-                verdict_list = [{"verdict": k, "topic": "(scan)"} for k, cnt in raw_verdicts.items() for _ in range(cnt)]
-            else:
-                verdict_list = raw_verdicts
+            verdict_list = core.normalize_verdicts(r.get("verdicts", []))
             go = sum(1 for v in verdict_list if v["verdict"] in ("GO", "HIGHLY FEASIBLE"))
             caution = sum(1 for v in verdict_list if v["verdict"] in ("CAUTION", "CONDITIONAL GO"))
             nogo = sum(1 for v in verdict_list if v["verdict"] in ("NO-GO", "HIGH RISK"))
@@ -302,7 +291,7 @@ def _report(args):
         for i, r in enumerate(reviews, 1):
             fname = os.path.basename(r["file"]).replace("-result.md", "")
             unrev = " ⚠️" if r.get("reviewed") is False else ""
-            for v in _normalize_verdicts(r.get("verdicts", [])):
+            for v in core.normalize_verdicts(r.get("verdicts", [])):
                 if v["topic"].startswith("📊"):
                     continue
                 icon = {"GO": "🟢", "CAUTION": "🟡", "NO-GO": "🔴",
@@ -318,7 +307,7 @@ def _report(args):
 
         # 综合判定
         for r in reviews:
-            for v in _normalize_verdicts(r.get("verdicts", [])):
+            for v in core.normalize_verdicts(r.get("verdicts", [])):
                 if v["topic"].startswith("📊"):
                     fname = os.path.basename(r["file"]).replace("-result.md", "")
                     lines.append(f"- **{fname}** 综合判定：{v['verdict']}")
