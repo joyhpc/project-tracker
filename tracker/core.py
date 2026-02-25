@@ -337,36 +337,28 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
                     "message": f"[{n['id']}] → [{d}] 冗余依赖（已被其他依赖路径覆盖）",
                 })
 
-    # 8. 汇聚节点缺依赖检测（硬件调试/联调类节点应同时依赖硬件+固件）
-    #    通过关键词匹配识别"需要多输入"的节点
-    convergence_keywords = {
-        "调试": ["smt", "贴片", "fpga", "mcu", "固件"],
-        "bringup": ["smt", "贴片", "fpga", "mcu", "固件"],
-        "联调": ["硬件", "软件", "fpga", "mcu", "app"],
-        "integration": ["硬件", "软件", "fpga", "mcu", "app"],
-    }
+    # 8. 粗粒度调试节点提示（可展开为分层子任务）
+    #    调试/bringup 类节点如果没有子任务展开，提示可以细化
+    bringup_keywords = ["调试", "bringup", "bring-up", "bring_up"]
     for n in nodes:
         if n.get("status") == "done":
             continue
         nid = n["id"]
         name_lower = (n.get("name", "") + " " + nid).lower()
-        for keyword, expected_inputs in convergence_keywords.items():
-            if keyword in name_lower:
-                deps = n.get("depends", [])
-                dep_names = " ".join(
-                    (nodes_map.get(d, {}).get("name", "") + " " + d).lower()
-                    for d in deps
-                )
-                has_hw = any(k in dep_names for k in ["smt", "贴片", "pcb", "pcba", "bringup"])
-                has_fw = any(k in dep_names for k in ["fpga", "mcu", "固件", "firmware"])
-                if ("调试" in keyword or "bringup" in keyword) and has_hw and not has_fw:
-                    warnings.append({
-                        "type": "missing_convergence_dep",
-                        "severity": "warning",
-                        "node": nid,
-                        "message": f"[{nid}] {n.get('name','')} 有硬件依赖但缺固件依赖 — 调试需要固件才能运行",
-                    })
-                break
+        is_bringup = any(k in name_lower for k in bringup_keywords)
+        if not is_bringup:
+            continue
+        # 检查是否已有子任务展开
+        has_children = any(
+            cn["id"].startswith(nid + ".") for cn in nodes if cn["id"] != nid
+        )
+        if not has_children:
+            warnings.append({
+                "type": "coarse_bringup",
+                "severity": "info",
+                "node": nid,
+                "message": f"[{nid}] {n.get('name','')} 是粗粒度调试节点 — 可用 pt sub-load {nid} board_bringup 展开为分层调试",
+            })
 
     return warnings
 
