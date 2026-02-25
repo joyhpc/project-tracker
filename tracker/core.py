@@ -187,37 +187,45 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
     1. 孤立终点: 非里程碑节点没有后继，且不是项目最终节点
     2. 悬空依赖: depends 引用了不存在的节点
     3. 里程碑缺上游: 里程碑节点没有 depends
-    4. 关键路径断裂: 关键路径上有孤立终点（最严重）
+    4. 反向跨阶段依赖: 前阶段节点依赖后阶段节点
+    5. 重复节点ID
+    6. 完全孤立节点: 无前驱也无后继（非首阶段）
     """
     nodes = project.get("nodes", [])
     node_ids = {n["id"] for n in nodes}
     nodes_map = {n["id"]: n for n in nodes}
+    phases = project.get("phases", [])
+    phase_order = {ph["id"]: i for i, ph in enumerate(phases)}
+    last_phase_id = phases[-1]["id"] if phases else None
+    first_phase_id = phases[0]["id"] if phases else None
 
-    # 构建后继表
+    # 构建前驱/后继表
     successors = {n["id"]: [] for n in nodes}
+    predecessors = {n["id"]: [] for n in nodes}
     for n in nodes:
         for dep in n.get("depends", []):
             if dep in successors:
                 successors[dep].append(n["id"])
+            if dep in predecessors:
+                predecessors[n["id"]].append(dep)
 
-    # 找项目终点（最后阶段的里程碑，或最大 EF 的节点）
-    phases = project.get("phases", [])
-    last_phase_id = phases[-1]["id"] if phases else None
     final_milestones = {n["id"] for n in nodes
                         if n.get("type") == "milestone"
                         and n.get("phase") == last_phase_id}
+    # 最后阶段的所有节点都是合法终点
+    final_phase_nodes = {n["id"] for n in nodes
+                         if n.get("phase") == last_phase_id}
 
     warnings = []
 
     # 1. 孤立终点检测
     for n in nodes:
         nid = n["id"]
-        if not successors[nid] and nid not in final_milestones:
-            # 没有后继，且不是最终里程碑
+        if not successors[nid] and nid not in final_milestones and nid not in final_phase_nodes:
             if n.get("type") == "milestone":
-                continue  # 中间里程碑允许无后继（阶段门控）
+                continue
             if n.get("status") == "done":
-                continue  # 已完成的孤立节点不告警
+                continue
             severity = "critical" if (cpm and cpm.get("nodes", {}).get(nid, {}).get("critical")) else "warning"
             warnings.append({
                 "type": "orphan_terminal",
@@ -247,6 +255,49 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
                 "severity": "warning",
                 "node": n["id"],
                 "message": f"里程碑 [{n['id']}] 没有上游依赖",
+            })
+
+    # 4. 反向跨阶段依赖
+    for n in nodes:
+        n_order = phase_order.get(n.get("phase", ""), -1)
+        if n_order < 0:
+            continue
+        for dep in n.get("depends", []):
+            dep_node = nodes_map.get(dep)
+            if dep_node:
+                dep_order = phase_order.get(dep_node.get("phase", ""), -1)
+                if dep_order > n_order:
+                    warnings.append({
+                        "type": "reverse_phase_dep",
+                        "severity": "error",
+                        "node": n["id"],
+                        "dep": dep,
+                        "message": f"[{n['id']}]({n.get('phase','')}) 依赖后阶段 [{dep}]({dep_node.get('phase','')})",
+                    })
+
+    # 5. 重复节点ID
+    from collections import Counter
+    id_counts = Counter(n["id"] for n in nodes)
+    for nid, cnt in id_counts.items():
+        if cnt > 1:
+            warnings.append({
+                "type": "duplicate_id",
+                "severity": "error",
+                "node": nid,
+                "message": f"[{nid}] 节点ID重复 ({cnt}次)",
+            })
+
+    # 6. 完全孤立节点（无前驱也无后继，非首阶段）
+    for n in nodes:
+        nid = n["id"]
+        if (not predecessors[nid] and not successors[nid]
+                and n.get("phase") != first_phase_id
+                and n.get("status") != "done"):
+            warnings.append({
+                "type": "isolated_node",
+                "severity": "warning",
+                "node": nid,
+                "message": f"[{nid}] {n.get('name','')} 完全孤立（无前驱无后继）",
             })
 
     return warnings

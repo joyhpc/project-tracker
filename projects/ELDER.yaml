@@ -232,6 +232,7 @@ nodes:
   owner: 测试工程师
   depends:
   - perf_test
+  - cert_test
   deliverables:
   - 可靠性报告
   critical: true
