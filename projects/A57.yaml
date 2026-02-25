@@ -1148,6 +1148,9 @@ nodes:
   - path: CAMRX/CAMRX_MAIN/dcurx to des.md
     desc: DCURX主板到解码板信号定义(OLDI/eDP/MIPI)
     added: 2026-02-25 11:34
+  - path: CAMRX/02_Architecture/01_Interface/A39_CXD_INTERFACE_CONSTRAINT.json
+    desc: A39 Sony CXD4984解码板完整接口约束(BTB 2x120pin, MIPI/I2C/SPI/PoC pinout)
+    added: 2026-02-25 12:55
   started: 2026-02-25 11:34
 - id: fpga_dev.mipi_3g5_verify.topo_bringup
   name: 3.5Gbps验证拓扑搭建与调试
@@ -1486,6 +1489,10 @@ log:
   action: start
   task: fpga_dev.mipi_3g5_verify.adapter_design
   detail: A57-DCU↔A39-Sony解码板 转接板设计
+- time: 2026-02-25 12:55
+  action: doc_attach
+  task: fpga_dev.mipi_3g5_verify.adapter_design
+  detail: '关联文档: CAMRX/02_Architecture/01_Interface/A39_CXD_INTERFACE_CONSTRAINT.json'
 reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   task: null
