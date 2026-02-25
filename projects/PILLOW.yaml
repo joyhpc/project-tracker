@@ -380,6 +380,9 @@ log:
   action: start
   task: hw_design
   detail: 硬件设计
+- time: 2026-02-25 21:36
+  action: note
+  detail: 'pengzi明确: 第一版只做1-50Hz振动, 不做音乐/高频声场。大幅简化产品复杂度。所有之前的决策(A-B-A + D1-D4)需要重新确认。'
 reviews:
 - file: docs/feasibility/03-分体架构工程可行性-result.md
   task: feasibility
@@ -447,29 +450,41 @@ reviews:
   source: super-llm
 decisions:
 - id: 1
-  title: 枕端微型有源化
-  source: feasibility-03
-  impact: BOM+¥4-6,解决EMC干扰
+  title: Gen1只做1-50Hz振动,不做音乐/声场/PVDF
+  source: pengzi-2026-02-25
+  impact: 砍掉喇叭/DSP/声学腔体/音频DAC/PVDF,BOM大幅下降
   status: active
-  date: '2026-02-22'
+  date: '2026-02-25'
 - id: 2
-  title: 废弃硅胶导音管,改双色注塑微音腔
-  source: feasibility-02
-  impact: 声学传输效率从-12dB改善到-3dB
+  title: 目标用户:高压精英(非重度失眠者)
+  source: pengzi-2026-02-25
+  impact: 卖减压体验不卖疗效,降低退货风险
   status: active
-  date: '2026-02-22'
+  date: '2026-02-25'
 - id: 3
-  title: Poron替代Sorbothane
-  source: feasibility-01,04
-  impact: 阻尼垫成本降75%
+  title: 体验定位:沉浸减压舱(过程爽感)
+  source: pengzi-2026-02-25
+  impact: 交付物是减压体验而非入睡结果
   status: active
-  date: '2026-02-22'
+  date: '2026-02-25'
 - id: 4
-  title: Gen1放弃偶极子DSP,改姿态闭环+单侧近场
-  source: feasibility-02
-  impact: 降低声学复杂度,侧睡不破坏声场
+  title: 定价¥699-999
+  source: pengzi-2026-02-25
+  impact: 砍声场后BOM下降,定价下调匹配
   status: active
-  date: '2026-02-22'
+  date: '2026-02-25'
+- id: 5
+  title: PoC阶段用Sorbothane(不用Poron)
+  source: pengzi-2026-02-25
+  impact: 优先保证PoC成功率,量产再优化成本
+  status: active
+  date: '2026-02-25'
+- id: 6
+  title: 作废:枕端有源化/导音管微音腔/偶极子DSP/姿态闭环
+  source: pengzi-2026-02-25
+  impact: 大幅简化,Gen1纯振动
+  status: active
+  date: '2026-02-25'
 pocs:
 - id: 1
   title: 体感舒适度
