@@ -1193,7 +1193,6 @@ nodes:
   owner: 硬件工程师
   days: 5
   depends:
-  - fpga_dev.mipi_3g5_verify.verdict
   - fpga_dev.mipi_3g5_verify
   status: pending
   deliverables:
@@ -1259,6 +1258,8 @@ nodes:
   days: 5
   depends:
   - camrx_smt
+  - fpga_dev
+  - mcu_dev
   status: pending
 blockers: []
 log:

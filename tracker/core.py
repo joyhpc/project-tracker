@@ -257,7 +257,9 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
                 "message": f"里程碑 [{n['id']}] 没有上游依赖",
             })
 
-    # 4. 反向跨阶段依赖
+    # 4. 反向跨阶段依赖（前阶段节点依赖后阶段节点）
+    #    注意：阶段是管理视角的线性排列，实际工程中并行阶段（如制样+软件开发）
+    #    的跨阶段依赖是合理的。标记为 info 供人工判断，不作为 error。
     for n in nodes:
         n_order = phase_order.get(n.get("phase", ""), -1)
         if n_order < 0:
@@ -269,7 +271,7 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
                 if dep_order > n_order:
                     warnings.append({
                         "type": "reverse_phase_dep",
-                        "severity": "error",
+                        "severity": "info",
                         "node": n["id"],
                         "dep": dep,
                         "message": f"[{n['id']}]({n.get('phase','')}) 依赖后阶段 [{dep}]({dep_node.get('phase','')})",
@@ -299,6 +301,72 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
                 "node": nid,
                 "message": f"[{nid}] {n.get('name','')} 完全孤立（无前驱无后继）",
             })
+
+    # 7. 冗余依赖（A 依赖 B 和 C，但 C 已经依赖 B，则 A→B 冗余）
+    for n in nodes:
+        deps = n.get("depends", [])
+        if len(deps) < 2:
+            continue
+        dep_set = set(deps)
+        # 对每个依赖，检查是否被其他依赖的传递闭包覆盖
+        for d in deps:
+            # BFS: 从其他依赖出发，看能否到达 d
+            other_deps = dep_set - {d}
+            visited = set()
+            queue = list(other_deps)
+            reachable = False
+            while queue:
+                cur = queue.pop(0)
+                if cur == d:
+                    reachable = True
+                    break
+                if cur in visited:
+                    continue
+                visited.add(cur)
+                cur_node = nodes_map.get(cur)
+                if cur_node:
+                    for cd in cur_node.get("depends", []):
+                        if cd not in visited:
+                            queue.append(cd)
+            if reachable:
+                warnings.append({
+                    "type": "redundant_dep",
+                    "severity": "info",
+                    "node": n["id"],
+                    "dep": d,
+                    "message": f"[{n['id']}] → [{d}] 冗余依赖（已被其他依赖路径覆盖）",
+                })
+
+    # 8. 汇聚节点缺依赖检测（硬件调试/联调类节点应同时依赖硬件+固件）
+    #    通过关键词匹配识别"需要多输入"的节点
+    convergence_keywords = {
+        "调试": ["smt", "贴片", "fpga", "mcu", "固件"],
+        "bringup": ["smt", "贴片", "fpga", "mcu", "固件"],
+        "联调": ["硬件", "软件", "fpga", "mcu", "app"],
+        "integration": ["硬件", "软件", "fpga", "mcu", "app"],
+    }
+    for n in nodes:
+        if n.get("status") == "done":
+            continue
+        nid = n["id"]
+        name_lower = (n.get("name", "") + " " + nid).lower()
+        for keyword, expected_inputs in convergence_keywords.items():
+            if keyword in name_lower:
+                deps = n.get("depends", [])
+                dep_names = " ".join(
+                    (nodes_map.get(d, {}).get("name", "") + " " + d).lower()
+                    for d in deps
+                )
+                has_hw = any(k in dep_names for k in ["smt", "贴片", "pcb", "pcba", "bringup"])
+                has_fw = any(k in dep_names for k in ["fpga", "mcu", "固件", "firmware"])
+                if ("调试" in keyword or "bringup" in keyword) and has_hw and not has_fw:
+                    warnings.append({
+                        "type": "missing_convergence_dep",
+                        "severity": "warning",
+                        "node": nid,
+                        "message": f"[{nid}] {n.get('name','')} 有硬件依赖但缺固件依赖 — 调试需要固件才能运行",
+                    })
+                break
 
     return warnings
 

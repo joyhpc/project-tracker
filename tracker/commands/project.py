@@ -97,7 +97,9 @@ def cmd_status(args):
         critical = [w for w in warnings if w["severity"] == "critical"]
         errors = [w for w in warnings if w["severity"] == "error"]
         warns = [w for w in warnings if w["severity"] == "warning"]
-        print(f"\n⚠️  完整性检查 ({len(warnings)} 个问题):")
+        infos = [w for w in warnings if w["severity"] == "info"]
+        non_info = critical + errors + warns
+        print(f"\n⚠️  完整性检查 ({len(non_info)} 个问题{f', {len(infos)} 个建议' if infos else ''}):")
         for w in critical:
             print(f"   🔴 {w['message']}")
         for w in errors:
@@ -106,6 +108,10 @@ def cmd_status(args):
             print(f"   ⚠️  {w['message']}")
         if len(warns) > 3:
             print(f"   ... 还有 {len(warns)-3} 个警告")
+        for w in infos[:3]:
+            print(f"   💡 {w['message']}")
+        if len(infos) > 3:
+            print(f"   ... 还有 {len(infos)-3} 个建议")
 
     print()
 
