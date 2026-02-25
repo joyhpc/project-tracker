@@ -14,6 +14,7 @@ from .commands.decision_cmd import cmd_decision
 from .commands.poc_cmd import cmd_poc
 from .commands.propose_cmd import cmd_propose
 from .commands.scan_cmd import cmd_scan
+from .commands.visual_cmd import cmd_visual
 
 
 def main():
@@ -187,6 +188,11 @@ def main():
     p_scan.add_argument("--onboard", action="store_true", help="生成项目导入 prompt（喂给 LLM 生成项目 YAML）")
     p_scan.add_argument("--arch", action="store_true", help="生成项目架构理解 prompt（中途介入第一步）")
 
+    # ── 可视化 ──
+    p_vis = sub.add_parser("visual", aliases=["vis", "v"], help="生成项目进度可视化图")
+    p_vis.add_argument("--output", "-o", default="/tmp", help="输出目录 (默认 /tmp)")
+    p_vis.add_argument("--no-png", action="store_true", help="只生成 HTML，不截图")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -216,6 +222,7 @@ def main():
         "docs": cmd_docs,
         "propose": cmd_propose, "pp": cmd_propose,
         "scan": cmd_scan,
+        "visual": cmd_visual, "vis": cmd_visual, "v": cmd_visual,
         "brief": cmd_brief, "br": cmd_brief,
         "review": cmd_review, "rv": cmd_review,
         "decision": cmd_decision, "dec": cmd_decision,
