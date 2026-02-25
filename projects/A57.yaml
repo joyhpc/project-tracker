@@ -758,6 +758,7 @@ nodes:
   - mcu_review
   - fpga_review
   - pcba_test
+  - camrx_bringup
   status: pending
 - id: dev_selftest
   name: 开发自测
