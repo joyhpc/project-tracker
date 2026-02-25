@@ -601,8 +601,50 @@ def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> 
             if task.get("description"):
                 sub_node["description"] = task["description"]
 
+            # 处理外部依赖提示（external_depends_hint）
+            hints = task.get("external_depends_hint", [])
+            if hints:
+                sub_node["_external_hints"] = hints
+
             p["nodes"].append(sub_node)
             count += 1
+
+    # ── 外部依赖自动匹配 ──
+    ext_dep_suggestions = []
+    all_node_ids = {n["id"] for n in p["nodes"]}
+    for n in p["nodes"]:
+        if n.get("parent") != parent_id:
+            continue
+        hints = n.pop("_external_hints", [])
+        for hint in hints:
+            import fnmatch
+            pattern = hint["pattern"]
+            matched_nodes = [
+                nid for nid in all_node_ids
+                if fnmatch.fnmatch(nid, pattern)
+                and not nid.startswith(parent_id + ".")  # 排除自己的子任务
+                and nid != parent_id
+            ]
+            if matched_nodes and hint.get("required"):
+                # 自动添加外部依赖
+                existing = set(n.get("depends", []))
+                for mn in matched_nodes:
+                    if mn not in existing:
+                        n.setdefault("depends", []).append(mn)
+                        ext_dep_suggestions.append({
+                            "subtask": n["id"],
+                            "external_dep": mn,
+                            "reason": hint["reason"],
+                            "auto_added": True,
+                        })
+            elif matched_nodes and not hint.get("required"):
+                for mn in matched_nodes:
+                    ext_dep_suggestions.append({
+                        "subtask": n["id"],
+                        "external_dep": mn,
+                        "reason": hint["reason"],
+                        "auto_added": False,
+                    })
 
     if count > 0:
         # ── 边重连（Rewire）──
@@ -663,7 +705,8 @@ def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> 
     })
     _save(p)
     return {"loaded": count, "template": template_id, "parent": parent_id,
-            "template_name": template.get("name", template_id)}
+            "template_name": template.get("name", template_id),
+            "external_dep_suggestions": ext_dep_suggestions}
 
 
 def list_subtask_templates() -> list[dict]:

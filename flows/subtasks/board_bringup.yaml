@@ -61,6 +61,10 @@ phases:
         name: JTAG 链路验证
         owner: 硬件工程师
         depends: [power_rail_test]
+        external_depends_hint:
+          - pattern: "fpga*"
+            reason: "需要 FPGA 基础 bitstream"
+            required: false  # 没有也能测，有了更完整
         days: 1
         deliverables: [JTAG 验证记录]
         description: |
@@ -73,6 +77,10 @@ phases:
         name: 低速总线调试
         owner: 硬件工程师
         depends: [jtag_chain]
+        external_depends_hint:
+          - pattern: "mcu*"
+            reason: "需要 MCU 基础固件(I2C/SPI 驱动)"
+            required: false
         days: 2
         deliverables: [总线调试记录]
         description: |
@@ -86,6 +94,10 @@ phases:
         name: DDR 初始化验证
         owner: 硬件工程师
         depends: [jtag_chain]
+        external_depends_hint:
+          - pattern: "fpga*"
+            reason: "需要 FPGA DDR controller bitstream"
+            required: true
         days: 1
         deliverables: [DDR 初始化记录]
         description: |
@@ -100,6 +112,13 @@ phases:
         name: 高速链路调试
         owner: 硬件工程师
         depends: [ddr_init, low_speed_bus]
+        external_depends_hint:
+          - pattern: "fpga*"
+            reason: "需要 FPGA 完整 bitstream"
+            required: true
+          - pattern: "mcu*"
+            reason: "需要 MCU 完整固件"
+            required: true
         days: 3
         critical: true
         deliverables: [高速链路调试记录]

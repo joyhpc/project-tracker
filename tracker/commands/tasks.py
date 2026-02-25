@@ -245,6 +245,20 @@ def cmd_sub_load(args):
         print(f"✅ 已加载模板 [{result['template']}] {result['template_name']}")
         print(f"   → {result['parent']}: {result['loaded']} 个子任务")
         print(f"   查看: pt sl {args.parent}")
+
+        # 显示外部依赖建议
+        suggestions = result.get("external_dep_suggestions", [])
+        if suggestions:
+            auto = [s for s in suggestions if s["auto_added"]]
+            manual = [s for s in suggestions if not s["auto_added"]]
+            if auto:
+                print(f"\n   🔗 已自动添加外部依赖:")
+                for s in auto:
+                    print(f"      {s['subtask']} ← {s['external_dep']} ({s['reason']})")
+            if manual:
+                print(f"\n   💡 建议添加的外部依赖（非必需，可提升调试效率）:")
+                for s in manual:
+                    print(f"      {s['subtask']} ← {s['external_dep']} ({s['reason']})")
     except (RuntimeError, ValueError) as e:
         print(f"❌ {e}")
         sys.exit(1)
