@@ -6,6 +6,53 @@ from .. import core
 from ..prompt import generate_prompt, generate_deep_prompt, list_templates, auto_generate_questions
 
 
+def _match_task_path(question, flow):
+    """从问题文本匹配最相关的任务，返回基于任务 ID 的子目录路径。
+
+    匹配策略：
+    1. 任务名完全包含在问题中 → 直接命中
+    2. 问题关键词与任务名重叠度最高 → 模糊命中
+    返回 None 表示系统级（平铺）。
+    """
+    nodes = flow.get("nodes", [])
+    if not nodes:
+        return None
+
+    # 精确匹配：任务名出现在问题中
+    best = None
+    best_len = 0
+    for n in nodes:
+        name = n.get("name", "")
+        if name and name in question and len(name) > best_len:
+            best = n
+            best_len = len(name)
+
+    # 模糊匹配：按关键词重叠
+    if not best:
+        q_chars = set(question)
+        best_score = 0
+        for n in nodes:
+            name = n.get("name", "")
+            if not name or len(name) < 6:
+                continue
+            overlap = len(q_chars & set(name))
+            # 要求至少 60% 的任务名字符出现在问题中
+            if overlap > best_score and overlap >= len(name) * 0.6:
+                best = n
+                best_score = overlap
+
+    if not best:
+        return None
+
+    # 用任务 ID 的 . 分隔路径（去掉最后一级作为文件名前缀）
+    task_id = best["id"]
+    parts = task_id.split(".")
+    if len(parts) >= 2:
+        return os.path.join(*parts)
+    else:
+        return parts[0]
+
+
 def cmd_prompt(args):
     if args.list:
         print("\n📋 支持的问题类型:\n")
@@ -66,10 +113,16 @@ def cmd_prompt(args):
     if repo:
         save_path = args.save if args.save else None
         if not save_path:
-            # deep 模式保存到 meta/ 子目录
             is_deep = getattr(args, "deep", False)
-            sub = "meta" if is_deep else ""
-            prompt_dir = os.path.join(str(repo), "docs", "prompts", sub) if sub else os.path.join(str(repo), "docs", "prompts")
+            task_path = _match_task_path(question, flow)
+            if task_path:
+                # 任务级：docs/prompts/<task_path>/[meta/]
+                sub_dir = os.path.join(task_path, "meta") if is_deep else task_path
+                prompt_dir = os.path.join(str(repo), "docs", "prompts", sub_dir)
+            else:
+                # 系统级：平铺到 docs/prompts/[meta/]
+                sub = "meta" if is_deep else ""
+                prompt_dir = os.path.join(str(repo), "docs", "prompts", sub) if sub else os.path.join(str(repo), "docs", "prompts")
             os.makedirs(prompt_dir, exist_ok=True)
             # 找下一个序号
             existing = [f for f in os.listdir(prompt_dir) if f.endswith("-prompt.md") or f.endswith("-meta.md")]
@@ -150,26 +203,33 @@ def _cmd_deep_all(p, flow, args):
         print("❌ 项目未关联仓库")
         return
 
-    meta_dir = os.path.join(str(repo), "docs", "prompts", "meta")
-    os.makedirs(meta_dir, exist_ok=True)
-
-    # 清理旧的 meta 文件
-    for f in os.listdir(meta_dir):
-        if f.endswith("-meta.md"):
-            os.remove(os.path.join(meta_dir, f))
-
     print(f"\n🧠 {p['name']} — 批量生成 {len(questions)} 个 deep meta-prompt\n")
 
+    saved = 0
     for i, q in enumerate(questions, 1):
         result = generate_deep_prompt(q["question"], p, flow)
         slug = _slugify(q["question"])
-        save_path = os.path.join(meta_dir, f"{i:02d}-{slug}-meta.md")
+
+        # 按任务路径组织
+        task_path = _match_task_path(q["question"], flow)
+        if task_path:
+            meta_dir = os.path.join(str(repo), "docs", "prompts", task_path, "meta")
+        else:
+            meta_dir = os.path.join(str(repo), "docs", "prompts", "meta")
+        os.makedirs(meta_dir, exist_ok=True)
+
+        # 序号基于目标目录
+        existing = [f for f in os.listdir(meta_dir) if f.endswith("-meta.md")]
+        next_num = len(existing) + 1
+        save_path = os.path.join(meta_dir, f"{next_num:02d}-{slug}-meta.md")
+
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(result["prompt"] + "\n")
         rel = os.path.relpath(save_path, str(repo))
         print(f"  {i}. {q['priority']} {q['question'][:50]}...")
         print(f"     📄 {rel}")
         print()
+        saved += 1
 
-    print(f"✅ 已生成 {len(questions)} 个 meta-prompt 到 docs/prompts/meta/")
-    print(f"💡 下一步: 将 meta-prompt 喂给 LLM，生成 deep prompt 保存到 docs/prompts/deep/")
+    print(f"✅ 已生成 {saved} 个 meta-prompt")
+    print(f"💡 下一步: 将 meta-prompt 喂给 LLM，生成 deep prompt")
