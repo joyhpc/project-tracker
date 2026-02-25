@@ -135,12 +135,19 @@ class BM25:
 
 
 def build_knowledge_base(project, flow):
-    """从项目已完成任务构建知识库"""
+    """从项目任务构建知识库
+
+    索引范围：
+    - done 任务：note + note_file + 关联文档
+    - in_progress 任务：关联文档（进行中的任务最需要上下文）
+    - pending 任务：跳过（还没开始，没有有价值的信息）
+    """
     repo = project.get("repo", "")
     all_chunks = []
 
+    INDEXABLE = {"done", "in_progress"}
     for n in flow.get("nodes", []):
-        if n.get("status") != "done":
+        if n.get("status") not in INDEXABLE:
             continue
 
         # 从 note 生成一个 chunk
@@ -157,7 +164,7 @@ def build_knowledge_base(project, flow):
 
         # 从关联文档解析
         for doc in n.get("docs", []):
-            fpath = doc.get("file", "")
+            fpath = doc.get("file", "") or doc.get("path", "")
             if fpath and repo:
                 full = Path(repo) / fpath
                 if full.exists():

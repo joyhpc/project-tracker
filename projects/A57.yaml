@@ -159,6 +159,13 @@ nodes:
   status: done
   completed: 2026-02-24 22:56
   note: 原理可行性评估完成 2025-10-31
+  docs:
+  - path: CAMRX/01_Requirements/需求基线变动 MIPI dPHY laneRate.md
+    desc: MIPI DPHY速率计算+FPGA选型矩阵+验证表
+    added: 2026-02-25 11:08
+  - path: CAMRX/01_Requirements/3.5Gbps DPHY FPGA寻样.md
+    desc: FPGA选型对比(Intel/AMD/紫光/Lattice/Bridge)
+    added: 2026-02-25 11:09
 - id: pcb_feasibility
   name: PCB可行性评估
   type: task
@@ -675,6 +682,16 @@ nodes:
   - pcba_test
   status: in_progress
   started: 2026-02-24 23:03
+  docs:
+  - path: CAMRX/01_Requirements/需求基线变动 MIPI dPHY laneRate.md
+    desc: MIPI DPHY速率计算+验证判据表
+    added: 2026-02-25 11:09
+  - path: CAMRX/01_Requirements/2026 01 30 会议.md
+    desc: 3.5Gbps验证方法论(以余量换信心策略)
+    added: 2026-02-25 11:09
+  - path: CAMRX/01_Requirements/3.5Gbps DPHY FPGA寻样.md
+    desc: FPGA选型对比表
+    added: 2026-02-25 11:09
 - id: fpga_review
   name: FPGA代码评审
   type: task
@@ -1360,6 +1377,26 @@ log:
   action: note
   detail: '【多机型结构】A57包含两个板型: DCURX(域控接收板,eDP+OLDI) 和 CAMRX(摄像头接收板,MIPI)。共享核心板设计,差异在接口协议和解码板。WBS
     7=核心板, WBS 8=OLDI解码板, WBS 9=EDP解码板, CAMRX为核心板变体。'
+- time: 2026-02-25 11:08
+  action: doc_attach
+  task: schematic_feasibility
+  detail: '关联文档: CAMRX/01_Requirements/需求基线变动 MIPI dPHY laneRate.md'
+- time: 2026-02-25 11:09
+  action: doc_attach
+  task: schematic_feasibility
+  detail: '关联文档: CAMRX/01_Requirements/3.5Gbps DPHY FPGA寻样.md'
+- time: 2026-02-25 11:09
+  action: doc_attach
+  task: fpga_dev
+  detail: '关联文档: CAMRX/01_Requirements/需求基线变动 MIPI dPHY laneRate.md'
+- time: 2026-02-25 11:09
+  action: doc_attach
+  task: fpga_dev
+  detail: '关联文档: CAMRX/01_Requirements/2026 01 30 会议.md'
+- time: 2026-02-25 11:09
+  action: doc_attach
+  task: fpga_dev
+  detail: '关联文档: CAMRX/01_Requirements/3.5Gbps DPHY FPGA寻样.md'
 reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   task: null
