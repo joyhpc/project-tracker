@@ -395,6 +395,9 @@ nodes:
   - path: CAMRX/CAMRX_MAIN/00 A57 CAMRX MAIN README.md
     desc: CAMRX板卡设计总览
     added: 2026-02-24 23:17
+  - path: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/ECN-001_电源口_JW7221_to_LM5060.md
+    desc: 'ECN-001: 电源口热插拔芯片变更 JW7221→LM5060(反向保护)'
+    added: 2026-02-25 14:48
 - id: schematic_review
   name: 原理图审核
   type: task
@@ -1493,6 +1496,13 @@ log:
   action: doc_attach
   task: fpga_dev.mipi_3g5_verify.adapter_design
   detail: '关联文档: CAMRX/02_Architecture/01_Interface/A39_CXD_INTERFACE_CONSTRAINT.json'
+- time: 2026-02-25 14:47
+  action: note
+  detail: '设计变更ECN: 电源口JW7221(LM5069国产替代)无法实现反向保护,需替换为TI LM5060. 影响U39位号,电源口原理图需重新设计'
+- time: 2026-02-25 14:48
+  action: doc_attach
+  task: schematic_design
+  detail: '关联文档: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/ECN-001_电源口_JW7221_to_LM5060.md'
 reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   task: null

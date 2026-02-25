@@ -10,41 +10,57 @@ def _match_task_path(question, flow):
     """从问题文本匹配最相关的任务，返回基于任务 ID 的子目录路径。
 
     匹配策略：
-    1. 任务名完全包含在问题中 → 直接命中
-    2. 问题关键词与任务名重叠度最高 → 模糊命中
+    1. 任务名完全包含在问题前部 → 直接命中（优先最长匹配）
+    2. 分词匹配：任务名按标点/空格分词，计算命中词数
     返回 None 表示系统级（平铺）。
     """
     nodes = flow.get("nodes", [])
     if not nodes:
         return None
 
-    # 精确匹配：任务名出现在问题中
+    # 只用问题的前 100 个字符做匹配（避免长约束文本污染）
+    q_head = question[:100]
+
+    # 精确匹配：任务名出现在问题前部
     best = None
     best_len = 0
     for n in nodes:
         name = n.get("name", "")
-        if name and name in question and len(name) > best_len:
+        if name and name in q_head and len(name) > best_len:
             best = n
             best_len = len(name)
 
-    # 模糊匹配：按关键词重叠
+    # 分词匹配：任务名按标点/空格/特殊字符分词
     if not best:
-        q_chars = set(question)
         best_score = 0
+        best_ratio = 0
+        q_head_lower = q_head.lower()
         for n in nodes:
             name = n.get("name", "")
-            if not name or len(name) < 6:
+            if not name:
                 continue
-            overlap = len(q_chars & set(name))
-            # 要求至少 60% 的任务名字符出现在问题中
-            if overlap > best_score and overlap >= len(name) * 0.6:
-                best = n
-                best_score = overlap
+            # 分词：按非字母数字汉字字符切分，再按中英文边界切分，过滤短词
+            raw = re.split(r'[^a-zA-Z0-9\u4e00-\u9fa5.]+', name)
+            tokens = []
+            for seg in raw:
+                # 在中英文边界再切分: "layout要求" → ["layout", "要求"]
+                parts = re.split(r'(?<=[a-zA-Z0-9])(?=[\u4e00-\u9fa5])|(?<=[\u4e00-\u9fa5])(?=[a-zA-Z0-9])', seg)
+                tokens.extend(t for t in parts if len(t) >= 2)
+            if not tokens:
+                continue
+            hits = sum(1 for t in tokens if t in q_head or t.lower() in q_head_lower)
+            ratio = hits / len(tokens)
+            # 要求至少命中 50% 的词，且至少 2 个词或单词任务 100% 命中
+            if ratio >= 0.5 and (hits >= 2 or (hits >= 1 and len(tokens) == 1 and len(tokens[0]) >= 4)):
+                if hits > best_score or (hits == best_score and ratio > best_ratio):
+                    best = n
+                    best_score = hits
+                    best_ratio = ratio
 
     if not best:
         return None
 
-    # 用任务 ID 的 . 分隔路径（去掉最后一级作为文件名前缀）
+    # 用任务 ID 的 . 分隔路径
     task_id = best["id"]
     parts = task_id.split(".")
     if len(parts) >= 2:
