@@ -190,7 +190,13 @@ def start_task(project_id: str, task_id: str) -> dict:
     node["started"] = _now()
     p["log"].append({"time": _now(), "action": "start", "task": task_id, "detail": node["name"]})
     _save(p)
-    return node
+
+    # 检查是否有匹配的子任务模板（不自动加载，返回提示信息）
+    matched = match_subtask_templates(task_id)
+    result = dict(node)
+    if matched:
+        result["_matched_templates"] = matched
+    return result
 
 
 def done_task(project_id: str, task_id: str, note: str = "", force: bool = False, note_file: str = "") -> dict:
@@ -496,6 +502,16 @@ def list_subtask_templates() -> list[dict]:
             "phases": [p.get("name", "") for p in tpl.get("phases", [])],
         })
     return result
+
+
+def match_subtask_templates(task_id: str) -> list[dict]:
+    """查找与任务 ID 匹配的子任务模板
+
+    匹配逻辑：task_id 出现在模板的 attach_to 列表中
+    Returns: 匹配的模板列表 [{id, name, task_count, ...}]
+    """
+    templates = list_subtask_templates()
+    return [t for t in templates if task_id in t["attach_to"]]
 
 
 # ── 阶段/里程碑 ──────────────────────────────────────

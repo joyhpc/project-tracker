@@ -88,7 +88,30 @@ def cmd_status(args):
         if len(ready) > 5:
             print(f"   ... 共 {len(ready)} 个")
 
+    # 子任务模板提示：in_progress 且未展开的任务
+    _print_template_hints(p)
+
     print()
+
+
+def _print_template_hints(p):
+    """检查 in_progress 任务是否有匹配的子任务模板未加载"""
+    hints = []
+    for n in p.get("nodes", []):
+        if n.get("status") != "in_progress":
+            continue
+        if n.get("expanded_to"):  # 已展开，跳过
+            continue
+        matched = core.match_subtask_templates(n["id"])
+        if matched:
+            hints.append((n, matched))
+
+    if hints:
+        print(f"\n💡 可展开的子任务模板:")
+        for node, templates in hints:
+            for t in templates:
+                print(f"   [{node['id']}] {node['name']} → {t['name']} ({t['task_count']}个子任务)")
+                print(f"   加载: pt sub-load {node['id']} {t['id']}")
 
 
 def cmd_phases(args):

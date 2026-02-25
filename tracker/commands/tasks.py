@@ -99,6 +99,13 @@ def cmd_start(args):
         p = _require()
         task = core.start_task(p["id"], args.task_id)
         print(f"🔄 已开始: [{args.task_id}] {task['name']}")
+
+        # 自动提示匹配的子任务模板
+        matched = task.get("_matched_templates", [])
+        for t in matched:
+            print(f"\n💡 发现匹配的子任务模板: [{t['id']}] {t['name']} ({t['task_count']}个子任务)")
+            print(f"   阶段: {' → '.join(t['phases'])}")
+            print(f"   加载: pt sub-load {args.task_id} {t['id']}")
     except (RuntimeError, ValueError) as e:
         print(f"❌ {e}")
         sys.exit(1)

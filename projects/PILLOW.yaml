@@ -97,11 +97,12 @@ nodes:
   gate: 概念设计评审通过
   depends:
   - feasibility
-  status: pending
+  status: in_progress
   docs:
   - path: docs/design/01-主控音频电路-result.md
     desc: 完成备注
     added: 2026-02-22 18:26
+  started: 2026-02-25 11:19
 - id: fw_design
   name: 固件设计
   type: task
@@ -375,6 +376,10 @@ log:
   action: done
   task: feasibility
   detail: 'Conditional GO: 14GO/10CAUTION/6NO-GO, 6个NO-GO已有对策(D1-D4), 3个PoC待验证'
+- time: 2026-02-25 11:19
+  action: start
+  task: hw_design
+  detail: 硬件设计
 reviews:
 - file: docs/feasibility/03-分体架构工程可行性-result.md
   task: feasibility
