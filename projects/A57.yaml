@@ -1182,6 +1182,78 @@ nodes:
   created: 2026-02-25 11:34
   depends:
   - fpga_dev.mipi_3g5_verify.si_test
+- id: camrx_schematic
+  name: CAMRX 原理图设计
+  phase: DETAIL
+  owner: 硬件工程师
+  days: 5
+  depends:
+  - fpga_dev.mipi_3g5_verify.verdict
+  status: pending
+  deliverables:
+  - CAMRX 原理图
+  gate: 3.5Gbps DPHY 验证通过 + LM5060电源口方案确认
+- id: camrx_schematic_review
+  name: CAMRX 原理图评审
+  phase: DETAIL
+  owner: 硬件工程师
+  days: 2
+  depends:
+  - camrx_schematic
+  status: pending
+- id: camrx_pcb_layout
+  name: CAMRX PCB布局设计
+  phase: DETAIL
+  owner: PCB工程师
+  days: 5
+  depends:
+  - camrx_schematic_review
+  status: pending
+  deliverables:
+  - CAMRX PCB布局
+- id: camrx_pcb_review
+  name: CAMRX PCB评审
+  phase: DETAIL
+  owner: PCB工程师
+  days: 2
+  depends:
+  - camrx_pcb_layout
+  status: pending
+- id: camrx_bom
+  name: CAMRX BOM整理
+  phase: DETAIL
+  owner: 硬件工程师
+  days: 2
+  depends:
+  - camrx_schematic_review
+  status: pending
+  deliverables:
+  - CAMRX BOM清单
+- id: camrx_pcb_fab
+  name: CAMRX PCB打样
+  phase: SAMPLE
+  owner: 硬件工程师
+  days: 5
+  depends:
+  - camrx_pcb_review
+  status: pending
+- id: camrx_smt
+  name: CAMRX SMT贴片
+  phase: SAMPLE
+  owner: 硬件工程师
+  days: 3
+  depends:
+  - camrx_pcb_fab
+  - camrx_bom
+  status: pending
+- id: camrx_bringup
+  name: CAMRX 板级调试
+  phase: SAMPLE
+  owner: 硬件工程师
+  days: 5
+  depends:
+  - camrx_smt
+  status: pending
 blockers: []
 log:
 - time: 2026-02-24 22:52
@@ -1503,6 +1575,9 @@ log:
   action: doc_attach
   task: schematic_design
   detail: '关联文档: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/ECN-001_电源口_JW7221_to_LM5060.md'
+- time: 2026-02-25 23:34
+  action: note
+  detail: 'CAMRX 专属任务组添加: 原理图→评审→PCB→评审→BOM→打样→SMT→调试'
 reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   task: null
