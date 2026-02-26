@@ -268,6 +268,7 @@ nodes:
   reviewer: 产品经理/架构师/经理/主管/项目成员
   depends:
   - init_approval
+  - team_setup
   status: pending
 - id: struct_outline
   name: 结构概要设计
@@ -440,6 +441,7 @@ nodes:
   - struct_review
   - pcb_footprint
   - pcb_3d
+  - pcb_layout_req
   reviewer: PCB组长
   status: pending
 - id: pcb_layout_review
@@ -527,6 +529,7 @@ nodes:
   reviewer: 硬件主管
   depends:
   - design_archive
+  - material_tracking
   status: pending
 - id: smt_data
   name: 贴片资料
@@ -580,6 +583,7 @@ nodes:
   phase: SAMPLE
   depends:
   - pcba_test
+  - package_design
   status: pending
 - id: fpga_dev
   name: 固件开发-FPGA
@@ -618,6 +622,7 @@ nodes:
   depends:
   - fw_outline
   - pcba_test
+  - sw_control_walkthrough
   status: pending
 - id: mcu_review
   name: MCU代码评审
@@ -655,6 +660,7 @@ nodes:
   - mcu_review
   - fpga_review
   - pcba_test
+  - app_dev
   status: pending
 - id: dev_selftest
   name: 开发自测
@@ -729,6 +735,8 @@ nodes:
   - 《产品规格书》
   reviewer: 软/硬件负责人/结构/产品经理
   status: pending
+  depends:
+  - system_test_a
 - id: hw_fix
   name: 硬件错误修改
   type: task
@@ -808,6 +816,7 @@ nodes:
   owner: 产品经理
   depends:
   - final_report_review
+  - spec_draft
   gate: 验收通过
   status: pending
 - id: trial_prep
