@@ -757,6 +757,7 @@ nodes:
   depends:
   - dcurx_integration
   - camrx_integration
+  - companion_test_unit.serial_board
   status: pending
 - id: dev_selftest
   name: 开发自测
@@ -1271,6 +1272,7 @@ nodes:
   - fpga_review
   - pcba_test
   - app_dev
+  - dcurx_hw_debug
   deliverables:
   - DCURX联调报告
 - id: camrx_integration
@@ -1291,7 +1293,9 @@ nodes:
   owner: 硬件工程师
   days: 3
   status: pending
-  depends: []
+  depends:
+  - lm5060_verify
+  - camrx_pin_assign
   deliverables:
   - CAMRX基础原理图(电源+控制+DDR+时钟)
   description: '不依赖3.5Gbps验证结果的部分: 电源树(删AU15P/改LM5060)、MCU控制(信号翻倍)、DDR4、QSFP、时钟buffer'
@@ -1304,9 +1308,100 @@ nodes:
   depends:
   - fpga_dev.mipi_3g5_verify
   - camrx_sch_base
+  - cphy_bridge_verify.verdict
   deliverables:
   - CAMRX MIPI原理图(8组DPHY连接)
   description: '依赖3.5Gbps验证结果: 8组MIPI DPHY物理层连接、FPGA bank分配、阻抗匹配'
+- id: cphy_bridge_verify
+  name: CAMRX CPHY桥接方案验证(60K)
+  phase: DETAIL
+  status: pending
+  depends: []
+  days: 5
+  owner: 硬件工程师
+  note: 用60K评估板验证CPHY桥接方案可行性
+- id: cphy_bridge_verify.io_expand
+  name: IO扩展功能验证
+  phase: DETAIL
+  status: pending
+  depends:
+  - cphy_bridge_verify
+  days: 2
+  owner: 硬件工程师
+- id: cphy_bridge_verify.cphy_func
+  name: CPHY功能验证
+  phase: DETAIL
+  status: pending
+  depends:
+  - cphy_bridge_verify
+  days: 2
+  owner: 硬件工程师
+- id: cphy_bridge_verify.vddio_flex
+  name: VDDIO灵活调节支持验证
+  phase: DETAIL
+  status: pending
+  depends:
+  - cphy_bridge_verify
+  days: 2
+  owner: 硬件工程师
+- id: cphy_bridge_verify.verdict
+  name: CPHY桥接方案GO/NO-GO判定
+  phase: DETAIL
+  status: pending
+  depends:
+  - cphy_bridge_verify.io_expand
+  - cphy_bridge_verify.cphy_func
+  - cphy_bridge_verify.vddio_flex
+  days: 1
+  owner: 硬件工程师
+- id: lm5060_verify
+  name: LM5060电源口方案验证(评估板)
+  phase: DETAIL
+  status: pending
+  depends: []
+  days: 5
+  owner: 硬件工程师
+  note: 用TI LM5060EVAL评估板验证热插拔/反向保护/OVP/UVLO
+- id: dcurx_hw_debug
+  name: DCURX硬件调试(DCDC部分)
+  phase: SAMPLE
+  status: pending
+  depends: []
+  days: 3
+  owner: 硬件工程师
+  note: 热插拔部分中止等LM5060方案,DCDC先调
+- id: camrx_pin_assign
+  name: CAMRX FPGA/连接器 Pin Assign
+  phase: DETAIL
+  status: pending
+  depends: []
+  days: 2
+  owner: 硬件工程师
+- id: companion_test_unit
+  name: 陪测单元准备
+  phase: DETAIL
+  status: pending
+  depends: []
+  days: 1
+  owner: 硬件工程师
+- id: companion_test_unit.purchase
+  name: 淘宝串行方案采购
+  phase: DETAIL
+  status: pending
+  depends:
+  - companion_test_unit
+  days: 5
+  owner: 硬件工程师
+  note: 采购+到货等待
+- id: companion_test_unit.serial_board
+  name: 串行陪测板设计
+  phase: DETAIL
+  status: pending
+  depends:
+  - companion_test_unit.purchase
+  days: 5
+  owner: 硬件工程师
+  note: 评估采购方案后决定是否需要自己设计
 blockers: []
 log:
 - time: 2026-02-24 22:52
