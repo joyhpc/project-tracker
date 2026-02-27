@@ -211,4 +211,100 @@ add_node 添加的是一等节点。是否需要 `pt promote`（子任务提升�
 ## 回复区域
 
 > 请在下方回复：
+q1回复
+这是一个非常经典的工程设计问题。在“扁平 DAG + 单文件 YAML + 强完整性约束”的架构下，既要符合人类硬件工程师的直觉（保留方案变更记录、灵活变阵），又要为 AI Agent (Nova) 提供绝对稳定、防呆、可回滚的 API。
+整体架构的核心哲学应该是：“将 DAG 的修改视为数据库事务（Transaction），以现有的 check_integrity 作为提交门控（Commit Gate），并提供基于业务意图的高阶拓扑操作，拒绝底层微操。”
+针对你的三个痛点，以下是系统性的 API 设计与底层改造方案：
+Q1.3: 批量操作的事务性与回滚（解决基建问题）
+推荐方案：B（内存沙盒校验）为主，A（本地快照 Undo）为辅。
+既然数据全部在一个 YAML 文件里，引入复杂的 Undo Log 或要求用户必须用 Git 都是过度设计。最优雅、最原子的方式是利用 Python 的上下文管理器实现内存级事务。只有建立好这个底座，AI 才可以肆无忌惮地调用增删改 API。
+设计实现：
+在 tracker/core.py 中引入一个 mutate 上下文管理器：
+import copy
+from contextlib import contextmanager
+
+class ProjectTracker:
+    # ... 
+    
+    @contextmanager
+    def mutate(self):
+        """原子化操作 DAG 的上下文管理器"""
+        # 1. 内存级深拷贝当前节点状态 (极快，构建沙盒)
+        backup_nodes = copy.deepcopy(self.nodes)
+        
+        try:
+            # 2. 将控制权交还给调用方（允许在此期间随意增删改 self.nodes）
+            yield self
+            
+            # 3. 离开上下文时，强制触发引擎现有的 6 类完整性检查！
+            self.check_integrity() 
+            
+        except Exception as e:
+            # 4. 任何报错（环路、悬空、孤立终点），瞬间回滚内存，绝不污染 YAML
+            self.nodes = backup_nodes
+            raise RuntimeError(f"DAG 事务回滚: {str(e)}")
+            
+        else:
+            # 5. 校验通过，写入文件前先备份当前 YAML
+            self._snapshot_for_undo()
+            # 6. 一次性安全覆写 YAML
+            self._save_yaml()
+
+双重保险收益：
+ * 对 AI (Nova)：如果 AI 在批量操作中间搞出了环路，事务会自动回滚，并将底层的 IntegrityError 抛给 AI。AI 拿到清晰的报错后可以重新生成修正后的指令，彻底杜绝将损坏的 DAG 写入文件。
+ * 对人类工程师：在 _snapshot_for_undo() 中，将当前的 project.yaml 复制到隐藏目录 .pt_history/project_<timestamp>.yaml（保留最近 10 次）。CLI 新增 pt undo 命令，一键用备份覆盖回来，提供终极“后悔药”。
+Q1.1: add_node 的接入策略
+推荐方案：组合提供 depends (上游) 和 leads_to (下游)，并在引擎内实现“智能断点切入 (Auto-Splice)”。
+坚决不推荐方案 D（基于 phase 盲猜），因为黑盒魔法会让 AI 无法预测操作结果，极易出错。提供显式的双向绑定是最稳健的。
+API 签名与行为设计：
+def add_node(self, node_data: dict, depends: list=None, leads_to: list=None):
+
+ * 基础挂载 (方案 A)：新节点自身的 depends 等于传入的 depends 列表。
+ * 下游接管 (方案 B)：遍历 leads_to 指定的下游节点，将新节点的 ID 注入到这些下游的 depends 数组中。
+ * 智能切断 (融合方案 C 的 --between 语义)：（最核心的一步） 如果某个下游节点 D 原本直接依赖了某个上游节点 U，现在新节点 X 插入在它们中间（即 X 依赖 U，D 依赖 X），引擎必须自动从 D.depends 中移除 U。
+   * 场景再现：原本链路是 [原理图] -> [PCB Layout]。现在要插入 ECN 评审，调用 add_node("ECN", depends=["原理图"], leads_to=["PCB Layout"])。
+   * 系统行为：自动切断直连边，变成 [原理图] -> [ECN] -> [PCB Layout]。不需要用户再手动去清理旧依赖，且不会留下并行的冗余短路边（保证关键路径 Slack 计算正确）。
+Q1.2: remove_node 的清理策略
+推荐方案：业务上主推 D（软删除），技术上实现 B（自动缝合）+ C（防呆拦截）。
+硬件工程不同于纯软件，诸如“JW7221 替换为 LM5060”这种方案废弃，是极具价值的避坑经验和文档索引节点，在 DAG 中绝不应该被物理抹除。
+策略 1：软删除 / 归档 (Soft Delete) - 默认与推荐
+ * API / CLI：pt skip <id> --reason "方案废弃"
+ * 机制：完全不修改 DAG 拓扑连线，仅将节点状态置为 skipped 或 cancelled。
+ * 引擎改造 (engine.py)：只需改动一两行代码。在 CPM 关键路径正向/反向推导时，如果遇到 status == skipped，将其预估工时 days 强制视为 0。它的 Earliest Finish (EF) 直接等于 Earliest Start (ES)。
+ * 优势：完美保留拓扑上下文，对关键路径工时计算零污染，不会触发孤立终点报警。
+策略 2：硬删除与智能缝合 (Hard Delete with Stitching)
+仅用于处理刚建错的节点（如 AI 幻觉生成的无用节点、拼写错误）。
+ * API / CLI：pt rm <id> --stitch
+ * 防呆拦截 (方案 C)：如果不带 --stitch 且节点有下游，系统直接拦截报错：“该节点存在下游，强制删除会产生悬空依赖。请使用 --stitch 缝合连线，或使用 pt skip 软删除。”
+ * 缝合逻辑 (方案 B)：删除节点 X 时，提取它的所有 Upstreams。遍历所有依赖了 X 的下游节点，从它们的 depends 中删去 X，并把 X 的 Upstreams 补充进去（Set 去重）。这就是“拓扑缝合”，保证 DAG 不断链。
+🚀 总结：给 AI Agent 与 CLI 的最终形态
+经过上述底层改造，你就可以为 AI 提供一个强大的批量更新 API。AI 只需要按业务逻辑生成字典，无需小心翼翼地处理图论边缘情况：
+# 提供给 Nova 的高级工具 API (可直接映射为 CLI 宏命令)
+with pt.mutate():
+    # 1. 批量添加 CPHY 验证任务群
+    pt.add_node({"id": "cphy_board", "days": 5}, depends=["cphy_design"])
+    pt.add_node({"id": "cphy_test", "days": 3}, depends=["cphy_board"])
+    
+    # 2. 将测试任务接入现有主流程（自动切断原来的短路边）
+    pt.add_node({"id": "cphy_review"}, depends=["cphy_test"], leads_to=["pcb_release"])
+    
+    # 3. 依赖重接 (极其简单，在内存事务里改完就行)
+    pt.rewire("old_mipi_test", remove_depends=["sensor_ready"])
+    
+    # 4. 软删除老方案 (0工时透传)
+    pt.get_node("old_mipi_test")['status'] = 'skipped'
+
+# 退出 with 块时：
+# -> 自动执行 check_integrity()
+# -> 成功：拷贝旧 yaml 到 .pt_history，覆写新 yaml
+# -> 失败：报错回滚，AI 收到报错后重试
+
+实施路线图建议：
+ * 第一步（工时最小）：改造 engine.py 支持对 status: skipped 节点的 0 工时穿透计算。
+ * 第二步（核心地基）：在 core.py 实现 mutate 上下文管理器及针对 .pt_history 目录的复制备份机制。
+ * 第三步（完善动作）：实现带 leads_to 断点切入逻辑的 add_node 和带 --stitch 缝合逻辑的 remove_node。
+
+
+q2回复
+
 
