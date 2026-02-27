@@ -306,5 +306,63 @@ with pt.mutate():
 
 
 q2回复
+这是一个非常切中硬件研发真实物理场景的问题。
+在纯软件开发中，代码废弃了可以通过 Git 直接删掉并抹除痕迹；但在硬件工程中，“踩过的坑”（比如为什么废弃 JW7221、测试发现了什么 Bug）和**“沉没的工时”**本身就是极具价值的知识资产。
+为了兼顾“保留历史记录”和“保持 DAG 干净不阻碍引擎计算”，核心设计哲学应该是：将“替换”视为在拓扑中制造一次“主干转移（Fork & Shift）”，而旧方案应退化为合法的“历史枯枝（Dead Branch）”。
+我们先解答 Q2.2，因为废弃节点在图中的物理形态，决定了 Q2.1 的连线操作该怎么设计。
+Q2.2: 废弃节点（JW7221）的处理策略
+强烈建议：原地归档（不删、不移区） + 下游剪枝 + 完整性引擎豁免。
+绝对不要物理删除（丢失历史上下文），也不要将其移到单独的 archived 节点列表（破坏单文件扁平 Schema 的单源真实性，导致全局 ID 检索变复杂）。
+它在 DAG 中的理想演化过程应该是这样的：
+ * 保留上游（保留起因）：jw7221_verify 依然保留 depends: [power_design]。这符合物理现实——我们在做完电源架构后，确实曾分出过这个分支并投入了精力。
+ * 切断下游（剥离影响）：把 schematic 的 depends 里的 jw7221_verify 删掉。这意味着 JW7221 分支“断尾”了，没有向画原理图输出有效的交付物。
+ * 标记状态（原地归档）：增加一个布尔字段 archived: true，或者将 status 变更为 skipped/cancelled。并在 note 中自动追加废弃原因。
+ * 引擎规则豁免（最关键一步）：因为剪断了下游，JW7221 变成了一个死胡同（无后继的孤立终点）。你必须修改 check_integrity() 里的检查规则——特批允许状态为 archived/skipped 的节点合法地成为孤立终点。
+收益：
+废弃节点变成了一根悬挂在主干上的“盲枝”。它不参与后续的关键路径（CPM）推导计算，不会触发完整性报错，但在 pt log、pt docs 或 pt visual（渲染图谱）时，这段硬件试错历史依然清晰可见。
+Q2.1: rewire 的语义应该是什么？
+试图用一个全能的 pt rewire 命令外加无数个参数（--replace, --insert）去兼顾所有场景，是极其危险的。参数组合爆炸会让 AI Agent 极易产生幻觉并写出非法的指令。
+必须将操作解耦为 1个底层原子原语 + 1个高阶业务宏：
+1. 底层拓扑原语：纯粹的依赖修剪 (rewire)
+rewire 的语义应该绝对克制，它只负责修改单个目标节点的 depends 数组（即入边）。 不负责创建节点，不负责废弃节点。
+ * API 签名: pt.rewire(target_id: str, add_deps: list = None, rm_deps: list = None)
+ * CLI 形态: pt rewire schematic --add lm5060_verify --rm jw7221_verify
+ * 定位: 留给 AI 助手进行微操兜底，或者让工程师手动修正某条漏写的连线。
+2. 高阶业务宏：方案交接棒 (replace)
+专为解决“JW7221 → LM5060”这类业务场景设计。引入图论中的“入口接管”和“出口接管”概念，可以极其优雅地同时兼容 1:1 和 1:N 替换。
+ * API 签名:
+   def replace(self, old_id: str, new_in_id: str, new_out_id: str = None):
+    # new_out_id 默认等于 new_in_id (即 1:1 替换)
 
+ * 引擎内执行逻辑（自动包裹在 Q1 的 mutate 内存事务中）：
+   * 入口接管：将 old_id 的上游（depends）拷贝/合并给 new_in_id。
+   * 出口交接（下游剪枝）：扫描全图，找到所有 depends 包含 old_id 的下游节点，将其中的 old_id 替换为 new_out_id。
+   * 历史归档：将 old_id 的状态设为 skipped 或 archived: true。
+关于 Insert（插入）
+我们在 Q1 中讨论过，add_node 如果同时支持 depends 和 leads_to 双向绑定参数，并内置了“自动切断直连边”的逻辑，那么实质上已经完美覆盖了 --insert 的语义。不需要在 rewire 里再做一次。
+给 AI Agent (Nova) 的终极操作范式
+有了上述清晰的 API 边界，应对复杂的 1:N 方案变更（例如：JW7221 废弃，换成 LM5060，但 LM5060 需要分为“采购(2天)”和“验证(3天)”两个节点）。
+不要发明复杂的 CLI 语法，只需让 Nova 调用组合拳：
+# Nova (AI Agent) 生成的执行脚本
+with pt.mutate():
+    # 1. 建图：按真实的物理逻辑，创建新方案链路（此时它们还是游离态）
+    pt.add_node({"id": "lm5060_buy", "days": 2})
+    pt.add_node({"id": "lm5060_verify", "days": 3}, depends=["lm5060_buy"])
+    
+    # 2. 方案交接（调用 Replace 宏）
+    pt.replace(
+        old_id="jw7221_verify", 
+        new_in_id="lm5060_buy",     # 入口：接管原本 jw7221 的发源点 (Power Design)
+        new_out_id="lm5060_verify"  # 出口：顶替 jw7221 去阻塞下游 (Schematic)
+    )
+
+# 离开 mutate 上下文时：
+# -> 触发 check_integrity()
+# -> LM5060 链条完美闭环；JW7221 变成孤立终点，但因已归档被引擎豁免。校验通过！
+# -> 自动生成历史快照并写入 YAML。
+
+总结设计的收益：
+ * 职责正交：add_node 负责建图，rewire 负责修线，replace 负责业务场景转移。没有任何 API 承担双重职责。
+ * 图论纯净：DAG 中没有幽灵节点、没有死循环、没有悬空依赖（Dangling Dependencies）。
+ * AI 极度友好：Nova 拥有了确定性的积木块，即便它生成的拼接逻辑出错，也会被 Transaction 直接拦截回滚，绝不污染 YAML。
 
