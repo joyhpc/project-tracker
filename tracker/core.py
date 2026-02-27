@@ -1,6 +1,8 @@
 """核心逻辑 v2 — 单文件自包含 + 扁平 DAG"""
 import yaml
 import copy
+import shutil
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -47,6 +49,194 @@ def _save(project: dict):
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+# ── 历史快照 ──────────────────────────────────────────
+
+HISTORY_DIR = PROJECTS_DIR / ".pt_history"
+MAX_HISTORY = 10
+
+
+def _snapshot(project: dict):
+    """保存当前 YAML 到历史目录（保留最近 MAX_HISTORY 次）"""
+    HISTORY_DIR.mkdir(exist_ok=True)
+    pid = project["id"]
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    src = _project_file(pid)
+    if src.exists():
+        dst = HISTORY_DIR / f"{pid}_{ts}.yaml"
+        shutil.copy2(src, dst)
+        # 清理旧快照
+        snaps = sorted(HISTORY_DIR.glob(f"{pid}_*.yaml"))
+        for old in snaps[:-MAX_HISTORY]:
+            old.unlink()
+
+
+def undo(project_id: str) -> str:
+    """恢复到上一个快照"""
+    snaps = sorted(HISTORY_DIR.glob(f"{project_id}_*.yaml"))
+    if not snaps:
+        raise ValueError(f"没有可恢复的历史快照: {project_id}")
+    latest = snaps[-1]
+    shutil.copy2(latest, _project_file(project_id))
+    latest.unlink()
+    return f"已恢复到 {latest.name}"
+
+
+# ── DAG 事务 ──────────────────────────────────────────
+
+@contextmanager
+def mutate(project: dict):
+    """原子化 DAG 修改的上下文管理器
+
+    用法:
+        with mutate(project) as p:
+            add_node(p, {...}, leads_to=[...])
+            remove_node(p, "old_node", stitch=True)
+        # 退出时自动: check_integrity → 快照 → 保存
+
+    失败时自动回滚内存，不写入文件。
+    """
+    backup = copy.deepcopy(project["nodes"])
+    try:
+        yield project
+        # 退出时验证完整性
+        issues = check_integrity(project)
+        errors = [i for i in issues if isinstance(i, dict)
+                  and i.get("severity") == "critical"]
+        if not errors:
+            errors = [i for i in issues if isinstance(i, str)
+                      and "没有后继" in i and "孤立" in i]
+        if errors:
+            msgs = [e.get("message", str(e)) if isinstance(e, dict) else str(e)
+                    for e in errors[:3]]
+            raise ValueError(f"完整性检查失败: {'; '.join(msgs)}")
+    except Exception:
+        project["nodes"] = backup
+        raise
+    else:
+        _snapshot(project)
+        _save(project)
+
+
+# ── 节点 CRUD ─────────────────────────────────────────
+
+def add_node(project: dict, node_data: dict,
+             depends: list = None, leads_to: list = None) -> dict:
+    """添加一等节点到 DAG
+
+    Args:
+        project: 项目 dict
+        node_data: 节点数据 (必须含 id, name, phase)
+        depends: 上游依赖节点 ID 列表
+        leads_to: 下游节点 ID 列表 (自动将新节点插入为这些节点的依赖,
+                  并执行 Auto-Splice: 如果下游原本直接依赖了新节点的上游,
+                  自动移除该冗余边)
+
+    Returns:
+        新增的节点 dict
+    """
+    nid = node_data.get("id")
+    if not nid:
+        raise ValueError("节点必须有 id")
+
+    node_ids = {n["id"] for n in project["nodes"]}
+    if nid in node_ids:
+        raise ValueError(f"节点 ID 已存在: {nid}")
+
+    # 构建节点
+    node = {
+        "id": nid,
+        "name": node_data.get("name", nid),
+        "phase": node_data.get("phase", "DETAIL"),
+        "status": node_data.get("status", "pending"),
+        "depends": list(depends or node_data.get("depends", [])),
+    }
+    # 可选字段
+    for key in ("days", "owner", "note", "deliverables", "description",
+                "type", "gate", "reviewer", "critical"):
+        if key in node_data:
+            node[key] = node_data[key]
+
+    # 验证 depends 存在
+    for dep in node["depends"]:
+        if dep not in node_ids:
+            raise ValueError(f"依赖节点不存在: {dep}")
+
+    project["nodes"].append(node)
+
+    # leads_to: 接入下游 + Auto-Splice
+    if leads_to:
+        upstream_set = set(node["depends"])
+        for downstream_id in leads_to:
+            dn = _find_node(project, downstream_id)
+            if not dn:
+                raise ValueError(f"下游节点不存在: {downstream_id}")
+            dn_deps = dn.get("depends", [])
+            # 添加新节点为下游的依赖
+            if nid not in dn_deps:
+                dn_deps.append(nid)
+                dn["depends"] = dn_deps
+            # Auto-Splice: 移除下游对新节点上游的直接依赖（冗余边）
+            for up in upstream_set:
+                if up in dn_deps:
+                    dn_deps.remove(up)
+
+    return node
+
+
+def remove_node(project: dict, node_id: str,
+                stitch: bool = False) -> dict:
+    """从 DAG 移除节点
+
+    Args:
+        node_id: 要移除的节点 ID
+        stitch: True=自动缝合依赖链, False=有下游时拒绝删除
+
+    Returns:
+        被移除的节点 dict
+    """
+    node = _find_node(project, node_id)
+    if not node:
+        raise ValueError(f"节点不存在: {node_id}")
+
+    # 找到所有依赖此节点的下游
+    downstream = [n for n in project["nodes"]
+                  if node_id in n.get("depends", [])]
+
+    if downstream and not stitch:
+        names = [f"{n['id']}" for n in downstream[:5]]
+        raise ValueError(
+            f"节点 {node_id} 有 {len(downstream)} 个下游依赖: {', '.join(names)}。"
+            f"使用 stitch=True 自动缝合，或先用 skip 软删除。"
+        )
+
+    # 缝合: 下游的 depends 中用被删节点的上游替换
+    if stitch:
+        node_upstreams = set(node.get("depends", []))
+        for dn in downstream:
+            dn_deps = dn.get("depends", [])
+            dn_deps.remove(node_id)
+            for up in node_upstreams:
+                if up not in dn_deps:
+                    dn_deps.append(up)
+            dn["depends"] = dn_deps
+
+    # 移除节点
+    project["nodes"] = [n for n in project["nodes"] if n["id"] != node_id]
+    return node
+
+
+def skip_node(project: dict, node_id: str, reason: str = "") -> dict:
+    """软删除: 标记节点为 skipped (0工时穿透, 保留拓扑)"""
+    node = _find_node(project, node_id)
+    if not node:
+        raise ValueError(f"节点不存在: {node_id}")
+    node["status"] = "skipped"
+    if reason:
+        node["skip_reason"] = reason
+    node["skipped_at"] = _now()
+    return node
 
 
 def _get_active() -> str | None:
@@ -226,6 +416,8 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
                 continue
             if n.get("status") == "done":
                 continue
+            if n.get("status") == "skipped":
+                continue
             severity = "critical" if (cpm and cpm.get("nodes", {}).get(nid, {}).get("critical")) else "warning"
             warnings.append({
                 "type": "orphan_terminal",
@@ -294,7 +486,8 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
         nid = n["id"]
         if (not predecessors[nid] and not successors[nid]
                 and n.get("phase") != first_phase_id
-                and n.get("status") != "done"):
+                and n.get("status") != "done"
+                and n.get("status") != "skipped"):
             warnings.append({
                 "type": "isolated_node",
                 "severity": "warning",

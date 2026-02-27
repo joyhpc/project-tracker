@@ -15,6 +15,7 @@ from .commands.poc_cmd import cmd_poc
 from .commands.propose_cmd import cmd_propose
 from .commands.scan_cmd import cmd_scan
 from .commands.visual_cmd import cmd_visual
+from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo
 
 
 def main():
@@ -193,6 +194,27 @@ def main():
     p_vis.add_argument("--output", "-o", default="/tmp", help="输出目录 (默认 /tmp)")
     p_vis.add_argument("--no-png", action="store_true", help="只生成 HTML，不截图")
 
+    # ── 节点 CRUD ──
+    p_add = sub.add_parser("add", help="添加一等节点到 DAG")
+    p_add.add_argument("id", help="节点ID")
+    p_add.add_argument("--name", "-n", help="节点名称 (默认=ID)")
+    p_add.add_argument("--phase", "-p", help="阶段 (默认 DETAIL)")
+    p_add.add_argument("--days", "-d", type=int, help="预估工时(天)")
+    p_add.add_argument("--owner", "-o", help="负责人")
+    p_add.add_argument("--depends", help="上游依赖 (逗号分隔)")
+    p_add.add_argument("--leads-to", help="下游节点 (逗号分隔, 自动接入+切断冗余边)")
+    p_add.add_argument("--note", help="备注")
+
+    p_rm = sub.add_parser("rm", help="从 DAG 移除节点")
+    p_rm.add_argument("id", help="节点ID")
+    p_rm.add_argument("--stitch", action="store_true", help="自动缝合依赖链")
+
+    p_skip = sub.add_parser("skip", help="软删除: 标记节点为 skipped (0工时穿透)")
+    p_skip.add_argument("id", help="节点ID")
+    p_skip.add_argument("--reason", "-r", help="跳过原因")
+
+    sub.add_parser("undo", help="恢复到上一个快照")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -227,6 +249,7 @@ def main():
         "review": cmd_review, "rv": cmd_review,
         "decision": cmd_decision, "dec": cmd_decision,
         "poc": cmd_poc,
+        "add": cmd_add, "rm": cmd_rm, "skip": cmd_skip, "undo": cmd_undo,
     }
 
     fn = CMD.get(args.command)

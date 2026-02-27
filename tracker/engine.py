@@ -102,7 +102,7 @@ def compute_cpm(flow: dict, task_status: dict = None,
     for nid in graph["nodes"]:
         node = graph["nodes"][nid]
         status = task_status.get(nid, {}).get("status", "pending")
-        days = 0 if status == "done" else node_days(node, custom_estimates)
+        days = 0 if status in ("done", "skipped") else node_days(node, custom_estimates)
         result[nid] = {"days": days, "es": 0, "ef": 0, "ls": 0, "lf": 0,
                        "slack": 0, "critical": False}
 
@@ -174,7 +174,7 @@ def classify_tasks(flow: dict, task_status: dict,
         node = nodes[nid]
         s = task_status.get(nid, {}).get("status", "pending")
 
-        if s == "done":
+        if s in ("done", "skipped"):
             result["done"].append(node)
         elif s == "blocked":
             result["blocked"].append(node)
