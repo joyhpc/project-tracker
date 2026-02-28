@@ -407,4 +407,72 @@ pt replace <old> --entry <new_entry> [--exit <new_exit>]
 ---
 
 q3回复
+这是一个极其核心的 “智能体工程（Agentic Engineering）” 架构问题。
+当系统的核心操作者从“纯人类”扩展到“AI Agent (Nova) + 人类审核”，接口设计的最高准则就变成了：让 AI 输出结构化的声明（意图），让底层系统执行严格的校验（规则），让人类拥有直观的审核体验（安全感）。
+不要让 AI 写控制流（if/for 脚本微操），也不要让人类去阅读机器码。
+Q3.1: CLI vs API vs 自然语言（优先实现哪层？）
+核心结论：坚决抛弃“自然语言接口”，全力筑牢“高阶 Python API”，最后用极简的“CLI”包装。
+1. 坚决排除：自然语言接口 (pt apply "添加LM5060...")
+这是经典的“俄罗斯套娃”陷阱。 Nova 本身就是绝佳的自然语言处理引擎，它的职责就是把人类工程师的模糊话语，翻译成确定性的机器指令。如果在 pt 工具里再写一层自然语言解析（用正则去提取天数、上游），等于：
+人类对 Nova 说人话 ➔ Nova 提炼成另一句标准人话 ➔ pt 去猜这句人话的意思。
+链路越长，信息衰减和幻觉产生的概率就呈指数级上升。
+2. 第一优先级：高阶 Python API（面向 AI 的 Function Calling）
+结合我们在 Q1、Q2 设计的 with pt.mutate(): 事务沙盒和 replace 宏，Python API 将成为 Nova 最可靠的“工具箱”。
+ * 参数形态：强类型，接收原生的 Dict 和 List。它允许 Nova 一次性毫无歧义地把所有嵌套字段（比如多条文档链接 docs）全传进去。
+ * 核心设计原则：面向异常编程。 API 不需要输出漂亮的彩色日志，但一旦执行违反了 DAG 完整性，必须抛出带有极高信息熵的 Exception（例如：IntegrityError: 尝试插入 CPHY 时，指定的上游节点 camrx_base 不存在）。Nova 捕获到这个清晰的错误栈后，能立即触发它的**自我修正（Self-Correction）**能力，修改参数后重试。
+3. 第二优先级：CLI 命令（面向人类微操 & Agent 兜底）
+CLI 是 API 的外壳，参数扁平化（如 --depends a,b）。为了让其对 AI 极度友好，必须为所有修改型 CLI 添加两个“救命参数”：
+ * --dry-run（试运行）：只在内存中走一遍 mutate 事务和图论校验，不写硬盘。AI 在向人类汇报前，可以先静默跑一次，确保不报错。
+ * --json（机器可读）：屏蔽掉适合人类阅读的高亮文本或表格，将执行结果或错误栈以纯 JSON 打印到 stdout，让大模型能 100% 精确截获输出。
+Q3.2: 批量操作的输入格式（AI + 人类审核的最优解）
+面对“一次性添加 CPHY 验证的 5 个节点及复杂连线”这种需求，唯一正确答案是 A（YAML 文件片段）。
+我们来看看为什么其他三个方案在真实的“硬件工程 + AI”场景里是灾难：
+ * ❌ B (简化 DSL 缩进表示)：
+   * 死穴：DAG（有向无环图）不是树！ 硬件项目里，一个“PCB发板”节点可能同时依赖三个不同分支的前置任务，也经常存在跨阶段连线。靠“缩进”只能表达单父节点的树状分支，根本画不出网状拓扑。强迫大模型去写这种非标准自定义语法，必然频频报错。
+ * ❌ C (JSON Patch, RFC 6902)：
+   * 死穴：反人类审核。形如 [{"op": "add", "path": "/nodes/-", "value": {"id": "x"}}]。大模型输出这个很爽，但当工程师想 Review 这 5 个节点的依赖逻辑时，看着满屏的索引和转义符会直接掀桌子。
+ * ❌ D (交互式向导)：
+   * 死穴：反自动化。大模型在终端里处理阻塞式的标准输入（请输入预估天数 [Y/n]: ）极其脆弱，极易导致卡死、死循环或上下文错乱。
+🏆 为什么 A (YAML片段) 是绝对王者？
+ * AI 零学习成本：大模型阅尽天下 Kubernetes / Ansible 配置文件，对 YAML 的结构极度精通。
+ * 心智模型统一：和你的主项目文件 project.yaml 格式 100% 一致，零转换成本。
+ * 完美的 Code Review 体验：这就引出了接下来的终极人机协同工作流。
+🚀 终极演进：声明式的“提案 Patch”机制 (IaC 模式)
+结合前两问设计的底层引擎，你可以开发一条崭新的终极命令：
+pt apply <proposal.yaml> （这借鉴了 Terraform 和 Kubernetes 最先进的理念：基础设施即代码）。
+以后处理复杂的业务变阵，工作流是这样的：
+Step 1: 意图下发 (人类 ➔ Nova)
+“Nova，用 CPHY 验证流程（包含买板子2天、测眼图3天）去替换掉旧的 MIPI 方案。”
+Step 2: 方案生成 (Nova 内部计算)
+Nova 不再去写高危的、难以 Debug 的裸 Python 脚本，而是直接在你本地生成一个极其干净的 cphy_proposal.yaml 文件，甚至直接在文件里调用 Q2 设计的高阶宏机制：
+# cphy_proposal.yaml (Nova 生成的施工图纸)
+action: replace
+old_id: mipi_verify       # 指明要废弃的节点
+entry: cphy_board         # 宏观入口
+exit: cphy_eye_test       # 宏观出口
+
+nodes:
+  - id: cphy_board
+    name: 购买 CPHY 评估板
+    phase: PREP
+    days: 2
+    # 不用写 depends，底层 replace 宏会自动将它接到旧方案的源头
+    
+  - id: cphy_eye_test
+    name: CPHY 眼图点亮
+    phase: DETAIL
+    days: 3
+    depends: [cphy_board] # 内部组网连线照常写
+
+Step 3: 人类审查 (Human-in-the-loop) —— 安全感拉满！
+Nova 提示：“老大，变更提案已生成，请看 cphy_proposal.yaml。”
+工程师打开文件，像看 BOM 表一样一目了然。他觉得买板子 2 天可能不够，随手在文件里把 days: 2 改成了 days: 4，然后保存。
+Step 4: 事务性执行闭环
+工程师（或授权 Nova）敲下回车：
+$ pt apply cphy_proposal.yaml
+底层瞬间触发我们在 Q1 设计的防护网：解析 YAML ➔ 进入 with pt.mutate(): 内存事务 ➔ 调用宏完成图谱拼接缝合 ➔ 触发 6 项完整性校验 ➔ 无死锁/无环路 ➔ 自动备份老项目历史 ➔ 写入新数据。
+总结给你的开发建议
+ * 收回权力：不再赋予 Nova 编写随意修改内存和文件系统的 Python 脚本的权限。
+ * 提供标准接口：封装核心的 pt.add_node / pt.rewire / pt.replace API 作为标准 Tool Calling 提供给 Nova。
+ * 建设 apply 补丁流水线：将复杂的批量操作沉淀为 YAML 文件传递，让人类可以在文件级别进行拦截和 Review，彻底解决“AI瞎改数据”和“人类无法排错”的核心痛点。
 
