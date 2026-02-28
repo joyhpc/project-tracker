@@ -36,15 +36,42 @@ def _load(project_id: str) -> dict | None:
     f = _project_file(project_id)
     if f.exists():
         with open(f, "r", encoding="utf-8") as fh:
-            return yaml.safe_load(fh)
+            project = yaml.safe_load(fh)
+        # 记录 mtime 用于乐观锁
+        project["_mtime"] = f.stat().st_mtime
+        return project
     return None
 
 
-def _save(project: dict):
+def _save(project: dict, check_mtime: bool = True):
+    """保存项目到 YAML 文件
+
+    Args:
+        project: 项目 dict
+        check_mtime: 是否检查并发修改 (乐观锁)
+
+    Raises:
+        RuntimeError: 文件已被外部修改
+    """
     PROJECTS_DIR.mkdir(exist_ok=True)
     f = _project_file(project["id"])
+
+    # 乐观锁检查
+    if check_mtime and "_mtime" in project and f.exists():
+        current_mtime = f.stat().st_mtime
+        if current_mtime != project["_mtime"]:
+            raise RuntimeError(
+                f"并发冲突：YAML 文件已被外部修改 (mtime: {project['_mtime']} → {current_mtime})。"
+                f"请重新加载项目后重试。"
+            )
+
+    # 保存时移除内部字段
+    save_data = {k: v for k, v in project.items() if not k.startswith("_")}
     with open(f, "w", encoding="utf-8") as fh:
-        yaml.dump(project, fh, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        yaml.dump(save_data, fh, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    # 更新 mtime
+    project["_mtime"] = f.stat().st_mtime
 
 
 def _now() -> str:
@@ -100,25 +127,62 @@ def mutate(project: dict, dry_run: bool = False):
         dry_run: True=试运行(不保存文件), False=正常执行
 
     失败时自动回滚内存，不写入文件。
+    Error 级别问题会抛异常，Warning 级别允许写入。
+    CPM diff 存储在 project["_mutation_report"] 中。
     """
+    from .engine import compute_cpm
+
     backup = copy.deepcopy(project["nodes"])
+
+    # 记录变更前的 CPM
+    try:
+        old_cpm = compute_cpm(project, {})
+        old_duration = old_cpm.get("total_days", 0)
+        old_critical = set(old_cpm.get("critical_path", []))
+    except Exception:
+        old_duration = 0
+        old_critical = set()
+
     try:
         yield project
+
         # 退出时验证完整性
         issues = check_integrity(project)
+
+        # 只对 error 级别抛异常
         errors = [i for i in issues if isinstance(i, dict)
-                  and i.get("severity") == "critical"]
-        if not errors:
-            errors = [i for i in issues if isinstance(i, str)
-                      and "没有后继" in i and "孤立" in i]
+                  and i.get("severity") == "error"]
         if errors:
-            msgs = [e.get("message", str(e)) if isinstance(e, dict) else str(e)
-                    for e in errors[:3]]
+            msgs = [e.get("message", str(e)) for e in errors[:3]]
             raise ValueError(f"完整性检查失败: {'; '.join(msgs)}")
+
+        # 收集 warnings
+        warnings = [i for i in issues if isinstance(i, dict)
+                    and i.get("severity") == "warning"]
+
     except Exception:
         project["nodes"] = backup
         raise
     else:
+        # 计算 CPM diff
+        try:
+            new_cpm = compute_cpm(project, {})
+            new_duration = new_cpm.get("total_days", 0)
+            new_critical = set(new_cpm.get("critical_path", []))
+        except Exception:
+            new_duration = old_duration
+            new_critical = old_critical
+
+        # 存储变更报告
+        project["_mutation_report"] = {
+            "duration_diff": new_duration - old_duration,
+            "old_duration": old_duration,
+            "new_duration": new_duration,
+            "new_critical_nodes": list(new_critical - old_critical),
+            "removed_critical_nodes": list(old_critical - new_critical),
+            "warnings": [w.get("message", str(w)) for w in warnings],
+        }
+
         if not dry_run:
             _snapshot(project)
             _save(project)
@@ -351,6 +415,91 @@ def replace(project: dict, old_id: str,
     }
 
 
+def promote(project: dict, parent_id: str, sub_id: str,
+            new_node_data: dict = None) -> dict:
+    """提拔子任务为一等节点
+
+    将父节点下的子任务提取出来，生成新的一等节点，参与 CPM 计算。
+
+    场景: 原理图节点下的"采购定制接插件"子任务，发现交期 4 周成为瓶颈，
+          需要提拔为一等节点阻塞下游。
+
+    Args:
+        parent_id: 父节点 ID
+        sub_id: 子任务 ID (不含父节点前缀)
+        new_node_data: 可选，覆盖新节点的属性 (days, owner 等)
+
+    执行逻辑:
+        1. 从父节点的 subtasks 中找到子任务
+        2. 创建新的一等节点，继承父节点的上游
+        3. 父节点改为依赖新节点
+        4. 从父节点的 subtasks 中移除该子任务
+
+    Returns:
+        {"new_node": 新节点, "parent": 父节点, "removed_subtask": 被移除的子任务}
+    """
+    parent = _find_node(project, parent_id)
+    if not parent:
+        raise ValueError(f"父节点不存在: {parent_id}")
+
+    subtasks = parent.get("subtasks", [])
+    sub_idx = None
+    sub_task = None
+    for i, st in enumerate(subtasks):
+        if st.get("id") == sub_id:
+            sub_idx = i
+            sub_task = st
+            break
+
+    if sub_task is None:
+        raise ValueError(f"子任务不存在: {parent_id}.{sub_id}")
+
+    # 构建新节点
+    new_id = f"{parent_id}.{sub_id}"
+    node_ids = {n["id"] for n in project["nodes"]}
+    if new_id in node_ids:
+        raise ValueError(f"节点 ID 已存在: {new_id}")
+
+    new_node = {
+        "id": new_id,
+        "name": sub_task.get("name", sub_id),
+        "phase": parent.get("phase", "DETAIL"),
+        "status": sub_task.get("status", "pending"),
+        "depends": list(parent.get("depends", [])),  # 继承父节点上游
+    }
+    # 可选字段
+    if sub_task.get("days"):
+        new_node["days"] = sub_task["days"]
+    if sub_task.get("owner"):
+        new_node["owner"] = sub_task["owner"]
+    # 覆盖
+    if new_node_data:
+        new_node.update(new_node_data)
+        new_node["id"] = new_id  # 确保 ID 不被覆盖
+
+    # 添加新节点
+    project["nodes"].append(new_node)
+
+    # 父节点改为依赖新节点
+    parent_deps = parent.get("depends", [])
+    if new_id not in parent_deps:
+        parent_deps.append(new_id)
+        parent["depends"] = parent_deps
+
+    # 从父节点移除子任务
+    subtasks.pop(sub_idx)
+    if subtasks:
+        parent["subtasks"] = subtasks
+    else:
+        parent.pop("subtasks", None)
+
+    return {
+        "new_node": new_node,
+        "parent": parent,
+        "removed_subtask": sub_task,
+    }
+
+
 def _get_active() -> str | None:
     if CONFIG_FILE.exists():
         return CONFIG_FILE.read_text().strip()
@@ -486,12 +635,18 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
     """项目完整性检查 — 检测结构性问题
 
     检查项:
+    0. 环路检测: DAG 中存在循环依赖 (Fatal Error)
     1. 孤立终点: 非里程碑节点没有后继，且不是项目最终节点
-    2. 悬空依赖: depends 引用了不存在的节点
+    2. 悬空依赖: depends 引用了不存在的节点 (Fatal Error)
     3. 里程碑缺上游: 里程碑节点没有 depends
     4. 反向跨阶段依赖: 前阶段节点依赖后阶段节点
-    5. 重复节点ID
+    5. 重复节点ID (Fatal Error)
     6. 完全孤立节点: 无前驱也无后继（非首阶段）
+
+    Severity 分级:
+    - error: 必须修复，阻止写入 (环路、悬空依赖、重复ID)
+    - warning: 建议修复，允许写入 (孤立终点、孤立节点)
+    - info: 仅供参考 (跨阶段依赖、冗余依赖、粗粒度节点)
     """
     nodes = project.get("nodes", [])
     node_ids = {n["id"] for n in nodes}
@@ -519,6 +674,26 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
                          if n.get("phase") == last_phase_id}
 
     warnings = []
+
+    # 0. 环路检测 (Kahn 算法)
+    in_degree = {nid: len(predecessors.get(nid, [])) for nid in node_ids}
+    queue = [nid for nid, deg in in_degree.items() if deg == 0]
+    visited_count = 0
+    while queue:
+        nid = queue.pop(0)
+        visited_count += 1
+        for succ in successors.get(nid, []):
+            in_degree[succ] -= 1
+            if in_degree[succ] == 0:
+                queue.append(succ)
+    if visited_count != len(node_ids):
+        cycle_nodes = [nid for nid, deg in in_degree.items() if deg > 0]
+        warnings.append({
+            "type": "cycle_detected",
+            "severity": "error",
+            "nodes": cycle_nodes[:10],
+            "message": f"检测到循环依赖: {', '.join(cycle_nodes[:5])}{'...' if len(cycle_nodes) > 5 else ''}",
+        })
 
     # 1. 孤立终点检测
     for n in nodes:

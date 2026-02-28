@@ -15,7 +15,7 @@ from .commands.poc_cmd import cmd_poc
 from .commands.propose_cmd import cmd_propose
 from .commands.scan_cmd import cmd_scan
 from .commands.visual_cmd import cmd_visual
-from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace
+from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace, cmd_promote
 
 
 def main():
@@ -236,6 +236,14 @@ def main():
     p_replace.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
     p_replace.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
+    p_promote = sub.add_parser("promote", help="提拔子任务为一等节点")
+    p_promote.add_argument("parent", help="父节点ID")
+    p_promote.add_argument("sub", help="子任务ID (不含父节点前缀)")
+    p_promote.add_argument("--days", "-d", type=int, help="预估工时(天)")
+    p_promote.add_argument("--owner", "-o", help="负责人")
+    p_promote.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
+    p_promote.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -271,7 +279,7 @@ def main():
         "decision": cmd_decision, "dec": cmd_decision,
         "poc": cmd_poc,
         "add": cmd_add, "rm": cmd_rm, "skip": cmd_skip, "undo": cmd_undo,
-        "rewire": cmd_rewire, "replace": cmd_replace,
+        "rewire": cmd_rewire, "replace": cmd_replace, "promote": cmd_promote,
     }
 
     fn = CMD.get(args.command)

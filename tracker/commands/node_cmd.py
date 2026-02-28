@@ -206,3 +206,48 @@ def cmd_replace(args):
     except Exception as e:
         _output({"success": False, "error": str(e)}, json_mode, dry_run)
         sys.exit(1)
+
+
+def cmd_promote(args):
+    """提拔子任务为一等节点"""
+    p = core.require_active()
+    dry_run = getattr(args, 'dry_run', False)
+    json_mode = getattr(args, 'json', False)
+
+    new_node_data = {}
+    if args.days:
+        new_node_data["days"] = args.days
+    if args.owner:
+        new_node_data["owner"] = args.owner
+
+    try:
+        with core.mutate(p, dry_run=dry_run) as proj:
+            result = core.promote(proj, args.parent, args.sub,
+                                  new_node_data if new_node_data else None)
+
+        new_node = result["new_node"]
+        parent = result["parent"]
+
+        # 获取 CPM 信息
+        info = core.get_status(p)
+        cpm_nodes = info["cpm"].get("nodes", {})
+        cn = cpm_nodes.get(new_node["id"], {})
+        critical = info["cpm"].get("critical_path", [])
+
+        _output({
+            "success": True,
+            "message": f"已提拔: [{new_node['id']}] {new_node['name']}",
+            "new_node_id": new_node["id"],
+            "parent_id": args.parent,
+            "details": {
+                "阶段": new_node['phase'],
+                "工时": f"{new_node.get('days', 3)}天",
+                "slack": f"{cn.get('slack', '?')}天",
+                "关键路径": new_node["id"] in critical,
+                "继承上游": new_node.get("depends"),
+                "父节点新增依赖": new_node["id"],
+            }
+        }, json_mode, dry_run)
+    except Exception as e:
+        _output({"success": False, "error": str(e)}, json_mode, dry_run)
+        sys.exit(1)
