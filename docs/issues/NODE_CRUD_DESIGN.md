@@ -527,4 +527,110 @@ mutate(project, dry_run=True)  # 试运行不保存
 ---
 
 q4回复
+这是一个极为关键的架构收敛阶段。在“单文件 YAML、零外部依赖、极简代码”的物理约束下，要支撑 AI Agent 和人类的高频并发修改，系统的核心设计模式应该转向：“状态机模式 (State Machine)” + “防腐层 (Anti-Corruption Layer)”。
+以下是对 Q4 集成问题的详细解答，以及为你总结的最终版 API 全景图和实施路线。
+Q4.1: check_integrity 的角色定位
+决断：作为写入硬盘前的“绝对门控 (Commit Gate)”，严格区分 Error 与 Warning。
+ * 执行时机：绝对不要在每次 add_node 等单步操作后自动运行。因为 AI 批量构建图谱时（如连加 3 个节点），中间态 100% 是破缺的。check_integrity 必须且只能在 with pt.mutate(): 事务沙盒即将退出、真正写盘前统一运行一次。
+ * 性能考量：Python 在内存中对几百个节点跑 Kahn 拓扑排序和字典遍历，耗时在 2~5 毫秒级别，作为写盘门控完全可以忽略不计。
+ * 分级拦截策略（对 AI 极度重要）：
+   * 🔴 Fatal Error（拦截写入，触发内存回滚，抛出异常给 AI 修正）：
+     * CycleDetected: 环路（物理上无法执行，会导致引擎死锁）。
+     * DanglingDependency: 悬空依赖（depends 指向了不存在的 ID，这是 AI 产生幻觉时的重灾区）。
+     * DuplicateID: 主键冲突。
+   * 🟡 Warning（允许写盘，但在 CLI 打印黄字，并在 API 返回值中提示）：
+     * IsolatedEndNode: 孤立终点（允许存在。特别是 Q2 中确立的 status: skipped 废弃节点，直接豁免检查，连 Warning 都不报）。
+     * CrossPhaseBackward: 跨阶段逆向依赖。比如 EVT 阶段依赖了 DVT 阶段。这在硬件开发中叫“打回重做 / 借用设备”，物理上存在，绝不能阻断，只能警告。
+Q4.2: 与 CPM（关键路径）引擎的交互
+决断：静默计算 Diff（Impact Analysis），只做情报输出，绝不阻断！
+ * 不要阻断排期现实：硬件项目充满了突发状况。如果引入一个 ECN 验证确实会导致项目延期 5 天，工具的职责是“如实记录灾难”，而不是为了“保住原计划表”去拒绝记录灾难。
+ * 协同交互设计：
+   在 mutate 沙盒进入前，快照当前的 old_duration 和关键路径。沙盒校验通过后，计算 new_duration。
+   计算出 Diff，打包在 API 返回值中：{"cpm_diff": "+5 days", "new_critical_nodes": ["ecn_test"]}。
+   收益：Nova（AI助手）拿到这个返回值后，会自动在群里汇报：“老大，节点加进去了，但注意，这会导致整个项目关键路径拉长 5 天！” 这是极佳的人机信任构建。
+Q4.3: 与 sub（子任务）系统的关系
+决断：实现单向的 pt promote (提拔)，坚决不做 demote (降级)。
+ * 为什么需要 Promote？
+   极度符合硬件真实场景。一开始工程师在原理图节点下随手写了个 checklist 叫做 [ ] 采购定制接插件。后来发现供应商要走海外报关，交期 4 周，瞬间成了瓶颈。此时它必须被“提拔”为一等节点，参与 CPM 计算并阻塞下游。
+   语义：将它从父节点的 subtasks 抽出，生成新 Node，新 Node 的 depends 默认继承父节点的上游，而父节点改为依赖新 Node（或由 AI 显式指定连线）。
+ * 为什么不做 Demote？
+   把一个复杂的、可能带有网状连线的一等节点，塞回别人肚子里变成字符串，逻辑极其复杂且业务频次极低。如果不重要了，直接 pt skip 软删除即可。保持代码在 3200 行级别的精简。
+🚨 你可能没想到的架构盲区 (Blind Spots)
+在“单文件 YAML + AI 自动化”场景下，最大的地雷是人机并发导致的静默数据损坏 (Race Condition)。
+ * 场景：Nova 在后台花了 10 秒钟读取文件并推演替换方案。在这 10 秒内，人类工程师随手在终端敲了 pt start pcb_design。随后 Nova 演算完毕，直接写入 YAML。人类刚刚更新的 start 状态被覆盖丢失！
+ * 防腐层解法（0 外部依赖）：引入 MTime 乐观锁。
+   在 ProjectTracker.load() 时，记录 self._mtime = os.path.getmtime(yaml_path)。在 _save_yaml() 覆写前再检查一次，如果不一致，立刻抛出 ConcurrencyError("文件已被外部修改，请重新读取")，迫使 AI 重试。
+🏆 终极 API 架构与实施路线图
+整合 Q1 到 Q4，这是你现有的 3200 行代码库需要补充的终极设计（控制在新增 300 行以内）：
+1. 核心底座：带乐观锁的事务沙盒
+import os, copy
+from contextlib import contextmanager
+
+class ProjectTracker:
+    @contextmanager
+    def mutate(self, dry_run=False):
+        """核心防护网：所有增删改必须在此上下文内"""
+        backup_nodes = copy.deepcopy(self.nodes)
+        old_cpm = self.engine.get_duration()
+        original_mtime = os.path.getmtime(self.yaml_path) # 乐观锁快照
+        
+        try:
+            yield self  # 移交控制权给 AI 调用的宏
+            
+            # Commit Gate: 拦截 Error，收集 Warning
+            errors, warnings = self.check_integrity()
+            if errors:
+                raise ValueError(f"图谱破损，拒绝提交:\n" + "\n".join(errors))
+                
+        except Exception as e:
+            self.nodes = backup_nodes # 纳秒级回滚
+            raise e                   # 抛给 AI，触发自我修正
+            
+        else:
+            new_cpm = self.engine.get_duration()
+            diff_report = {"added_days": new_cpm - old_cpm, "warnings": warnings}
+            
+            if not dry_run:
+                # 防并发踩踏
+                if os.path.getmtime(self.yaml_path) != original_mtime:
+                    raise RuntimeError("并发冲突：YAML已被外部修改，请重载！")
+                
+                self._backup_yaml() # 备份一份到 .pt_history/ 目录留作 pt undo
+                self._save_yaml()
+                
+            return diff_report
+
+2. 原语 API (供 AI Tool Calling)
+    def add_node(self, node: dict, depends: list=None, leads_to: list=None):
+        """
+        带自动切线逻辑的添加：
+        遍历 leads_to(下游) 的 depends，如果里面包含了 depends(上游)，
+        说明发生了中间插入，自动将旧的直连边剔除。
+        """
+
+    def rewire(self, node_id: str, add_deps: list=None, rm_deps: list=None):
+        """纯粹的连线调整"""
+
+    def skip_node(self, node_id: str):
+        """软删除。工时穿透为0，豁免孤立终点检查"""
+
+3. 业务宏 API (高阶复杂操作)
+    def replace(self, old_id: str, entry: str, exit: str=None):
+        """
+        方案替换（上文 Q2 确立的宏）：
+        入口接管上游，出口替换下游，旧节点执行 skip_node。
+        """
+
+    def promote(self, parent_id: str, sub_index: int, new_node: dict):
+        """
+        提取子任务，生成新节点，自动处理内部连线逻辑。
+        """
+
+🛣️ 实施优先级排序
+建议按以下顺序落地，以确保系统随时可用且不破坏现有命令：
+ * Phase 1 - 固本培元 (基建)：修改 engine.py 令 skipped 节点 0 工时穿透；修改 check_integrity 区分 Error/Warning 并豁免废弃节点。
+ * Phase 2 - 筑造沙盒 (防护)：引入 mutate 上下文管理器和 MTime 乐观锁机制。把现有的 pt start/done 等操作包进 with pt.mutate(): 里测试。
+ * Phase 3 - 赋能 AI (武器)：实现 add_node、rewire 和高阶的 replace。
+ * Phase 4 - 人机闭环 (终端)：开发 pt apply <patch.yaml> 命令（Q3 结论），以后所有复杂的批量操作，让 AI 输出 YAML Patch，人类过目后一键 Apply。
+这套设计用最小的代码代价，换取了 100% 的数据安全性和极佳的智能体协同体验，你的 Project Tracker 将进化为一个非常强健的领域轻量级引擎。
 
