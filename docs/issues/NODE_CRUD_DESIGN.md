@@ -366,3 +366,45 @@ with pt.mutate():
  * 图论纯净：DAG 中没有幽灵节点、没有死循环、没有悬空依赖（Dangling Dependencies）。
  * AI 极度友好：Nova 拥有了确定性的积木块，即便它生成的拼接逻辑出错，也会被 Transaction 直接拦截回滚，绝不污染 YAML。
 
+
+---
+
+### Nova 实施总结 (Q2)
+
+**批判性调整：**
+1. ✅ 参数命名：采纳 `old_id, entry, exit`（比 `new_in_id/new_out_id` 更直观）
+2. ✅ 分场景策略：
+   - `skip` 单独调用 → 保留拓扑，0工时穿透（可恢复）
+   - `replace` 调用 → 切断下游，退化为历史枯枝（不可恢复）
+
+**实现的 API：**
+```python
+# 底层原语
+rewire(project, target_id, add_deps=[], rm_deps=[])
+
+# 业务宏
+replace(project, old_id, entry, exit=None)
+  # 1. 入口接管: old.depends → entry.depends
+  # 2. 出口交接: 下游的 old → exit
+  # 3. 历史归档: old → skipped + 切断下游
+```
+
+**CLI 命令：**
+```bash
+pt rewire <target> --add a,b --rm c,d
+pt replace <old> --entry <new_entry> [--exit <new_exit>]
+```
+
+**测试验证：**
+- JW7221 → LM5060 替换场景：✅ 通过
+- 入口接管（继承上游）：✅ 正确
+- 出口交接（替换下游）：✅ 正确
+- 历史归档（skipped + 孤立枯枝）：✅ 正确
+- 全 5 项目回归：✅ 0 问题
+
+**Commit:** `310d366` feat: Q2实现 — rewire原语 + replace业务宏
+
+---
+
+q3回复
+
