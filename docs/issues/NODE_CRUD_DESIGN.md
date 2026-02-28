@@ -712,3 +712,86 @@ Q1-Q4 全部实施完成。当前 pt 新增 8 个命令：
 
 代码量：~3500 行（新增 ~300 行）
 
+
+---
+
+### Nova 实施总结 (Q4)
+
+**批判性分析：**
+1. ✅ `check_integrity` 作为 Commit Gate — 只在 `mutate()` 退出时运行一次
+2. ✅ Error/Warning ��级 — 只对 error 抛异常，warning 允许写入
+3. ✅ CPM Diff 静默计算 — 存储在 `project["_mutation_report"]`
+4. ✅ `promote` 单向提拔 — 不做 demote，保持代码精简
+5. ✅ MTime 乐观锁 — 防并发踩踏
+6. ⚠️ 保持函数式架构 — 不采用超级 LLM 建议的类重构
+
+**实现的功能：**
+
+```python
+# 1. MTime 乐观锁
+_load()  # 记录 project["_mtime"]
+_save(project, check_mtime=True)  # 检查 mtime，不一致抛 RuntimeError
+
+# 2. 环路检测 (Kahn 算法)
+check_integrity()  # 返回 {"type": "cycle_detected", "severity": "error", ...}
+
+# 3. Error/Warning 分级
+# Error (阻止写入): cycle_detected, dangling_dep, duplicate_id
+# Warning (允许写入): orphan_terminal, isolated_node
+# Info (仅供参考): reverse_phase_dep, redundant_dep, coarse_bringup
+
+# 4. CPM Diff
+project["_mutation_report"] = {
+    "duration_diff": +5,  # 工期变化
+    "old_duration": 100,
+    "new_duration": 105,
+    "new_critical_nodes": ["ecn_test"],
+    "removed_critical_nodes": [],
+    "warnings": [...]
+}
+
+# 5. promote
+promote(project, parent_id, sub_id, new_node_data=None)
+# CLI: pt promote <parent> <sub> [--days N] [--dry-run] [--json]
+```
+
+**测试验证：**
+- 环路检测：✅ 正确抛异常
+- 乐观锁：✅ 检测到并发冲突
+- promote：✅ 子任务提拔成功，slack=0 进入关键路径
+- 全 5 项目回归：✅ 0 问题
+
+**Commit:** `54127cc` feat(Q4): 系统集成 — 乐观锁 + 环路检测 + Error/Warning分级 + CPM Diff + promote
+
+---
+
+## 总结：节点 CRUD 系统完成
+
+### 新增命令 (7 个)
+| 命令 | 功能 | 关键参数 |
+|------|------|----------|
+| `pt add` | 添加节点 | `--depends`, `--leads-to`, `--dry-run`, `--json` |
+| `pt rm` | 硬删除 | `--stitch` |
+| `pt skip` | 软删除 | `--reason` |
+| `pt undo` | 快照回滚 | |
+| `pt rewire` | 修改依赖 | `--add`, `--rm` |
+| `pt replace` | 方案交接 | `--entry`, `--exit` |
+| `pt promote` | 子任务提拔 | `--days`, `--owner` |
+
+### 核心 API
+- `mutate(project, dry_run=False)` — 事务上下文管理器
+- `add_node(project, node_data, depends, leads_to)` — 添加节点 + Auto-Splice
+- `remove_node(project, node_id, stitch)` — 删除节点 + 可选缝合
+- `skip_node(project, node_id, reason)` — 软删除 (0 工时穿透)
+- `rewire(project, target_id, add_deps, rm_deps)` — 底层拓扑原语
+- `replace(project, old_id, entry, exit)` — 方案交接宏
+- `promote(project, parent_id, sub_id, new_node_data)` — 子任务提拔
+
+### 安全机制
+- **事务回滚**：`mutate()` 失败自动回滚内存
+- **完整性检查**：环路、悬空依赖、重复 ID 阻止写入
+- **乐观锁**：防并发踩踏
+- **快照历史**：`pt undo` 可恢复
+
+### 待实现 (低优先级)
+- `pt apply <proposal.yaml>` — 声明式批量操作 (Q3.2)
