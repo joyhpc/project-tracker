@@ -634,3 +634,81 @@ class ProjectTracker:
  * Phase 4 - 人机闭环 (终端)：开发 pt apply <patch.yaml> 命令（Q3 结论），以后所有复杂的批量操作，让 AI 输出 YAML Patch，人类过目后一键 Apply。
 这套设计用最小的代码代价，换取了 100% 的数据安全性和极佳的智能体协同体验，你的 Project Tracker 将进化为一个非常强健的领域轻量级引擎。
 
+
+---
+
+### Nova 实施总结 (Q4)
+
+**批判性分析：**
+1. ✅ `check_integrity` 作为 Commit Gate，Error/Warning/Info 三级分级
+2. ✅ MTime 乐观锁防并发踩踏
+3. ✅ CPM Diff 静默计算，只做情报输出
+4. ✅ `promote` 单向提拔，不做 `demote`
+5. ⚠️ 保持函数式架构（不重构为类）
+
+**实现的功能：**
+
+1. **check_integrity 增强**
+   - 新增环路检测（Kahn 算法）
+   - Error: 环路、悬空依赖、重复ID → 阻止写入
+   - Warning: 孤立终点、孤立节点 → 允许写入
+   - Info: 跨阶段依赖、冗余依赖 → 仅提示
+
+2. **MTime 乐观锁**
+   ```python
+   _load()  # 记录 project["_mtime"]
+   _save()  # 检查 mtime 是否变化，变化则抛 RuntimeError
+   ```
+
+3. **CPM Diff 报告**
+   ```python
+   project["_mutation_report"] = {
+       "duration_diff": +25,
+       "old_duration": 137,
+       "new_duration": 162,
+       "new_critical_nodes": ["test_long_task"],
+       "warnings": [...]
+   }
+   ```
+
+4. **promote 命令**
+   ```bash
+   pt promote <parent> <sub_id> [--days N] [--owner X]
+   ```
+
+**测试验证：**
+- 环路检测：✅ 人为制造环路被正确检测
+- MTime 乐观锁：✅ 外部修改后保存被拦截
+- CPM Diff：✅ 100天任务插入后工期 +25 天
+- promote：✅ 子任务提拔为一等节点，继承上游
+- 全 5 项目回归：✅ 0 问题
+
+**Commit:** `b92ee6d` feat(Q4): 完整性分级 + MTime乐观锁 + CPM Diff + promote
+
+---
+
+## 实施完成总结
+
+Q1-Q4 全部实施完成。当前 pt 新增 8 个命令：
+
+| 命令 | 功能 | 来源 |
+|------|------|------|
+| `pt add` | 添加节点 (含 Auto-Splice) | Q1 |
+| `pt rm` | 硬删除 (含 --stitch 缝合) | Q1 |
+| `pt skip` | 软删除 (0工时穿透) | Q1 |
+| `pt undo` | 快照回滚 | Q1 |
+| `pt rewire` | 底层原语 (改 depends) | Q2 |
+| `pt replace` | 业务宏 (方案交接棒) | Q2 |
+| `pt promote` | 提拔子任务 | Q4 |
+| 所有命令 | `--dry-run` `--json` | Q3 |
+
+核心能力：
+- `mutate()` 事务沙盒 + 完整性门控
+- Error/Warning/Info 三级分级
+- MTime 乐观锁防并发
+- CPM Diff 变更影响分析
+- Auto-Splice 自动切断冗余边
+- 缝合删除 + 方案交接棒
+
+代码量：~3500 行（新增 ~300 行）
+
