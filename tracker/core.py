@@ -239,6 +239,113 @@ def skip_node(project: dict, node_id: str, reason: str = "") -> dict:
     return node
 
 
+def rewire(project: dict, target_id: str,
+           add_deps: list = None, rm_deps: list = None) -> dict:
+    """底层拓扑原语: 修改单个节点的 depends 数组
+
+    Args:
+        target_id: 要修改的节点 ID
+        add_deps: 要添加的上游依赖
+        rm_deps: 要移除的上游依赖
+
+    Returns:
+        修改后的节点 dict
+    """
+    node = _find_node(project, target_id)
+    if not node:
+        raise ValueError(f"节点不存在: {target_id}")
+
+    node_ids = {n["id"] for n in project["nodes"]}
+    deps = node.get("depends", [])
+
+    if rm_deps:
+        for d in rm_deps:
+            if d in deps:
+                deps.remove(d)
+
+    if add_deps:
+        for d in add_deps:
+            if d not in node_ids:
+                raise ValueError(f"依赖节点不存在: {d}")
+            if d not in deps:
+                deps.append(d)
+
+    node["depends"] = deps
+    return node
+
+
+def replace(project: dict, old_id: str,
+            entry: str, exit: str = None) -> dict:
+    """高阶业务宏: 方案交接棒
+
+    将 old_id 的上下游关系转移给新节点链，old_id 归档为历史枯枝。
+
+    场景: JW7221 → LM5060
+      replace(p, "jw7221_verify", entry="lm5060_buy", exit="lm5060_verify")
+
+    执行逻辑:
+      1. 入口接管: old_id 的上游(depends) 合并给 entry
+      2. 出口交接: 所有依赖 old_id 的下游节点, 将 old_id 替换为 exit
+      3. 历史归档: old_id 标记 skipped, 切断下游连线(退化为孤立枯枝)
+
+    Args:
+        old_id: 被替换的旧节点
+        entry: 新方案链的入口节点 (接管旧节点的上游)
+        exit: 新方案链的出口节点 (接管旧节点的下游), 默认=entry (1:1替换)
+
+    Returns:
+        {"old": 旧节点, "entry": 入口节点, "exit": 出口节点,
+         "transferred_upstream": [...], "transferred_downstream": [...]}
+    """
+    if exit is None:
+        exit = entry
+
+    old_node = _find_node(project, old_id)
+    if not old_node:
+        raise ValueError(f"旧节点不存在: {old_id}")
+    entry_node = _find_node(project, entry)
+    if not entry_node:
+        raise ValueError(f"入口节点不存在: {entry}")
+    exit_node = _find_node(project, exit)
+    if not exit_node:
+        raise ValueError(f"出口节点不存在: {exit}")
+
+    # Step 1: 入口接管 — old 的上游合并给 entry
+    old_upstreams = list(old_node.get("depends", []))
+    entry_deps = entry_node.get("depends", [])
+    transferred_up = []
+    for up in old_upstreams:
+        if up not in entry_deps:
+            entry_deps.append(up)
+            transferred_up.append(up)
+    entry_node["depends"] = entry_deps
+
+    # Step 2: 出口交接 — 所有依赖 old 的下游, 替换为 exit
+    transferred_down = []
+    for n in project["nodes"]:
+        deps = n.get("depends", [])
+        if old_id in deps:
+            deps.remove(old_id)
+            if exit not in deps:
+                deps.append(exit)
+            n["depends"] = deps
+            transferred_down.append(n["id"])
+
+    # Step 3: 历史归档 — skipped + 切断下游(下游已在 Step 2 中移除了对 old 的引用)
+    old_node["status"] = "skipped"
+    old_node["skip_reason"] = f"方案替换: {old_id} → {entry}" + (f" → {exit}" if exit != entry else "")
+    old_node["skipped_at"] = _now()
+    # old_node 的 depends 保留(保留起因), 下游已切断(Step 2)
+
+    return {
+        "old": old_node,
+        "entry": entry_node,
+        "exit": exit_node,
+        "transferred_upstream": transferred_up,
+        "transferred_downstream": transferred_down,
+    }
+
+
 def _get_active() -> str | None:
     if CONFIG_FILE.exists():
         return CONFIG_FILE.read_text().strip()

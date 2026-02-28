@@ -15,7 +15,7 @@ from .commands.poc_cmd import cmd_poc
 from .commands.propose_cmd import cmd_propose
 from .commands.scan_cmd import cmd_scan
 from .commands.visual_cmd import cmd_visual
-from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo
+from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace
 
 
 def main():
@@ -215,6 +215,16 @@ def main():
 
     sub.add_parser("undo", help="恢复到上一个快照")
 
+    p_rewire = sub.add_parser("rewire", help="底层拓扑原语: 修改节点依赖")
+    p_rewire.add_argument("target", help="目标节点ID")
+    p_rewire.add_argument("--add", help="添加上游依赖 (逗号分隔)")
+    p_rewire.add_argument("--rm", help="移除上游依赖 (逗号分隔)")
+
+    p_replace = sub.add_parser("replace", help="方案交接棒: 替换旧方案为新方案")
+    p_replace.add_argument("old", help="被替换的旧节点ID")
+    p_replace.add_argument("--entry", required=True, help="新方案入口节点ID (接管上游)")
+    p_replace.add_argument("--exit", help="新方案出口节点ID (接管下游, 默认=entry)")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -250,6 +260,7 @@ def main():
         "decision": cmd_decision, "dec": cmd_decision,
         "poc": cmd_poc,
         "add": cmd_add, "rm": cmd_rm, "skip": cmd_skip, "undo": cmd_undo,
+        "rewire": cmd_rewire, "replace": cmd_replace,
     }
 
     fn = CMD.get(args.command)

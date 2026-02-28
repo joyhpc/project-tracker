@@ -1,4 +1,4 @@
-"""节点 CRUD 命令 — add / rm / skip / undo"""
+"""节点 CRUD 命令 — add / rm / skip / undo / rewire / replace"""
 from .. import core
 
 
@@ -69,3 +69,48 @@ def cmd_undo(args):
     p = core.require_active()
     msg = core.undo(p["id"])
     print(f"✅ {msg}")
+
+
+def cmd_rewire(args):
+    """底层拓扑原语: 修改节点的依赖关系"""
+    p = core.require_active()
+
+    add_deps = [d.strip() for d in args.add.split(",")] if args.add else None
+    rm_deps = [d.strip() for d in args.rm.split(",")] if args.rm else None
+
+    if not add_deps and not rm_deps:
+        print("❌ 至少指定 --add 或 --rm")
+        return
+
+    with core.mutate(p) as proj:
+        node = core.rewire(proj, args.target, add_deps=add_deps, rm_deps=rm_deps)
+
+    print(f"✅ 已修改: [{args.target}] {node.get('name', '')}")
+    print(f"   depends = {node.get('depends', [])}")
+    if add_deps:
+        print(f"   + 添加: {', '.join(add_deps)}")
+    if rm_deps:
+        print(f"   - 移除: {', '.join(rm_deps)}")
+
+
+def cmd_replace(args):
+    """高阶业务宏: 方案交接棒"""
+    p = core.require_active()
+
+    with core.mutate(p) as proj:
+        result = core.replace(proj, args.old, entry=args.entry,
+                              exit=args.exit)
+
+    old = result["old"]
+    entry_node = result["entry"]
+    exit_node = result["exit"]
+
+    print(f"✅ 方案替换完成")
+    print(f"   旧方案: [{args.old}] {old.get('name', '')} → skipped")
+    print(f"   入口接管: [{args.entry}] {entry_node.get('name', '')}")
+    if args.exit and args.exit != args.entry:
+        print(f"   出口交接: [{args.exit}] {exit_node.get('name', '')}")
+    if result["transferred_upstream"]:
+        print(f"   继承上游: {', '.join(result['transferred_upstream'])}")
+    if result["transferred_downstream"]:
+        print(f"   接管下游: {', '.join(result['transferred_downstream'])}")
