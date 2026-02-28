@@ -86,14 +86,18 @@ def undo(project_id: str) -> str:
 # ── DAG 事务 ──────────────────────────────────────────
 
 @contextmanager
-def mutate(project: dict):
+def mutate(project: dict, dry_run: bool = False):
     """原子化 DAG 修改的上下文管理器
 
     用法:
-        with mutate(project) as p:
+        with mutate(project, dry_run=True) as p:
             add_node(p, {...}, leads_to=[...])
             remove_node(p, "old_node", stitch=True)
-        # 退出时自动: check_integrity → 快照 → 保存
+        # 退出时自动: check_integrity → 快照 → 保存 (dry_run 时跳过保存)
+
+    Args:
+        project: 项目 dict
+        dry_run: True=试运行(不保存文件), False=正常执行
 
     失败时自动回滚内存，不写入文件。
     """
@@ -115,8 +119,9 @@ def mutate(project: dict):
         project["nodes"] = backup
         raise
     else:
-        _snapshot(project)
-        _save(project)
+        if not dry_run:
+            _snapshot(project)
+            _save(project)
 
 
 # ── 节点 CRUD ─────────────────────────────────────────

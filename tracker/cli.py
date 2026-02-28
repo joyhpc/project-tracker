@@ -204,26 +204,37 @@ def main():
     p_add.add_argument("--depends", help="上游依赖 (逗号分隔)")
     p_add.add_argument("--leads-to", help="下游节点 (逗号分隔, 自动接入+切断冗余边)")
     p_add.add_argument("--note", help="备注")
+    p_add.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
+    p_add.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
     p_rm = sub.add_parser("rm", help="从 DAG 移除节点")
     p_rm.add_argument("id", help="节点ID")
     p_rm.add_argument("--stitch", action="store_true", help="自动缝合依赖链")
+    p_rm.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
+    p_rm.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
     p_skip = sub.add_parser("skip", help="软删除: 标记节点为 skipped (0工时穿透)")
     p_skip.add_argument("id", help="节点ID")
     p_skip.add_argument("--reason", "-r", help="跳过原因")
+    p_skip.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
+    p_skip.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
-    sub.add_parser("undo", help="恢复到上一个快照")
+    p_undo = sub.add_parser("undo", help="恢复到上一个快照")
+    p_undo.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
     p_rewire = sub.add_parser("rewire", help="底层拓扑原语: 修改节点依赖")
     p_rewire.add_argument("target", help="目标节点ID")
     p_rewire.add_argument("--add", help="添加上游依赖 (逗号分隔)")
     p_rewire.add_argument("--rm", help="移除上游依赖 (逗号分隔)")
+    p_rewire.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
+    p_rewire.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
     p_replace = sub.add_parser("replace", help="方案交接棒: 替换旧方案为新方案")
     p_replace.add_argument("old", help="被替换的旧节点ID")
     p_replace.add_argument("--entry", required=True, help="新方案入口节点ID (接管上游)")
     p_replace.add_argument("--exit", help="新方案出口节点ID (接管下游, 默认=entry)")
+    p_replace.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
+    p_replace.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
     # ── 路由 ──
     args = parser.parse_args()
