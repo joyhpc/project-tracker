@@ -476,3 +476,55 @@ $ pt apply cphy_proposal.yaml
  * 提供标准接口：封装核心的 pt.add_node / pt.rewire / pt.replace API 作为标准 Tool Calling 提供给 Nova。
  * 建设 apply 补丁流水线：将复杂的批量操作沉淀为 YAML 文件传递，让人类可以在文件级别进行拦截和 Review，彻底解决“AI瞎改数据”和“人类无法排错”的核心痛点。
 
+
+---
+
+### Nova 实施总结 (Q3)
+
+**批判性分析：**
+1. ✅ 完全认同排除自然语言接口 — "俄罗斯套娃"陷阱，信息衰减指数级上升
+2. ✅ Python API 第一优先级 — 已有 `mutate()` 事务 + 强类型 API，面向异常编程
+3. ✅ CLI 添加 `--dry-run` 和 `--json` — AI 友好，Self-Correction 能力
+4. ⚠️ Q3.2 的 `pt apply <proposal.yaml>` — 认同理念，但当前 Python API 已足够，留待后续
+
+**关于 pt apply 的判断：**
+- 超级 LLM 建议的 `cphy_proposal.yaml` 格式混合了 action 指令和 nodes 数据，不是纯 YAML 片段
+- 应该保持两种模式：
+  - **纯数据模式**：`nodes: [...]` 直接 merge（简单批量添加）
+  - **指令模式**：`action: replace, old_id, entry, exit, nodes: [...]`（复杂业务宏）
+- 当前 Python API + `mutate()` 事务已经足够强大，`pt apply` 是锦上添花，不是必需品
+- 优先级：Q3.1 > Q4 > Q3.2
+
+**实现的功能：**
+```python
+# 核心 API
+mutate(project, dry_run=True)  # 试运行不保存
+
+# CLI 参数 (所有 CRUD 命令)
+--dry-run  # 试运行，完整性检查但不保存文件
+--json     # JSON 输出，机器可读
+```
+
+**输出格式：**
+```json
+{
+  "success": true/false,
+  "message": "...",
+  "node_id": "...",
+  "details": {...},
+  "dry_run": true  // 仅 dry-run 时出现
+}
+```
+
+**测试验证：**
+- `--dry-run`：完整性检查通过但不保存 ✅
+- `--json`：结构化输出 ✅
+- `--dry-run --json`：组合使用 ✅
+- 全 5 项目回归：✅ 0 问题
+
+**Commit:** `02b6ab4` feat(Q3.1): --dry-run + --json 支持
+
+---
+
+q4回复
+
