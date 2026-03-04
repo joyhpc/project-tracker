@@ -1,0 +1,137 @@
+id: kids-book-mvp
+name: Kids Book MVP
+flow: software_mvp
+created: 2026-03-04 23:20
+repo: ''
+phases:
+- id: CONCEPT
+  name: 概念与设计
+- id: DEV
+  name: 核心开发
+- id: CONTENT
+  name: 内容制作
+- id: RELEASE
+  name: MVP发布
+  milestone: DONE
+nodes:
+- id: vision_doc
+  name: 产品愿景定义
+  type: task
+  phase: CONCEPT
+  owner: PM
+  status: done
+  completed: 2026-03-04 23:21
+  note: 撰写了PRODUCT_VISION.md
+- id: architecture
+  name: 架构设计与技术选型
+  type: task
+  phase: CONCEPT
+  owner: Tech Lead
+  status: done
+  completed: 2026-03-04 23:21
+  note: 确立了JS引擎(MVC)与Python OOD管道
+- id: core_engine
+  name: 绘本引擎开发 (JS/HTML/CSS)
+  type: task
+  phase: DEV
+  owner: Dev
+  depends:
+  - architecture
+  status: in_progress
+  started: 2026-03-04 23:22
+- id: data_pipeline
+  name: 数据管道开发 (OOD Pipeline)
+  type: task
+  phase: DEV
+  owner: Dev
+  depends:
+  - architecture
+  status: in_progress
+  started: 2026-03-04 23:22
+- id: assets_scene1
+  name: 场景1资源制作
+  type: task
+  phase: CONTENT
+  owner: Artist
+  depends:
+  - vision_doc
+  status: in_progress
+  started: 2026-03-04 23:22
+- id: assets_scene2
+  name: 场景2资源制作
+  type: task
+  phase: CONTENT
+  owner: Artist
+  depends:
+  - vision_doc
+  status: in_progress
+  started: 2026-03-04 23:22
+- id: assets_scene3
+  name: 场景3资源制作
+  type: task
+  phase: CONTENT
+  owner: Artist
+  depends:
+  - vision_doc
+  status: in_progress
+  started: 2026-03-04 23:22
+- id: integration
+  name: 前端与数据集成
+  type: task
+  phase: RELEASE
+  owner: Dev
+  depends:
+  - core_engine
+  - data_pipeline
+  - assets_scene1
+  - assets_scene2
+  - assets_scene3
+  status: pending
+- id: testing
+  name: 测试与打磨
+  type: task
+  phase: RELEASE
+  owner: QA
+  depends:
+  - integration
+  status: pending
+- id: ms_release
+  name: MVP 发布里程碑
+  type: milestone
+  phase: RELEASE
+  depends:
+  - testing
+  status: pending
+blockers: []
+log:
+- time: 2026-03-04 23:20
+  action: init
+  detail: '项目创建，流程: software_mvp'
+- time: 2026-03-04 23:21
+  action: done
+  task: vision_doc
+  detail: 撰写了PRODUCT_VISION.md
+- time: 2026-03-04 23:21
+  action: done
+  task: architecture
+  detail: 确立了JS引擎(MVC)与Python OOD管道
+- time: 2026-03-04 23:22
+  action: start
+  task: core_engine
+  detail: 绘本引擎开发 (JS/HTML/CSS)
+- time: 2026-03-04 23:22
+  action: start
+  task: data_pipeline
+  detail: 数据管道开发 (OOD Pipeline)
+- time: 2026-03-04 23:22
+  action: start
+  task: assets_scene1
+  detail: 场景1资源制作
+- time: 2026-03-04 23:22
+  action: start
+  task: assets_scene2
+  detail: 场景2资源制作
+- time: 2026-03-04 23:22
+  action: start
+  task: assets_scene3
+  detail: 场景3资源制作
