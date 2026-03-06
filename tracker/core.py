@@ -26,10 +26,83 @@ from . import flow as flowmod
 
 PROJECTS_DIR = Path(__file__).parent.parent / "projects"
 CONFIG_FILE = PROJECTS_DIR / ".active"
+PROJECT_SCHEMA_VERSION = 2
 
 
 def _project_file(project_id: str) -> Path:
     return PROJECTS_DIR / f"{project_id}.yaml"
+
+
+def migrate_project_data(project: dict | None) -> tuple[dict | None, bool]:
+    """将历史项目数据迁移到当前 schema。"""
+    if not isinstance(project, dict):
+        return project, False
+
+    changed = False
+    migrated = copy.deepcopy(project)
+
+    if migrated.get("schema_version") != PROJECT_SCHEMA_VERSION:
+        migrated["schema_version"] = PROJECT_SCHEMA_VERSION
+        changed = True
+
+    for key in ("blockers", "log", "nodes", "reviews", "decisions", "pocs"):
+        if key not in migrated or migrated[key] is None:
+            migrated[key] = []
+            changed = True
+
+    for node in migrated.get("nodes", []):
+        docs = node.get("docs", []) or []
+        normalized_docs = []
+        docs_changed = False
+        for doc in docs:
+            if not isinstance(doc, dict):
+                continue
+            normalized = dict(doc)
+            path = normalized.get("path") or normalized.get("file")
+            if path and normalized.get("path") != path:
+                normalized["path"] = path
+                docs_changed = True
+            if "file" in normalized:
+                normalized.pop("file", None)
+                docs_changed = True
+            normalized_docs.append(normalized)
+        if docs_changed or normalized_docs != docs:
+            node["docs"] = normalized_docs
+            changed = True
+
+    normalized_reviews = []
+    for review in migrated.get("reviews", []):
+        if not isinstance(review, dict):
+            continue
+        normalized = dict(review)
+        verdicts = normalize_verdicts(normalized.get("verdicts", []))
+        if normalized.get("verdicts") != verdicts:
+            normalized["verdicts"] = verdicts
+            changed = True
+        normalized_reviews.append(normalized)
+    if normalized_reviews != migrated.get("reviews", []):
+        migrated["reviews"] = normalized_reviews
+
+    for collection in ("decisions", "pocs"):
+        normalized_items = []
+        for item in migrated.get(collection, []):
+            if not isinstance(item, dict):
+                continue
+            normalized = dict(item)
+            if "id" in normalized and isinstance(normalized["id"], str) and normalized["id"].isdigit():
+                normalized["id"] = int(normalized["id"])
+                changed = True
+            normalized_items.append(normalized)
+        if normalized_items != migrated.get(collection, []):
+            migrated[collection] = normalized_items
+
+    return migrated, changed
+
+
+def _prepare_for_save(project: dict) -> dict:
+    """保存前统一做 schema 归一化。"""
+    migrated, _ = migrate_project_data(project)
+    return migrated or {}
 
 
 def _load(project_id: str) -> dict | None:
@@ -37,8 +110,11 @@ def _load(project_id: str) -> dict | None:
     if f.exists():
         with open(f, "r", encoding="utf-8") as fh:
             project = yaml.safe_load(fh)
+        project, migrated = migrate_project_data(project)
         # 记录 mtime 用于乐观锁
         project["_mtime"] = f.stat().st_mtime
+        if migrated:
+            project["_schema_dirty"] = True
         return project
     return None
 
@@ -66,12 +142,14 @@ def _save(project: dict, check_mtime: bool = True):
             )
 
     # 保存时移除内部字段
-    save_data = {k: v for k, v in project.items() if not k.startswith("_")}
+    normalized = _prepare_for_save(project)
+    save_data = {k: v for k, v in normalized.items() if not k.startswith("_")}
     with open(f, "w", encoding="utf-8") as fh:
         yaml.dump(save_data, fh, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
     # 更新 mtime
     project["_mtime"] = f.stat().st_mtime
+    project.pop("_schema_dirty", None)
 
 
 def _now() -> str:
@@ -149,9 +227,9 @@ def mutate(project: dict, dry_run: bool = False):
         # 退出时验证完整性
         issues = check_integrity(project)
 
-        # 只对 error 级别抛异常
+        # 对 error / critical 级别抛异常
         errors = [i for i in issues if isinstance(i, dict)
-                  and i.get("severity") == "error"]
+                  and i.get("severity") in ("error", "critical")]
         if errors:
             msgs = [e.get("message", str(e)) for e in errors[:3]]
             raise ValueError(f"完整性检查失败: {'; '.join(msgs)}")
@@ -529,6 +607,7 @@ def init_project(project_id: str, name: str, flow_name: str = "duxin", repo: str
         node["status"] = "pending"
 
     project = {
+        "schema_version": PROJECT_SCHEMA_VERSION,
         "id": project_id,
         "name": name,
         "flow": flow_name,
@@ -549,8 +628,9 @@ def list_projects() -> list[dict]:
     result = []
     active = _get_active()
     for f in sorted(PROJECTS_DIR.glob("*.yaml")):
-        with open(f, "r", encoding="utf-8") as fh:
-            p = yaml.safe_load(fh)
+        p = _load(f.stem)
+        if not p:
+            continue
         p["_active"] = (p["id"] == active)
         result.append(p)
     return result
@@ -602,6 +682,79 @@ def _project_as_flow(project: dict) -> dict:
     }
 
 
+def _effective_nodes(project: dict) -> list[dict]:
+    """获取参与统计/调度的有效节点（排除 expanded 父节点）"""
+    return [n for n in project.get("nodes", []) if n.get("status") != "expanded"]
+
+
+def _progress_counts(project: dict) -> tuple[int, int]:
+    """返回 (done_count, total) 统计口径。"""
+    nodes = _effective_nodes(project)
+    total = len(nodes)
+    done_count = sum(1 for n in nodes if n.get("status") == "done")
+    return done_count, total
+
+
+def _undone_dependencies(project: dict, node: dict) -> list[str]:
+    """返回尚未完成的依赖节点 ID 列表。"""
+    undone = []
+    for dep_id in node.get("depends", []):
+        dep_node = _find_node(project, dep_id)
+        if dep_node is None or dep_node.get("status") != "done":
+            undone.append(dep_id)
+    return undone
+
+
+def _resolve_repo_file(project: dict, file_path: str) -> Path | None:
+    """将相对仓库路径解析为绝对路径；项目未关联仓库时返回 None。"""
+    repo = get_repo_path(project)
+    if not repo:
+        return None
+    return repo / file_path
+
+
+def _validate_repo_file(project: dict, file_path: str, field_name: str = "文件"):
+    """校验仓库内文件路径。项目未关联仓库时跳过存在性校验。"""
+    if not file_path:
+        raise ValueError(f"{field_name}不能为空")
+    resolved = _resolve_repo_file(project, file_path)
+    if resolved and not resolved.exists():
+        raise ValueError(f"{field_name}不存在: {file_path}")
+
+
+def _fallback_classified(project: dict) -> dict:
+    """当图存在结构性错误时，提供保守分类结果。"""
+    result = {"ready": [], "in_progress": [], "blocked": [], "waiting": [], "done": []}
+    for node in _effective_nodes(project):
+        status = node.get("status", "pending")
+        if status in ("done", "skipped"):
+            result["done"].append(node)
+        elif status == "blocked":
+            result["blocked"].append(node)
+        elif status == "in_progress":
+            result["in_progress"].append(node)
+        else:
+            waiting = dict(node)
+            waiting["_waiting_for"] = node.get("depends", [])
+            result["waiting"].append(waiting)
+    return result
+
+
+def _fallback_cpm(project: dict) -> dict:
+    """当图存在结构性错误时，返回保守的空 CPM 结果。"""
+    nodes = {
+        n["id"]: {"days": 0, "es": 0, "ef": 0, "ls": 0, "lf": 0,
+                  "slack": 0, "critical": False}
+        for n in _effective_nodes(project)
+    }
+    return {
+        "nodes": nodes,
+        "critical_path": [],
+        "total_days": 0,
+        "topo_order": [],
+    }
+
+
 # ── 任务操作 ──────────────────────────────────────────
 
 def get_status(project: dict) -> dict:
@@ -609,16 +762,19 @@ def get_status(project: dict) -> dict:
     from . import engine
     flow = _project_as_flow(project)
     task_status = _get_task_status(project)
-    classified = engine.classify_tasks(flow, task_status)
-    cpm = engine.compute_cpm(flow, task_status)
+    warnings = check_integrity(project)
+    hard_errors = [w for w in warnings if w.get("severity") in ("error", "critical")]
 
-    nodes = project.get("nodes", [])
-    total = len(nodes)
-    done_count = sum(1 for n in nodes if n.get("status") == "done")
+    if hard_errors:
+        classified = _fallback_classified(project)
+        cpm = _fallback_cpm(project)
+    else:
+        classified = engine.classify_tasks(flow, task_status)
+        cpm = engine.compute_cpm(flow, task_status)
+        warnings = check_integrity(project, cpm)
+
+    done_count, total = _progress_counts(project)
     active_blockers = [b for b in project.get("blockers", []) if not b.get("resolved")]
-
-    # 完整性检查
-    warnings = check_integrity(project, cpm)
 
     return {
         "project": project,
@@ -648,7 +804,7 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
     - warning: 建议修复，允许写入 (孤立终点、孤立节点)
     - info: 仅供参考 (跨阶段依赖、冗余依赖、粗粒度节点)
     """
-    nodes = project.get("nodes", [])
+    nodes = _effective_nodes(project)
     node_ids = {n["id"] for n in nodes}
     nodes_map = {n["id"]: n for n in nodes}
     phases = project.get("phases", [])
@@ -852,6 +1008,17 @@ def start_task(project_id: str, task_id: str) -> dict:
         raise ValueError(f"任务已完成: {task_id}")
     if node.get("status") == "in_progress":
         raise ValueError(f"任务已在进行中: {task_id}")
+    if node.get("status") == "blocked":
+        raise ValueError(f"任务当前处于阻塞状态: {task_id}")
+    if node.get("status") == "expanded":
+        raise ValueError(f"任务已展开为子任务，请直接推进子任务: {task_id}")
+    if node.get("status") != "pending":
+        raise ValueError(f"任务当前状态不允许开始: {task_id} ({node.get('status')})")
+
+    undone = _undone_dependencies(p, node)
+    if undone:
+        names = [_find_node(p, d).get("name", d) if _find_node(p, d) else d for d in undone]
+        raise ValueError(f"依赖未完成: {', '.join(names)}")
 
     node["status"] = "in_progress"
     node["started"] = _now()
@@ -873,16 +1040,26 @@ def done_task(project_id: str, task_id: str, note: str = "", force: bool = False
         raise ValueError(f"任务不存在: {task_id}")
     if node.get("status") == "done":
         raise ValueError(f"任务已完成: {task_id}")
+    if node.get("status") == "blocked":
+        raise ValueError(f"任务当前处于阻塞状态，请先解除阻塞: {task_id}")
+    if node.get("status") == "expanded":
+        raise ValueError(f"任务已展开为子任务，无需再执行 pt done: {task_id}")
+    if node.get("status") not in ("pending", "in_progress"):
+        raise ValueError(f"任务当前状态不允许完成: {task_id} ({node.get('status')})")
 
     # 检查依赖是否满足
     deps = node.get("depends", [])
+    undone = _undone_dependencies(p, node)
     if deps and not force:
-        undone = [d for d in deps if _find_node(p, d) and
-                  _find_node(p, d).get("status") != "done"]
         if undone:
-            names = [_find_node(p, d).get("name", d) for d in undone]
+            names = [_find_node(p, d).get("name", d) if _find_node(p, d) else d for d in undone]
             raise ValueError(f"依赖未完成: {', '.join(names)}。使用 --force 强制完成")
 
+    if note_file:
+        _validate_repo_file(p, note_file, "备注文件")
+
+    if node.get("status") == "pending" and not node.get("started"):
+        node["started"] = _now()
     node["status"] = "done"
     node["completed"] = _now()
     if note:
@@ -899,12 +1076,10 @@ def done_task(project_id: str, task_id: str, note: str = "", force: bool = False
     _save(p)
 
     # 返回进度信息
-    total = len(p["nodes"])
-    done_count = sum(1 for n in p["nodes"] if n.get("status") == "done")
-    remaining = [n["name"] for n in p["nodes"]
-                 if n.get("status") != "done" and
-                 all(_find_node(p, d) is None or _find_node(p, d).get("status") == "done"
-                     for d in n.get("depends", []))]
+    done_count, total = _progress_counts(p)
+    remaining = [n["name"] for n in _effective_nodes(p)
+                 if n.get("status") not in ("done", "skipped") and
+                 not _undone_dependencies(p, n)]
     return {
         "progress": f"{done_count}/{total}",
         "remaining_ready": remaining[:3],
@@ -916,7 +1091,14 @@ def block_task(project_id: str, task_id: str, reason: str) -> dict:
     node = _find_node(p, task_id)
     if not node:
         raise ValueError(f"任务不存在: {task_id}")
+    if node.get("status") == "done":
+        raise ValueError(f"任务已完成，不能阻塞: {task_id}")
+    if node.get("status") == "expanded":
+        raise ValueError(f"任务已展开为子任务，请阻塞具体子任务: {task_id}")
+    if node.get("status") == "blocked":
+        raise ValueError(f"任务已阻塞: {task_id}")
 
+    node["blocked_from_status"] = node.get("status", "pending")
     node["status"] = "blocked"
     node["blocked_reason"] = reason
     p["blockers"].append({"task_id": task_id, "reason": reason, "date": _now()})
@@ -933,7 +1115,12 @@ def unblock_task(project_id: str, task_id: str) -> dict:
     if node.get("status") != "blocked":
         raise ValueError(f"任务未阻塞: {task_id}")
 
-    node["status"] = "in_progress"
+    previous = node.pop("blocked_from_status", "pending")
+    if previous == "in_progress" and _undone_dependencies(p, node):
+        previous = "pending"
+    if previous not in ("pending", "in_progress"):
+        previous = "pending"
+    node["status"] = previous
     node.pop("blocked_reason", None)
     for b in p.get("blockers", []):
         if b["task_id"] == task_id and not b.get("resolved"):
@@ -1010,7 +1197,11 @@ def done_subtask(project_id: str, full_id: str, note: str = "") -> dict:
 
     result = {"subtask": full_id, "all_subtasks_done": all_done}
     if all_done:
-        result["hint"] = f"所有子任务已完成，可以运行: pt done {parent_id}"
+        parent = _find_node(p, parent_id)
+        if parent and parent.get("status") == "expanded":
+            result["hint"] = "所有子任务已完成，父任务已由子任务替代。运行: pt next 查看后续任务"
+        else:
+            result["hint"] = f"所有子任务已完成，可以运行: pt done {parent_id}"
 
     _save(p)
     return result
@@ -1041,11 +1232,24 @@ def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> 
     if not parent:
         raise ValueError(f"父任务不存在: {parent_id}")
 
-    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                  "flows", "subtasks", f"{template_id}.yaml")
-    if not os.path.exists(template_path):
-        tpl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "flows", "subtasks")
-        available = [f.replace(".yaml", "") for f in os.listdir(tpl_dir) if f.endswith(".yaml")]
+    template_dirs = [
+        Path(__file__).resolve().parent / "flows" / "subtasks",
+        Path(__file__).resolve().parent.parent / "flows" / "subtasks",
+    ]
+    template_path = None
+    tpl_dir = None
+    for candidate in template_dirs:
+        candidate_file = candidate / f"{template_id}.yaml"
+        if candidate_file.exists():
+            template_path = str(candidate_file)
+            tpl_dir = str(candidate)
+            break
+    if not template_path or not os.path.exists(template_path):
+        for candidate in template_dirs:
+            if candidate.exists():
+                tpl_dir = str(candidate)
+                break
+        available = [f.replace(".yaml", "") for f in os.listdir(tpl_dir) if f.endswith(".yaml")] if tpl_dir else []
         raise ValueError(f"模板不存在: {template_id}。可用: {', '.join(available)}")
 
     with open(template_path, "r", encoding="utf-8") as f:
@@ -1192,8 +1396,12 @@ def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> 
 def list_subtask_templates() -> list[dict]:
     """列出所有可用的子任务模板"""
     import os
-    tpl_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "flows", "subtasks")
-    if not os.path.exists(tpl_dir):
+    tpl_dirs = [
+        Path(__file__).resolve().parent / "flows" / "subtasks",
+        Path(__file__).resolve().parent.parent / "flows" / "subtasks",
+    ]
+    tpl_dir = next((str(path) for path in tpl_dirs if path.exists()), None)
+    if not tpl_dir:
         return []
     result = []
     for f in sorted(os.listdir(tpl_dir)):
@@ -1227,7 +1435,7 @@ def match_subtask_templates(task_id: str) -> list[dict]:
 # ── 阶段/里程碑 ──────────────────────────────────────
 def get_phase_progress(project: dict) -> list[dict]:
     """获取所有阶段的进度"""
-    nodes = project.get("nodes", [])
+    nodes = _effective_nodes(project)
     phases = project.get("phases", [])
     result = []
     for phase in phases:
@@ -1282,6 +1490,8 @@ def attach_doc(project_id: str, task_id: str, file_path: str, description: str =
     if not node:
         raise ValueError(f"任务不存在: {task_id}")
 
+    _validate_repo_file(p, file_path, "文档")
+
     docs = node.get("docs", [])
     if any(d["path"] == file_path for d in docs):
         raise ValueError(f"文档已关联: {file_path}")
@@ -1304,10 +1514,11 @@ def list_task_docs(project: dict, task_id: str = None) -> list[dict]:
         if task_id and n["id"] != task_id:
             continue
         for doc in n.get("docs", []):
-            exists = (repo / doc["path"]).exists() if repo else False
+            path = doc.get("path") or doc.get("file") or ""
+            exists = (repo / path).exists() if repo and path else False
             result.append({
                 "task_id": n["id"], "task_name": n.get("name", ""),
-                "path": doc["path"], "desc": doc.get("desc", ""),
+                "path": path, "desc": doc.get("desc", ""),
                 "exists": exists,
             })
     return result
@@ -1399,9 +1610,12 @@ def load_from_repo(repo_path: str) -> dict:
     pt_dir = rp / ".pt"
     if not pt_dir.exists():
         raise ValueError(f"仓库中没有 .pt/ 目录: {rp}")
-    yamls = list(pt_dir.glob("*.yaml"))
+    yamls = sorted(pt_dir.glob("*.yaml"))
     if not yamls:
         raise ValueError(f".pt/ 目录中没有项目文件")
+    if len(yamls) > 1:
+        names = ", ".join(y.name for y in yamls[:5])
+        raise ValueError(f".pt/ 目录中有多份项目文件，请保留 1 份后再导入: {names}")
 
     with open(yamls[0], "r", encoding="utf-8") as f:
         project = yaml.safe_load(f)

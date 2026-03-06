@@ -15,6 +15,10 @@ from .risk import assess_project_risk
 from .knowledge import retrieve_context, build_knowledge_base, BM25
 
 
+def _effective_flow_nodes(flow):
+    return [n for n in flow.get("nodes", []) if n.get("status") != "expanded"]
+
+
 # ── 主入口 ──────────────────────────────────────────
 
 def _detect_question_type(question):
@@ -124,11 +128,12 @@ def _build_product_background(question, project, flow, cpm):
             lines.append("</reference>")
 
     # 当前阶段
-    total = len(flow.get("nodes", []))
-    done = sum(1 for n in flow["nodes"] if n.get("status") == "done")
+    effective_nodes = _effective_flow_nodes(flow)
+    total = len(effective_nodes)
+    done = sum(1 for n in effective_nodes if n.get("status") == "done")
     phase_name = "未知"
     for phase in flow.get("phases", []):
-        phase_nodes = [n for n in flow["nodes"] if n.get("phase") == phase["id"]]
+        phase_nodes = [n for n in effective_nodes if n.get("phase") == phase["id"]]
         if sum(1 for n in phase_nodes if n.get("status") == "done") < len(phase_nodes):
             phase_name = phase.get("name", "")
             break

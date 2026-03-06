@@ -2,26 +2,39 @@
 import yaml
 from pathlib import Path
 
-FLOWS_DIR = Path(__file__).parent.parent / "flows"
+
+def _flow_dirs() -> list[Path]:
+    """候选 flow 目录：优先使用打包到 tracker 内的资源。"""
+    candidates = [
+        Path(__file__).resolve().parent / "flows",
+        Path(__file__).resolve().parent.parent / "flows",
+    ]
+    result = []
+    seen = set()
+    for path in candidates:
+        if path.exists() and path not in seen:
+            seen.add(path)
+            result.append(path)
+    return result
 
 
 def load_flow(name: str = "duxin") -> dict:
     """加载流程定义，优先加载 v2 格式"""
-    # 优先 v2
-    v2_file = FLOWS_DIR / f"{name}_v2.yaml"
-    if v2_file.exists():
-        with open(v2_file, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+    for flows_dir in _flow_dirs():
+        v2_file = flows_dir / f"{name}_v2.yaml"
+        if v2_file.exists():
+            with open(v2_file, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f)
 
-    v1_file = FLOWS_DIR / f"{name}.yaml"
-    if v1_file.exists():
-        with open(v1_file, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        # 如果是旧格式（有 phases[].tasks），自动转换
-        if data.get("phases") and data["phases"][0].get("tasks"):
-            from tools.convert_flow import convert_flow
-            return convert_flow(data)
-        return data
+        v1_file = flows_dir / f"{name}.yaml"
+        if v1_file.exists():
+            with open(v1_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            # 如果是旧格式（有 phases[].tasks），自动转换
+            if data.get("phases") and data["phases"][0].get("tasks"):
+                from .convert_flow import convert_flow
+                return convert_flow(data)
+            return data
 
     raise FileNotFoundError(f"流程定义不存在: {name}")
 
@@ -29,10 +42,11 @@ def load_flow(name: str = "duxin") -> dict:
 def list_flows() -> list[str]:
     """列出所有可用流程"""
     names = set()
-    for f in FLOWS_DIR.glob("*.yaml"):
-        name = f.stem.replace("_v2", "")
-        if name not in ("guide_questions",):
-            names.add(name)
+    for flows_dir in _flow_dirs():
+        for f in flows_dir.glob("*.yaml"):
+            name = f.stem.replace("_v2", "")
+            if name not in ("guide_questions",):
+                names.add(name)
     return sorted(names)
 
 

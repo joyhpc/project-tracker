@@ -1,0 +1,142 @@
+# 板级调试子任务模板
+# 适用于: 新板 bringup（PCBA 焊接完成后的分阶段调试）
+# 核心思想: 调试不是一个原子动作，而是按依赖层级逐步推进
+#   - 第一层: 只需要板子（无固件）→ 电源、时钟、物理连接
+#   - 第二层: 基础固件 → JTAG、I2C、SPI 等低速接口
+#   - 第三层: 完整固件 → 高速数据通路端到端验证
+
+id: board_bringup
+name: 板级调试
+description: 分层板级调试流程，按实际依赖逐步推进，不等全部就绪才开始
+
+attach_to:
+  - bringup          # 通用 bringup
+  - pcba_test        # PCBA 测试
+  - camrx_bringup    # CAMRX 板级调试
+  - dcurx_bringup    # DCURX 板级调试
+  - hw_bringup       # 硬件调试
+
+phases:
+  - id: BU_L0
+    name: L0-无固件调试
+    tasks:
+      - id: power_rail_test
+        name: 电源轨测试
+        owner: 硬件工程师
+        days: 1
+        deliverables: [电源轨测试记录]
+        description: |
+          无需任何固件。上电后逐一测量每路电源轨:
+          - 电压精度(±3%)、纹波(<50mVpp)、上电时序
+          - PoC 电源输出(如有)
+          - 过流保护验证
+
+      - id: clock_test
+        name: 时钟信号测试
+        owner: 硬件工程师
+        depends: [power_rail_test]
+        days: 1
+        deliverables: [时钟测试记录]
+        description: |
+          无需固件。示波器测量:
+          - 参考时钟频率精度、抖动
+          - 时钟 buffer 各路输出
+          - FPGA 参考时钟到位确认
+
+      - id: connector_continuity
+        name: 连接器通断测试
+        owner: 硬件工程师
+        depends: [power_rail_test]
+        days: 1
+        description: |
+          无需固件。万用表/LCR 测:
+          - 板间连接器(BTB/FPC)通断
+          - 高速连接器(QSFP/SFP+)座子焊接
+          - 测试点可达性确认
+
+  - id: BU_L1
+    name: L1-基础固件调试
+    tasks:
+      - id: jtag_chain
+        name: JTAG 链路验证
+        owner: 硬件工程师
+        depends: [power_rail_test]
+        external_depends_hint:
+          - pattern: "fpga*"
+            reason: "需要 FPGA 基础 bitstream"
+            required: false  # 没有也能测，有了更完整
+        days: 1
+        deliverables: [JTAG 验证记录]
+        description: |
+          需要: JTAG 调试器 + FPGA 基础 bitstream
+          - FPGA JTAG 识别、下载验证
+          - MCU SWD/JTAG 连接验证
+          - 多器件 JTAG 链完整性
+
+      - id: low_speed_bus
+        name: 低速总线调试
+        owner: 硬件工程师
+        depends: [jtag_chain]
+        external_depends_hint:
+          - pattern: "mcu*"
+            reason: "需要 MCU 基础固件(I2C/SPI 驱动)"
+            required: false
+        days: 2
+        deliverables: [总线调试记录]
+        description: |
+          需要: MCU 基础固件(I2C/SPI 驱动)
+          - I2C 设备扫描、EEPROM 读写
+          - SPI Flash 识别、擦写验证
+          - GPIO 控制(LED、复位、使能信号)
+          - 解码板控制信号验证(如有)
+
+      - id: ddr_init
+        name: DDR 初始化验证
+        owner: 硬件工程师
+        depends: [jtag_chain]
+        external_depends_hint:
+          - pattern: "fpga*"
+            reason: "需要 FPGA DDR controller bitstream"
+            required: true
+        days: 1
+        deliverables: [DDR 初始化记录]
+        description: |
+          需要: FPGA DDR controller bitstream
+          - DDR 初始化成功、容量识别
+          - 基础读写测试(不含压力测试)
+
+  - id: BU_L2
+    name: L2-完整功能调试
+    tasks:
+      - id: high_speed_link
+        name: 高速链路调试
+        owner: 硬件工程师
+        depends: [ddr_init, low_speed_bus]
+        external_depends_hint:
+          - pattern: "fpga*"
+            reason: "需要 FPGA 完整 bitstream"
+            required: true
+          - pattern: "mcu*"
+            reason: "需要 MCU 完整固件"
+            required: true
+        days: 3
+        critical: true
+        deliverables: [高速链路调试记录]
+        description: |
+          需要: FPGA 完整 bitstream + MCU 完整固件
+          - MIPI/LVDS/SerDes 链路锁定
+          - 数据通路端到端验证(发送→接收→比对)
+          - 多通道同时工作验证
+
+      - id: system_function
+        name: 系统功能验证
+        owner: 硬件工程师
+        depends: [high_speed_link]
+        days: 2
+        critical: true
+        deliverables: [系统功能验证记录]
+        description: |
+          需要: 全部固件 + 上位机软件
+          - 完整业务流程跑通
+          - 多板联调(如解码板对接)
+          - 异常恢复测试(热插拔、掉电重启)

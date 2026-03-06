@@ -11,8 +11,9 @@ def cmd_init(args):
     try:
         repo = getattr(args, "repo", "") or ""
         p = core.init_project(args.id, args.name, args.flow, repo=repo)
+        _, total = core._progress_counts(p)
         print(f"✅ 项目已创建: {p['id']} ({p['name']})")
-        print(f"   流程: {p['flow']}, {len(p['nodes'])} 个节点")
+        print(f"   流程: {p['flow']}, {total} 个节点")
         if repo:
             print(f"   仓库: {repo}")
     except ValueError as e:
@@ -27,8 +28,7 @@ def cmd_list(args):
         return
     for p in projects:
         marker = " ◀" if p.get("_active") else ""
-        total = len(p.get("nodes", []))
-        done = sum(1 for n in p.get("nodes", []) if n.get("status") == "done")
+        done, total = core._progress_counts(p)
         print(f"  {'●' if p.get('_active') else '○'} {p['id']} | {p['name']} | {done}/{total}{marker}")
 
 

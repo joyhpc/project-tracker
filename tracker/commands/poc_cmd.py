@@ -4,13 +4,31 @@ import datetime
 from .. import core
 
 
+def _select_action(args) -> str:
+    actions = {
+        "add": bool(args.add),
+        "update": bool(args.update),
+        "summary": bool(args.summary),
+    }
+    selected = [name for name, enabled in actions.items() if enabled]
+    if len(selected) > 1:
+        raise ValueError("poc 同时只能执行一种动作：--add / --update / --summary")
+    return selected[0] if selected else "list"
+
+
 def cmd_poc(args):
     """poc 命令入口"""
-    if args.add:
+    try:
+        action = _select_action(args)
+    except ValueError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    if action == "add":
         _add(args)
-    elif args.update:
+    elif action == "update":
         _update(args)
-    elif args.summary:
+    elif action == "summary":
         _summary(args)
     else:
         _list_pocs(args)
@@ -61,6 +79,8 @@ def _update(args):
 
         if args.status:
             target["status"] = args.status
+        if args.metric is not None:
+            target["metric"] = args.metric
         if args.result:
             target["result"] = args.result
             target["result_date"] = datetime.date.today().isoformat()

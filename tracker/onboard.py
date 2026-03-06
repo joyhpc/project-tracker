@@ -31,6 +31,12 @@ POC_PATTERNS = re.compile(
 )
 
 EXCLUDE_DIRS = {".git", "node_modules", ".pt", "__pycache__", ".venv", "venv"}
+EXCLUDE_FILES = {
+    "onboard-prompt.md",
+    "arch-prompt.md",
+    "propose-prompt.md",
+    "feasibility-report.md",
+}
 
 
 def scan_repo(repo_path: str) -> dict:
@@ -54,6 +60,7 @@ def scan_repo(repo_path: str) -> dict:
     md_files = [f for f in md_files if not any(
         p in f.parts for p in EXCLUDE_DIRS
     )]
+    md_files = [f for f in md_files if f.name not in EXCLUDE_FILES and "prompts" not in f.parts]
 
     results = []
     for f in md_files:

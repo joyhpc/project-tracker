@@ -1,0 +1,174 @@
+# 启发式项目引导问题模板
+# 每个阶段定义关键问题，帮助用户在项目启动前想清楚
+#
+# 问题结构:
+#   - q: 问题文本（支持 {product} 占位符）
+#     key: 答案存储键名
+#     category: 分类标签
+#     risk_hint: 风险提示（可选，回答后显示）
+#     tags: 适用条件标签（可选，用于过滤）
+
+# 阶段别名映射（不同流程的阶段 ID → 问题模板阶段 ID）
+aliases:
+  CONCEPT: REQ        # generic 概念阶段 → 需求问题
+  DESIGN: DETAIL      # generic 设计阶段 → 详细设计问题
+  PROTO: SAMPLE       # generic 原型阶段 → 制样问题
+  MASS: TRIAL         # generic 量产阶段 → 试产+发布问题
+
+phases:
+  REQ:
+    title: "需求阶段 — 你真的了解这个市场吗？"
+    questions:
+      - q: "{product} 的目标用户是谁？（年龄段、消费能力、购买场景）"
+        key: target_user
+        category: 用户
+      - q: "用户现在怎么解决这个问题？现有方案的痛点是什么？"
+        key: current_solution
+        category: 痛点
+      - q: "市面上有哪些竞品？价格带如何？你的差异化在哪？"
+        key: competitors
+        category: 竞品
+      - q: "目标售价区间？毛利率目标？"
+        key: pricing
+        category: 商业
+      - q: "一句话说清核心卖点 — 凭什么用户选你？"
+        key: usp
+        category: 定位
+    risk_hints:
+      - "如果说不清差异化，大概率会陷入价格战"
+      - "没有明确用户画像的产品，营销成本会非常高"
+
+  FEAS:
+    title: "可行性评估 — 技术上能不能做？"
+    questions:
+      - q: "{product} 的核心技术方案是什么？有几条技术路线可选？"
+        key: tech_route
+        category: 技术
+      - q: "关键器件有哪些？供应商？成本？交期？有替代方案吗？"
+        key: key_components
+        category: 器件
+      - q: "BOM 成本目标是多少？各部分成本分配？"
+        key: bom_target
+        category: 成本
+      - q: "需要哪些认证？（3C/FCC/CE/医疗器械/其他行业认证）"
+        key: certifications
+        category: 认证
+        tags: [consumer, medical, export]
+      - q: "有没有专利风险？需要做知识产权检索吗？"
+        key: ip_risk
+        category: 知识产权
+      - q: "最大的技术不确定性是什么？需要提前验证什么？"
+        key: tech_risk
+        category: 风险
+    risk_hints:
+      - "关键器件单一供应商 = 巨大供应链风险"
+      - "认证周期通常 2-6 个月，必须提前规划"
+      - "涉及人体接触的电子产品，安全认证要求更高"
+
+  INIT:
+    title: "立项 — 资源到位了吗？"
+    questions:
+      - q: "团队配置：需要哪些角色？各几人？自研还是外包？"
+        key: team
+        category: 团队
+      - q: "目标上市时间？倒推各阶段 deadline？"
+        key: timeline
+        category: 时间
+      - q: "总预算多少？研发/模具/认证/首批备货各占多少？"
+        key: budget
+        category: 预算
+      - q: "有哪些关键物料 lead time 长，需要提前下单？"
+        key: long_lead
+        category: 供应链
+    risk_hints:
+      - "没有明确 deadline 的项目，往往无限拖延"
+      - "模具费和认证费是容易被低估的隐性成本"
+
+  DETAIL:
+    title: "详细设计 — 怎么实现？"
+    questions:
+      - q: "硬件架构：主控选型？无线方案？电源方案？"
+        key: hw_arch
+        category: 硬件
+      - q: "结构设计的关键约束？尺寸/材料/工艺？"
+        key: struct_constraints
+        category: 结构
+      - q: "需要 APP/小程序吗？核心功能有哪些？"
+        key: sw_needs
+        category: 软件
+      - q: "固件核心功能？算法需求？低功耗要求？"
+        key: fw_needs
+        category: 固件
+      - q: "PCB 约束：层数？尺寸？柔性板？特殊工艺？"
+        key: pcb_constraints
+        category: PCB
+    risk_hints:
+      - "硬件和结构设计要尽早对齐，否则后期改模具代价巨大"
+      - "无线认证（蓝牙/WiFi）需要额外时间和费用"
+
+  SAMPLE:
+    title: "制样 — 能做出来吗？"
+    questions:
+      - q: "首批打样数量？几轮迭代预算？"
+        key: sample_rounds
+        category: 制样
+      - q: "关键物料到齐了吗？有没有缺料风险？"
+        key: material_ready
+        category: 物料
+      - q: "SMT 贴片在哪做？有合作的加工厂吗？"
+        key: smt_vendor
+        category: 加工
+    risk_hints:
+      - "首轮打样几乎一定有问题，预留至少 2 轮迭代"
+
+  TEST:
+    title: "测试 — 能不能用？"
+    questions:
+      - q: "产品效果怎么量化测试？用什么指标？"
+        key: test_metrics
+        category: 测试
+      - q: "安全测试项有哪些？电磁兼容？电池安全？"
+        key: safety_test
+        category: 安全
+      - q: "耐久性/可靠性测试方案？"
+        key: reliability
+        category: 可靠性
+      - q: "用户测试计划？找多少人？测试多久？"
+        key: user_test
+        category: 用户测试
+    risk_hints:
+      - "主观效果类产品（助眠/美容等），需要严谨测试方案证明有效"
+      - "安全测试不通过 = 项目归零，优先级最高"
+
+  TRIAL:
+    title: "试产 — 能量产吗？"
+    questions:
+      - q: "首批量产数量？MOQ 约束？"
+        key: volume
+        category: 产量
+      - q: "产线在哪？自有还是代工？"
+        key: production_line
+        category: 产线
+      - q: "包装设计？开箱体验？配件清单？"
+        key: packaging
+        category: 包装
+    risk_hints:
+      - "试产良率通常比预期低，备足余量"
+
+  RELEASE:
+    title: "发布 — 能卖出去吗？"
+    questions:
+      - q: "销售渠道：电商/线下/众筹/B2B？"
+        key: channels
+        category: 渠道
+      - q: "定价策略确定了吗？促销方案？"
+        key: final_pricing
+        category: 定价
+      - q: "售后方案：保修期？退换货？固件更新？"
+        key: after_sales
+        category: 售后
+      - q: "营销计划：首发推广？KOL 合作？"
+        key: marketing
+        category: 营销
+    risk_hints:
+      - "产品做出来不等于卖得出去，渠道和营销要提前布局"

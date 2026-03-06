@@ -29,7 +29,7 @@ def cmd_log(args):
         }
         # 收集关联文档
         for doc in n.get("docs", []):
-            entry["docs"].append(doc.get("desc", doc.get("file", "")))
+            entry["docs"].append(doc.get("desc") or doc.get("path") or doc.get("file", ""))
         # 从 note_file 提取一句话摘要
         if n.get("note_file") and repo:
             path = Path(repo) / n["note_file"]
@@ -47,8 +47,7 @@ def cmd_log(args):
         entries.append(entry)
 
     # 当前状态
-    total = len(flow.get("nodes", []))
-    done = len(entries)
+    done, total = core._progress_counts(p)
     task_status = {n["id"]: {"status": n.get("status", "pending")} for n in flow["nodes"]}
 
     from ..engine import compute_cpm, classify_tasks
@@ -100,7 +99,7 @@ def cmd_log(args):
                 print(f"    交付物: {delivs}")
             # 显示已关联的参考文档
             for doc in t.get("docs", []):
-                print(f"    📎 {doc.get('desc', doc.get('file', ''))}")
+                print(f"    📎 {doc.get('desc') or doc.get('path') or doc.get('file', '')}")
         print()
 
     # 保存

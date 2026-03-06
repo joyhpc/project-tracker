@@ -1,0 +1,152 @@
+# 高速信号验证子任务模板
+# 适用于: 高速接口验证（MIPI/LVDS/SerDes/PCIe/USB3 等）
+# 通用硬件高速信号完整性验证流程
+
+id: signal_validation
+name: 高速信号验证
+description: 通用高速信号完整性验证流程，含仿真→硬件测试→环境压力→量产一致性
+
+attach_to:
+  - fpga_dev           # FPGA 开发（含高速接口）
+  - signal_verify      # 信号验证专项
+  - si_validation      # SI 验证
+  - phy_validation     # PHY 层验证
+  - mipi_verify        # MIPI 验证
+  - serdes_verify      # SerDes 验证
+  - high_speed_verify  # 高速接口验证
+
+phases:
+  - id: SIG_PRE
+    name: 前期准备
+    tasks:
+      - id: spec_review
+        name: 接口规格确认
+        owner: 硬件工程师
+        days: 2
+        deliverables: [接口规格确认表]
+        description: 确认目标速率、Lane数、协议版本、裕量要求
+
+      - id: test_plan
+        name: 验证方案制定
+        owner: 硬件工程师
+        depends: [spec_review]
+        days: 3
+        deliverables: [验证方案文档]
+        description: 测试项目清单、判据定义、设备需求、等效性论证（如替代平台验证）
+
+      - id: test_env_setup
+        name: 测试环境搭建
+        owner: 硬件工程师
+        depends: [test_plan]
+        days: 3
+        deliverables: [测试环境确认记录]
+        description: 开发板/评估板准备、仪器校准、测试夹具制作
+
+  - id: SIG_SIM
+    name: 仿真验证
+    tasks:
+      - id: channel_sim
+        name: 通道仿真
+        owner: 硬件工程师
+        days: 3
+        description: S参数提取、通道损耗分析、阻抗匹配验证
+
+      - id: eye_sim
+        name: 眼图仿真
+        owner: 硬件工程师
+        depends: [channel_sim]
+        days: 2
+        deliverables: [仿真眼图报告]
+        description: 目标速率下的眼图仿真，确认裕量是否满足协议模板
+
+      - id: timing_sim
+        name: 时序仿真
+        owner: 硬件工程师
+        depends: [channel_sim]
+        days: 2
+        description: Setup/Hold时序分析、Lane间Skew预估
+
+  - id: SIG_HW
+    name: 硬件实测
+    tasks:
+      - id: eye_test
+        name: 眼图实测
+        owner: 硬件工程师
+        depends: [test_env_setup]
+        days: 3
+        critical: true
+        deliverables: [眼图测试报告]
+        description: 高带宽示波器实测眼图，对比协议模板，确认裕量≥15%
+
+      - id: skew_test
+        name: Lane间Skew测试
+        owner: 硬件工程师
+        depends: [test_env_setup]
+        days: 1
+        description: 测量Data Lane相对Clock Lane的延时差，确认Skew < 0.1 UI
+
+      - id: jitter_test
+        name: 抖动测试
+        owner: 硬件工程师
+        depends: [eye_test]
+        days: 2
+        deliverables: [抖动测试报告]
+        description: DJ/RJ分离、TJ@BER评估
+
+      - id: ber_test
+        name: 误码率测试
+        owner: 硬件工程师
+        depends: [eye_test]
+        days: 2
+        deliverables: [BER测试报告]
+        description: 目标BER < 10^-12，长时间连续采集验证
+
+  - id: SIG_STRESS
+    name: 环境压力测试
+    tasks:
+      - id: temp_cycle
+        name: 高低温循环测试
+        owner: 硬件工程师
+        depends: [ber_test]
+        days: 5
+        critical: true
+        deliverables: [温循测试报告]
+        description: 全温度范围连续运行，监控丢帧/CRC/ECC错误
+
+      - id: voltage_corner
+        name: 电压拉偏测试
+        owner: 硬件工程师
+        depends: [ber_test]
+        days: 2
+        deliverables: [电压拉偏报告]
+        description: 核心电压和IO电压±3%~±5%拉偏，验证锁定稳定性
+
+      - id: aging_test
+        name: 长跑老化测试
+        owner: 硬件工程师
+        depends: [temp_cycle]
+        days: 7
+        critical: true
+        deliverables: [老化测试报告]
+        description: 7x24小时满负荷运行，BER < 10^-12，无图像撕裂/掉线
+
+  - id: SIG_PROD
+    name: 量产一致性
+    tasks:
+      - id: multi_board_test
+        name: 多板一致性测试
+        owner: 硬件工程师
+        depends: [aging_test]
+        days: 5
+        critical: true
+        deliverables: [多板一致性报告]
+        description: 5-10块PCBA交叉测试，排除金手指效应，确认量产可行
+
+      - id: margin_summary
+        name: 裕量汇总与结论
+        owner: 硬件工程师
+        depends: [multi_board_test, voltage_corner]
+        days: 2
+        critical: true
+        deliverables: [信号验证总结报告]
+        description: 汇总所有测试数据，给出GO/NO-GO结论和量产建议

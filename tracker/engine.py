@@ -27,12 +27,16 @@ def build_graph(flow: dict) -> dict:
              if n.get("status") != "expanded"}  # 跳过已展开的父节点
     deps = {}
     rdeps = {nid: [] for nid in nodes}
+    missing_deps = {}
 
     for nid, node in nodes.items():
-        dep_list = [d for d in node.get("depends", []) if d in nodes]
+        dep_list = list(node.get("depends", []))
         deps[nid] = dep_list
         for d in dep_list:
-            rdeps[d].append(nid)
+            if d in nodes:
+                rdeps[d].append(nid)
+            else:
+                missing_deps.setdefault(nid, []).append(d)
 
     sources = [nid for nid in nodes if not deps.get(nid)]
     sinks = [nid for nid in nodes if not rdeps.get(nid)]
@@ -40,11 +44,16 @@ def build_graph(flow: dict) -> dict:
     return {
         "nodes": nodes, "deps": deps, "rdeps": rdeps,
         "sources": sources, "sinks": sinks,
+        "missing_deps": missing_deps,
     }
 
 
 def topo_sort(graph: dict) -> list[str]:
     """拓扑排序（Kahn 算法），同时检测环"""
+    if graph.get("missing_deps"):
+        node_id, deps = next(iter(graph["missing_deps"].items()))
+        raise ValueError(f"检测到悬空依赖: [{node_id}] → {', '.join(deps)}")
+
     in_degree = {nid: len(graph["deps"].get(nid, [])) for nid in graph["nodes"]}
     queue = [nid for nid, deg in in_degree.items() if deg == 0]
     order = []

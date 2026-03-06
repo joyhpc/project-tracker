@@ -1,0 +1,147 @@
+# 通用电子产品开发流程（简化版）
+# 用于验证引擎是否真正通用，不依赖度信特定结构
+
+phases:
+  - id: CONCEPT
+    name: 概念阶段
+    tasks:
+      - id: market_research
+        name: 市场调研
+        owner: 产品经理
+        deliverables: [市场分析报告]
+
+      - id: concept_design
+        name: 概念设计
+        depends: [market_research]
+        owner: 系统架构师
+        deliverables: [概念设计文档]
+
+      - id: feasibility
+        name: 可行性分析
+        depends: [concept_design]
+        owner: 技术负责人
+        deliverables: [可行性报告]
+        critical: true
+
+  - id: DESIGN
+    name: 设计阶段
+    milestone: M1
+    tasks:
+      - id: hw_design
+        name: 硬件设计
+        owner: 硬件工程师
+        deliverables: [原理图, PCB]
+        gate: 概念设计评审通过
+
+      - id: fw_design
+        name: 固件设计
+        owner: 固件工程师
+        deliverables: [固件架构文档]
+
+      - id: mech_design
+        name: 结构设计
+        owner: 结构工程师
+        deliverables: [3D模型]
+
+      - id: hw_review
+        name: 硬件评审
+        depends: [hw_design]
+        owner: 硬件工程师
+        reviewer: 技术负责人
+        critical: true
+        deliverables: [评审报告]
+
+      - id: pcb_layout
+        name: PCB Layout
+        depends: [hw_review, mech_design]
+        owner: PCB工程师
+        deliverables: [PCB文件]
+
+      - id: bom_prep
+        name: BOM整理
+        depends: [hw_review]
+        owner: 硬件工程师
+        deliverables: [BOM清单]
+
+  - id: PROTO
+    name: 原型阶段
+    milestone: M2
+    tasks:
+      - id: pcb_fab
+        name: PCB打样
+        depends: [pcb_layout]
+        owner: 硬件工程师
+        deliverables: [PCB板]
+
+      - id: component_buy
+        name: 物料采购
+        depends: [bom_prep]
+        owner: 采购
+        deliverables: [物料]
+
+      - id: smt
+        name: SMT贴片
+        depends: [pcb_fab, component_buy]
+        owner: 硬件工程师
+
+      - id: fw_dev
+        name: 固件开发
+        depends: [fw_design]
+        owner: 固件工程师
+        deliverables: [固件]
+
+      - id: bringup
+        name: 板级调试
+        depends: [smt, fw_dev]
+        owner: 硬件工程师
+        critical: true
+
+  - id: TEST
+    name: 测试阶段
+    tasks:
+      - id: func_test
+        name: 功能测试
+        owner: 测试工程师
+        deliverables: [测试报告]
+
+      - id: perf_test
+        name: 性能测试
+        depends: [func_test]
+        owner: 测试工程师
+        deliverables: [性能报告]
+
+      - id: cert_test
+        name: 认证测试
+        depends: [func_test]
+        owner: 认证工程师
+        deliverables: [认证报告]
+        gate: 需要送第三方实验室
+
+      - id: reliability
+        name: 可靠性测试
+        depends: [perf_test]
+        owner: 测试工程师
+        deliverables: [可靠性报告]
+        critical: true
+
+  - id: MASS
+    name: 量产阶段
+    milestone: M3
+    tasks:
+      - id: tooling
+        name: 模具开发
+        owner: 结构工程师
+        deliverables: [模具]
+        gate: 结构设计冻结
+
+      - id: pilot_run
+        name: 试产
+        depends: [tooling]
+        owner: 生产工程师
+        deliverables: [试产报告]
+
+      - id: mass_prod
+        name: 量产
+        depends: [pilot_run]
+        owner: 生产工程师
+        critical: true

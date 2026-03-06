@@ -46,10 +46,15 @@ def cmd_visual(args):
 
     # 输出路径
     out_dir = Path(args.output) if hasattr(args, "output") and args.output else Path("/tmp")
+    out_dir.mkdir(parents=True, exist_ok=True)
     html_path = out_dir / f"{p['id'].lower()}-progress.html"
     png_path = out_dir / f"{p['id'].lower()}-progress.png"
 
-    html_path.write_text(html, encoding="utf-8")
+    try:
+        html_path.write_text(html, encoding="utf-8")
+    except OSError as e:
+        print(f"❌ HTML 写入失败: {e}")
+        sys.exit(1)
     print(f"📄 HTML: {html_path}")
 
     # 尝试用 playwright 截图 (2x 清晰度)

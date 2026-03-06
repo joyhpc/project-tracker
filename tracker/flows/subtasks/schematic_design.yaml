@@ -1,0 +1,127 @@
+# 原理图设计子任务模板
+# 适用于: schematic_design / 原理图设计 等主任务
+# 通用电子产品硬件原理图设计流程
+
+id: schematic_design
+name: 原理图设计
+description: 通用原理图设计流程，从架构到评审
+
+attach_to:
+  - schematic_design
+  - hw_detail_design
+
+phases:
+  - id: SCH_ARCH
+    name: 架构设计
+    tasks:
+      - id: block_diagram
+        name: 系统框图设计
+        owner: 硬件工程师
+        days: 2
+        deliverables: [系统框图]
+        description: 整机功能框图，明确各模块边界和接口
+
+      - id: arch_design
+        name: 硬件架构设计
+        owner: 硬件工程师
+        depends: [block_diagram]
+        days: 3
+        deliverables: [硬件架构文档]
+        description: 芯片选型确认、总线架构、时钟树、复位策略
+
+      - id: arch_review
+        name: 架构设计审核
+        owner: 硬件工程师
+        depends: [arch_design]
+        days: 1
+        critical: true
+        deliverables: [架构评审报告]
+        gate: 架构评审通过后方可进入详细设计
+
+  - id: SCH_POWER
+    name: 电源设计
+    tasks:
+      - id: power_tree
+        name: 电源树设计
+        owner: 硬件工程师
+        days: 2
+        deliverables: [电源树文档]
+        description: 电源拓扑、各路电压/电流需求、上电时序
+
+      - id: power_scheme
+        name: 电源方案选型
+        owner: 硬件工程师
+        depends: [power_tree]
+        days: 2
+        description: DC-DC/LDO选型、效率计算、热设计
+
+      - id: power_review
+        name: 电源方案审核
+        owner: 硬件工程师
+        depends: [power_scheme]
+        days: 1
+        critical: true
+        deliverables: [电源评审报告]
+
+  - id: SCH_DETAIL
+    name: 详细原理图
+    tasks:
+      - id: core_sch
+        name: 核心电路设计
+        owner: 硬件工程师
+        days: 5
+        description: 主控/FPGA/DSP 等核心芯片外围电路
+
+      - id: interface_sch
+        name: 接口电路设计
+        owner: 硬件工程师
+        depends: [core_sch]
+        days: 3
+        description: USB/Ethernet/HDMI/MIPI/UART 等对外接口
+
+      - id: power_sch
+        name: 电源电路绘制
+        owner: 硬件工程师
+        days: 3
+        description: 按电源树方案绘制完整电源电路
+
+      - id: protection_sch
+        name: 保护电路设计
+        owner: 硬件工程师
+        depends: [interface_sch]
+        days: 2
+        description: ESD/TVS/过流保护/浪涌防护
+
+      - id: sch_drc
+        name: 原理图DRC检查
+        owner: 硬件工程师
+        depends: [core_sch, interface_sch, power_sch, protection_sch]
+        days: 1
+        description: 电气规则检查、网络连通性检查
+
+      - id: sch_peer_review
+        name: 原理图交叉审核
+        owner: 硬件工程师
+        depends: [sch_drc]
+        days: 2
+        critical: true
+        deliverables: [原理图评审报告]
+        gate: 评审问题全部闭环
+
+  - id: SCH_OUTPUT
+    name: 输出阶段
+    tasks:
+      - id: bom_output
+        name: BOM输出
+        owner: 硬件工程师
+        depends: [sch_peer_review]
+        days: 1
+        deliverables: [BOM清单]
+
+      - id: sch_release
+        name: 原理图发布
+        owner: 硬件工程师
+        depends: [bom_output]
+        days: 1
+        deliverables: [原理图DSN文件, PDF版本]
+        critical: true

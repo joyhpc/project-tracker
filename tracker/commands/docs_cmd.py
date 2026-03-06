@@ -5,11 +5,16 @@ from .. import core
 
 def cmd_docs(args):
     """文档管理入口"""
+    actions = [bool(args.link), bool(args.attach), bool(args.sync or args.push), bool(args.load)]
+    if sum(actions) > 1:
+        print("❌ docs 同时只能执行一种动作：--link / --attach / --sync(--push) / --load")
+        sys.exit(1)
+
     if args.link:
         _link(args)
     elif args.attach:
         _attach(args)
-    elif args.sync:
+    elif args.sync or args.push:
         _sync(args)
     elif args.load:
         _load_from_repo(args)
@@ -31,6 +36,8 @@ def _link(args):
 def _attach(args):
     """关联文档到任务"""
     try:
+        if not args.file:
+            raise ValueError("使用 --attach 时必须同时提供 --file")
         p = core.require_active()
         desc = args.desc or ""
         core.attach_doc(p["id"], args.attach, args.file, desc)

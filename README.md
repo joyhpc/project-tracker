@@ -10,6 +10,15 @@ cd project-tracker
 pip install -e .
 ```
 
+## 数据迁移
+
+旧项目 YAML 会在运行时自动兼容到当前 schema；如果你想把历史文件直接升级落盘：
+
+```bash
+python tools/migrate_projects.py --dry-run
+python tools/migrate_projects.py
+```
+
 ## 快速开始
 
 ```bash

@@ -1,0 +1,232 @@
+phases:
+- id: CONCEPT
+  name: 概念阶段
+- id: DESIGN
+  name: 设计阶段
+  milestone: M1
+- id: PROTO
+  name: 原型阶段
+  milestone: M2
+- id: TEST
+  name: 测试阶段
+- id: MASS
+  name: 量产阶段
+  milestone: M3
+nodes:
+- id: market_research
+  name: 市场调研
+  type: task
+  phase: CONCEPT
+  owner: 产品经理
+  deliverables:
+  - 市场分析报告
+- id: concept_design
+  name: 概念设计
+  type: task
+  phase: CONCEPT
+  owner: 系统架构师
+  depends:
+  - market_research
+  deliverables:
+  - 概念设计文档
+- id: feasibility
+  name: 可行性分析
+  type: task
+  phase: CONCEPT
+  owner: 技术负责人
+  depends:
+  - concept_design
+  deliverables:
+  - 可行性报告
+  critical: true
+- id: hw_design
+  name: 硬件设计
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  deliverables:
+  - 原理图
+  - PCB
+  gate: 概念设计评审通过
+  depends:
+  - feasibility
+- id: fw_design
+  name: 固件设计
+  type: task
+  phase: DESIGN
+  owner: 固件工程师
+  deliverables:
+  - 固件架构文档
+  depends:
+  - feasibility
+- id: mech_design
+  name: 结构设计
+  type: task
+  phase: DESIGN
+  owner: 结构工程师
+  deliverables:
+  - 3D模型
+  depends:
+  - feasibility
+- id: hw_review
+  name: 硬件评审
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_design
+  deliverables:
+  - 评审报告
+  critical: true
+  reviewer: 技术负责人
+- id: pcb_layout
+  name: PCB Layout
+  type: task
+  phase: DESIGN
+  owner: PCB工程师
+  depends:
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB文件
+- id: bom_prep
+  name: BOM整理
+  type: task
+  phase: DESIGN
+  owner: 硬件工程师
+  depends:
+  - hw_review
+  deliverables:
+  - BOM清单
+- id: ms_design
+  name: 设计阶段 里程碑
+  type: milestone
+  phase: DESIGN
+  depends:
+  - fw_design
+  - pcb_layout
+  - bom_prep
+- id: pcb_fab
+  name: PCB打样
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_layout
+  - hw_review
+  - mech_design
+  deliverables:
+  - PCB板
+- id: component_buy
+  name: 物料采购
+  type: task
+  phase: PROTO
+  owner: 采购
+  depends:
+  - bom_prep
+  deliverables:
+  - 物料
+- id: smt
+  name: SMT贴片
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - pcb_fab
+  - component_buy
+- id: fw_dev
+  name: 固件开发
+  type: task
+  phase: PROTO
+  owner: 固件工程师
+  depends:
+  - fw_design
+  deliverables:
+  - 固件
+- id: bringup
+  name: 板级调试
+  type: task
+  phase: PROTO
+  owner: 硬件工程师
+  depends:
+  - smt
+  - fw_dev
+  critical: true
+- id: ms_proto
+  name: 原型阶段 里程碑
+  type: milestone
+  phase: PROTO
+  depends:
+  - bringup
+- id: func_test
+  name: 功能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  deliverables:
+  - 测试报告
+  depends:
+  - bringup
+- id: perf_test
+  name: 性能测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - func_test
+  - bringup
+  deliverables:
+  - 性能报告
+- id: cert_test
+  name: 认证测试
+  type: task
+  phase: TEST
+  owner: 认证工程师
+  depends:
+  - func_test
+  deliverables:
+  - 认证报告
+  gate: 需要送第三方实验室
+- id: reliability
+  name: 可靠性测试
+  type: task
+  phase: TEST
+  owner: 测试工程师
+  depends:
+  - perf_test
+  deliverables:
+  - 可靠性报告
+  critical: true
+- id: tooling
+  name: 模具开发
+  type: task
+  phase: MASS
+  owner: 结构工程师
+  deliverables:
+  - 模具
+  gate: 结构设计冻结
+  depends:
+  - reliability
+- id: pilot_run
+  name: 试产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - tooling
+  deliverables:
+  - 试产报告
+- id: mass_prod
+  name: 量产
+  type: task
+  phase: MASS
+  owner: 生产工程师
+  depends:
+  - pilot_run
+  critical: true
+- id: ms_mass
+  name: 量产阶段 里程碑
+  type: milestone
+  phase: MASS
+  depends:
+  - mass_prod

@@ -7,11 +7,28 @@ import datetime
 from .. import core
 
 
+def _select_action(args) -> str:
+    actions = {
+        "add": bool(args.add),
+        "update": bool(args.update),
+    }
+    selected = [name for name, enabled in actions.items() if enabled]
+    if len(selected) > 1:
+        raise ValueError("decision 同时只能执行一种动作：--add 或 --update")
+    return selected[0] if selected else "list"
+
+
 def cmd_decision(args):
     """decision 命令入口"""
-    if args.add:
+    try:
+        action = _select_action(args)
+    except ValueError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    if action == "add":
         _add(args)
-    elif args.update:
+    elif action == "update":
         _update(args)
     else:
         _list_decisions(args)
@@ -65,6 +82,10 @@ def _update(args):
 
         if args.status:
             target["status"] = args.status
+        if args.source is not None:
+            target["source"] = args.source
+        if args.impact is not None:
+            target["impact"] = args.impact
         if args.note:
             target["note"] = args.note
 

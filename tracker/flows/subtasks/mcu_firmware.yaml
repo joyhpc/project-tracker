@@ -1,0 +1,161 @@
+# MCU 固件开发子任务模板
+# 适用于: fw_dev_mcu / 固件开发-MCU 等主任务
+# 参考: STM32H745 双核平台 WBS
+
+id: mcu_firmware
+name: MCU固件开发
+description: 通用MCU固件开发流程，含验证→设计开发→测试
+
+# 挂载目标: 主流程中匹配的 task_id 列表
+attach_to:
+  - mcu_dev            # 度信流程: 固件开发-MCU
+  - fw_dev_mcu         # 备选命名
+  - fw_dev             # generic 流程
+  - firmware_dev       # 其他可能的命名
+
+phases:
+  - id: MCU_VERIFY
+    name: 验证阶段
+    tasks:
+      - id: eval_board_setup
+        name: 验证工程搭建
+        owner: 固件工程师
+        days: 3
+
+      - id: peripheral_verify
+        name: 关键外设验证
+        owner: 固件工程师
+        depends: [eval_board_setup]
+        days: 5
+        description: QSPI/FMC/UART/SPI/I2C 等关键外设功能验证
+
+      - id: dual_core_verify
+        name: 双核通信验证
+        owner: 固件工程师
+        depends: [eval_board_setup]
+        days: 6
+        subtasks:
+          - id: hsem_verify
+            name: HSEM硬件信号量验证
+            days: 2
+          - id: shared_mem
+            name: 共享内存验证
+            days: 2
+          - id: ipcc_verify
+            name: IPCC核间通信验证
+            days: 2
+
+      - id: dual_core_partition
+        name: 双核功能划分讨论
+        owner: 固件工程师
+        depends: [dual_core_verify]
+        days: 1
+
+      - id: boot_flow_verify
+        name: 启动流程验证
+        owner: 固件工程师
+        depends: [dual_core_partition]
+        days: 2
+
+      - id: verify_result
+        name: 验证结果输出
+        owner: 固件工程师
+        depends: [peripheral_verify, boot_flow_verify]
+        days: 1
+        deliverables: [验证报告]
+        critical: true
+
+  - id: MCU_DEV
+    name: 设计开发阶段
+    tasks:
+      - id: mcu_arch_design
+        name: MCU系统框架设计
+        owner: 固件工程师
+        days: 2
+        deliverables: [系统框架文档]
+
+      - id: sys_scaffold
+        name: 系统工程搭建
+        owner: 固件工程师
+        depends: [mcu_arch_design]
+        days: 2
+
+      - id: kup_dev
+        name: 与关键外设相关的开发
+        owner: 固件工程师
+        depends: [sys_scaffold]
+        days: 9
+        subtasks:
+          - id: reg_rw
+            name: 寄存器读写通讯接口
+            days: 2
+          - id: fiber_comm
+            name: 光纤通信收发
+            days: 3
+          - id: device_ctrl
+            name: 设备校准/状态监测
+            days: 1
+          - id: ext_flash
+            name: 外挂SPI Flash接口
+            days: 1
+          - id: fw_upgrade
+            name: 固件升级功能
+            days: 2
+
+      - id: basic_func_dev
+        name: 基础功能开发
+        owner: 固件工程师
+        depends: [sys_scaffold]
+        days: 12
+        subtasks:
+          - id: dual_core_comm
+            name: 双核通信接口开发
+            days: 2
+          - id: boot_dev
+            name: BOOT程序设计开发
+            days: 7
+            subtasks:
+              - id: flash_partition
+                name: Flash地址划分设计
+                days: 1
+              - id: app_load
+                name: APP固件加载+引导
+                days: 1
+              - id: mcu_fw_upgrade
+                name: 主MCU固件升级
+                days: 3
+              - id: fpga_fw_support
+                name: 支持FPGA固件升级
+                days: 1
+          - id: log_debug
+            name: 日志调试
+            days: 1
+          - id: basic_module
+            name: 基础模块开发
+            days: 2
+
+      - id: pmu_dev
+        name: 与PMU相关的开发
+        owner: 固件工程师
+        depends: [basic_func_dev]
+        days: 3
+
+      - id: decoder_dev
+        name: 与解码板相关开发
+        owner: 固件工程师
+        depends: [basic_func_dev]
+        days: 8
+
+      - id: mcu_code_review
+        name: 代码评审
+        owner: 固件工程师
+        depends: [kup_dev, pmu_dev, decoder_dev]
+        days: 1
+        critical: true
+        deliverables: [代码评审报告]
+
+      - id: param_preload
+        name: 参数预加载功能开发
+        owner: 固件工程师
+        depends: [mcu_code_review]
+        days: 7

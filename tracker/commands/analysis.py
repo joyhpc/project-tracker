@@ -28,7 +28,8 @@ def cmd_plan(args):
     print(f"\n{'='*60}")
     print(f"  📋 {p['name']} ({p['id']}) - 作战地图")
     print(f"{'='*60}")
-    print(f"  总工期: {cpm['total_days']:.0f} 天 | 节点: {len(flow['nodes'])}")
+    _, total_nodes = core._progress_counts(p)
+    print(f"  总工期: {cpm['total_days']:.0f} 天 | 节点: {total_nodes}")
     print(f"  关键路径: {len(cpm['critical_path'])} 个节点")
     print(f"{'='*60}\n")
 
@@ -93,8 +94,7 @@ def cmd_digest(args):
         cpm = compute_cpm(flow, task_status)
         classified = classify_tasks(flow, task_status)
 
-        total = len(flow["nodes"])
-        done = sum(1 for n in flow["nodes"] if n.get("status") == "done")
+        done, total = core._progress_counts(p)
         blocked = len(classified["blocked"])
         active_blockers = [b for b in p.get("blockers", []) if not b.get("resolved")]
 
@@ -127,6 +127,8 @@ def cmd_digest(args):
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
         for d in all_data:
+            if getattr(args, "quiet", False) and not d["alerts"]:
+                continue
             p = d["project"]
             s = d["summary"]
             print(f"\n📋 {p['name']} ({p['id']})")

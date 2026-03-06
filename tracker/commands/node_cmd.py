@@ -4,6 +4,14 @@ import sys
 from .. import core
 
 
+def _require():
+    try:
+        return core.require_active()
+    except RuntimeError as e:
+        _output({"success": False, "error": str(e)})
+        sys.exit(1)
+
+
 def _output(data: dict, json_mode: bool = False, dry_run: bool = False):
     """统一输出函数 (支持 --json 和 --dry-run)"""
     if dry_run:
@@ -30,14 +38,14 @@ def _output(data: dict, json_mode: bool = False, dry_run: bool = False):
 
 def cmd_add(args):
     """添加一等节点到 DAG"""
-    p = core.require_active()
+    p = _require()
 
     node_data = {
         "id": args.id,
         "name": args.name or args.id,
         "phase": args.phase or "DETAIL",
     }
-    if args.days:
+    if args.days is not None:
         node_data["days"] = args.days
     if args.owner:
         node_data["owner"] = args.owner
@@ -80,7 +88,7 @@ def cmd_add(args):
 
 def cmd_rm(args):
     """从 DAG 移除节点"""
-    p = core.require_active()
+    p = _require()
     dry_run = getattr(args, 'dry_run', False)
     json_mode = getattr(args, 'json', False)
 
@@ -103,7 +111,7 @@ def cmd_rm(args):
 
 def cmd_skip(args):
     """软删除: 标记节点为 skipped"""
-    p = core.require_active()
+    p = _require()
     dry_run = getattr(args, 'dry_run', False)
     json_mode = getattr(args, 'json', False)
 
@@ -127,7 +135,7 @@ def cmd_skip(args):
 
 def cmd_undo(args):
     """恢复到上一个快照"""
-    p = core.require_active()
+    p = _require()
     json_mode = getattr(args, 'json', False)
 
     try:
@@ -144,7 +152,7 @@ def cmd_undo(args):
 
 def cmd_rewire(args):
     """底层拓扑原语: 修改节点的依赖关系"""
-    p = core.require_active()
+    p = _require()
     dry_run = getattr(args, 'dry_run', False)
     json_mode = getattr(args, 'json', False)
 
@@ -176,7 +184,7 @@ def cmd_rewire(args):
 
 def cmd_replace(args):
     """高阶业务宏: 方案交接棒"""
-    p = core.require_active()
+    p = _require()
     dry_run = getattr(args, 'dry_run', False)
     json_mode = getattr(args, 'json', False)
 
@@ -210,12 +218,12 @@ def cmd_replace(args):
 
 def cmd_promote(args):
     """提拔子任务为一等节点"""
-    p = core.require_active()
+    p = _require()
     dry_run = getattr(args, 'dry_run', False)
     json_mode = getattr(args, 'json', False)
 
     new_node_data = {}
-    if args.days:
+    if args.days is not None:
         new_node_data["days"] = args.days
     if args.owner:
         new_node_data["owner"] = args.owner

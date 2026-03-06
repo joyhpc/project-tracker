@@ -10,18 +10,36 @@ from .. import core
 from ..knowledge import parse_markdown, BM25, tokenize
 
 
+def _select_action(args) -> str:
+    actions = {
+        "add": bool(args.add),
+        "approve": bool(args.approve),
+        "report": bool(args.report),
+        "analyze": bool(args.analyze),
+        "list": bool(args.list),
+    }
+    selected = [name for name, enabled in actions.items() if enabled]
+    if len(selected) > 1:
+        raise ValueError("review 同时只能执行一种动作：--add / --approve / --report / --analyze / --list")
+    return selected[0] if selected else "list"
+
+
 def cmd_review(args):
     """review 命令入口"""
-    if args.add:
+    try:
+        action = _select_action(args)
+    except ValueError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    if action == "add":
         _add(args)
-    elif args.approve:
+    elif action == "approve":
         _approve(args)
-    elif args.report:
+    elif action == "report":
         _report(args)
-    elif args.analyze:
+    elif action == "analyze":
         _analyze(args)
-    elif args.list:
-        _list_reviews(args)
     else:
         _list_reviews(args)
 
@@ -366,7 +384,9 @@ def _report(args):
         if not os.path.isabs(save_path) and repo:
             save_path = os.path.join(str(repo), save_path)
 
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        parent_dir = os.path.dirname(save_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(content)
 

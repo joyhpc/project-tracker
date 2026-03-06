@@ -1,0 +1,84 @@
+phases:
+- id: CONCEPT
+  name: 概念与设计
+- id: DEV
+  name: 核心开发
+- id: CONTENT
+  name: 内容制作
+- id: RELEASE
+  name: MVP发布
+  milestone: DONE
+
+nodes:
+- id: vision_doc
+  name: 产品愿景定义
+  type: task
+  phase: CONCEPT
+  owner: PM
+- id: architecture
+  name: 架构设计与技术选型
+  type: task
+  phase: CONCEPT
+  owner: Tech Lead
+
+- id: core_engine
+  name: 绘本引擎开发 (JS/HTML/CSS)
+  type: task
+  phase: DEV
+  owner: Dev
+  depends:
+  - architecture
+- id: data_pipeline
+  name: 数据管道开发 (OOD Pipeline)
+  type: task
+  phase: DEV
+  owner: Dev
+  depends:
+  - architecture
+
+- id: assets_scene1
+  name: 场景1资源制作
+  type: task
+  phase: CONTENT
+  owner: Artist
+  depends:
+  - vision_doc
+- id: assets_scene2
+  name: 场景2资源制作
+  type: task
+  phase: CONTENT
+  owner: Artist
+  depends:
+  - vision_doc
+- id: assets_scene3
+  name: 场景3资源制作
+  type: task
+  phase: CONTENT
+  owner: Artist
+  depends:
+  - vision_doc
+
+- id: integration
+  name: 前端与数据集成
+  type: task
+  phase: RELEASE
+  owner: Dev
+  depends:
+  - core_engine
+  - data_pipeline
+  - assets_scene1
+  - assets_scene2
+  - assets_scene3
+- id: testing
+  name: 测试与打磨
+  type: task
+  phase: RELEASE
+  owner: QA
+  depends:
+  - integration
+- id: ms_release
+  name: MVP 发布里程碑
+  type: milestone
+  phase: RELEASE
+  depends:
+  - testing

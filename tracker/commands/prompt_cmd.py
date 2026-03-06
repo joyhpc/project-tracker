@@ -112,23 +112,35 @@ def cmd_prompt(args):
         sys.exit(1)
 
     result = generate_deep_prompt(question, p, flow) if getattr(args, "deep", False) else generate_prompt(question, p, flow)
+    show_system = getattr(args, "system", False)
+    system_prompt = result.get("system", "")
 
     if getattr(args, "full", False):
         print("=" * 60)
         print("  📋 复制以下内容到超级 LLM")
         print("=" * 60)
         print()
+        if system_prompt:
+            print("[SYSTEM]")
+            print(system_prompt)
+            print()
         print(result["prompt"])
         print()
         print("=" * 60)
     else:
+        if show_system:
+            if system_prompt:
+                print("[SYSTEM]")
+                print(system_prompt)
+                print()
+            else:
+                print("ℹ️ 当前模板无独立 system prompt\n")
         print(result["prompt"])
 
-    # 自动保存
+    # 自动/显式保存
     repo = core.get_repo_path(p)
-    if repo:
-        save_path = args.save if args.save else None
-        if not save_path:
+    save_path = args.save if args.save else None
+    if not save_path and repo:
             is_deep = getattr(args, "deep", False)
             task_path = _match_task_path(question, flow)
             if task_path:
@@ -147,12 +159,16 @@ def cmd_prompt(args):
             suffix = "meta" if is_deep else "prompt"
             save_path = os.path.join(prompt_dir, f"{next_num:02d}-{slug}-{suffix}.md")
 
+    if save_path:
+        base_dir = str(repo) if repo else os.getcwd()
         if not os.path.isabs(save_path):
-            save_path = os.path.join(str(repo), save_path)
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            save_path = os.path.join(base_dir, save_path)
+        parent_dir = os.path.dirname(save_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(result["prompt"] + "\n")
-        rel = os.path.relpath(save_path, str(repo))
+        rel = os.path.relpath(save_path, str(repo)) if repo else save_path
         print(f"\n📄 已保存: {rel}")
 
 
@@ -179,7 +195,7 @@ def _cmd_deep_all(p, flow, args):
 
     # 从 NO-GO 项生成问题
     for r in reviews:
-        for v in r.get("verdicts", []):
+        for v in core.normalize_verdicts(r.get("verdicts", [])):
             if v["verdict"] in ("NO-GO", "HIGH RISK"):
                 q_text = f"{v['topic']}被判定为{v['verdict']}，如何解决？"
                 if not any(v["topic"][:10] in q.get("question", "") for q in questions):

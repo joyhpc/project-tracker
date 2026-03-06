@@ -68,7 +68,9 @@ def cmd_propose(args):
             save_path = os.path.join(str(repo), phase_dir, "propose-prompt.md")
         if not os.path.isabs(save_path):
             save_path = os.path.join(str(repo), save_path)
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        parent_dir = os.path.dirname(save_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(prompt + "\n")
         rel = os.path.relpath(save_path, str(repo))
