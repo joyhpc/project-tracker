@@ -1216,3 +1216,4 @@ pocs:
   metric: SHA-256校验通过率100%,零数据丢失
   status: pending
   date: '2026-02-24'
+schema_version: 2

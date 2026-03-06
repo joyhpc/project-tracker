@@ -1734,14 +1734,22 @@ reviews:
   source: scan
   task: null
   verdicts:
-    GO: 1
+  - verdict: GO
+    topic: (legacy, 1次)
 - file: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/PCB Layout说明.md
   source: scan
   task: null
   verdicts:
-    GO: 1
+  - verdict: GO
+    topic: (legacy, 1次)
 - file: docs/onboard-prompt.md
   source: scan
   task: null
   verdicts:
-    GO: 2
+  - verdict: GO
+    topic: (legacy, 2次)
+  - verdict: GO
+    topic: (legacy, 2次)
+schema_version: 2
+decisions: []
+pocs: []

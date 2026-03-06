@@ -362,3 +362,4 @@ pocs:
   metric: 10种动作×20次,误报率<5%
   status: pending
   date: '2026-02-22'
+schema_version: 2

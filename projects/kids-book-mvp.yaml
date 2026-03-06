@@ -135,3 +135,7 @@ log:
   action: start
   task: assets_scene3
   detail: 场景3资源制作
+schema_version: 2
+reviews: []
+decisions: []
+pocs: []

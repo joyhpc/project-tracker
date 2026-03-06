@@ -505,3 +505,4 @@ pocs:
   status: pending
   date: '2026-02-22'
   result_date: '2026-02-22'
+schema_version: 2

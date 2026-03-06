@@ -374,3 +374,6 @@ reviews:
   - topic: 📊 综合判定
     verdict: GO
   source: super-llm
+schema_version: 2
+decisions: []
+pocs: []
