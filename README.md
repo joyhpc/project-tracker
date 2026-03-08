@@ -4,10 +4,21 @@
 
 ## 安装
 
+推荐使用虚拟环境安装，避免系统 Python 的 PEP 668 限制：
+
 ```bash
 git clone git@github.com:joyhpc/project-tracker.git
 cd project-tracker
+python3 -m venv .venv
+. .venv/bin/activate
 pip install -e .
+```
+
+如果你只是临时使用，也可以不安装，直接运行：
+
+```bash
+./pt --help
+./pt status
 ```
 
 ## 数据迁移
@@ -23,7 +34,7 @@ python tools/migrate_projects.py
 
 ```bash
 # 创建项目
-pt init A57-CAMRX --name "A57 摄像头测试设备 - CAMRX" --phase SAMPLE
+pt init A57-CAMRX --name "A57 摄像头测试设备 - CAMRX" --flow duxin
 
 # 查看状态
 pt status
@@ -46,8 +57,8 @@ pt block pcb_eq --reason "等板厂回复EQ"
 # 解除阻塞
 pt unblock pcb_eq
 
-# 推进到下一阶段
-pt advance
+# 查看阶段进度
+pt phases
 
 # 添加备注
 pt note "今天和PCB工程师确认了堆叠方案"
@@ -61,6 +72,25 @@ pt list
 # 切换项目
 pt switch A57-DCURX
 ```
+
+## 开发与验证
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e .
+pytest -q
+./pt --help
+```
+
+如果你是新机器 fresh clone，优先先跑一次 `pytest -q` 确认环境和核心回归都正常。
+
+## 交接文档
+
+- `docs/ANCHORS.md`：新 agent 快速定位核心模块
+- `docs/HANDOFF_PROMPT.md`：可直接贴给下一位 agent 的交接 prompt
+- `docs/architecture.md`：知识检索 / prompt 架构
+- `docs/PLAN.md`：历史计划与阶段演进
 
 ## 项目结构
 
