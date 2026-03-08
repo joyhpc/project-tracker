@@ -21,6 +21,16 @@ from .project_model import (
     _project_as_flow as _project_model_project_as_flow,
     _undone_dependencies as _project_model_undone_dependencies,
 )
+from .project_mutation import (
+    add_subtask_to_project as _project_mutation_add_subtask_to_project,
+    attach_doc_to_task as _project_mutation_attach_doc_to_task,
+    block_subtask_in_project as _project_mutation_block_subtask_in_project,
+    block_task_in_project as _project_mutation_block_task_in_project,
+    done_subtask_in_project as _project_mutation_done_subtask_in_project,
+    done_task_in_project as _project_mutation_done_task_in_project,
+    start_task_in_project as _project_mutation_start_task_in_project,
+    unblock_task_in_project as _project_mutation_unblock_task_in_project,
+)
 from .project_query import get_status as _project_query_get_status
 from .project_validation import (
     check_integrity as _project_validation_check_integrity,
@@ -1308,134 +1318,44 @@ def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
 
 def start_task(project_id: str, task_id: str) -> dict:
     p = _load(project_id)
-    node = _find_node(p, task_id)
-    if not node:
-        raise ValueError(f"任务不存在: {task_id}")
-    if node.get("status") == "done":
-        raise ValueError(f"任务已完成: {task_id}")
-    if node.get("status") == "in_progress":
-        raise ValueError(f"任务已在进行中: {task_id}")
-    if node.get("status") == "blocked":
-        raise ValueError(f"任务当前处于阻塞状态: {task_id}")
-    if node.get("status") == "expanded":
-        raise ValueError(f"任务已展开为子任务，请直接推进子任务: {task_id}")
-    if node.get("status") != "pending":
-        raise ValueError(f"任务当前状态不允许开始: {task_id} ({node.get('status')})")
-
-    undone = _undone_dependencies(p, node)
-    if undone:
-        names = [_find_node(p, d).get("name", d) if _find_node(p, d) else d for d in undone]
-        raise ValueError(f"依赖未完成: {', '.join(names)}")
-
-    node["status"] = "in_progress"
-    node["started"] = _now()
-    p["log"].append({"time": _now(), "action": "start", "task": task_id, "detail": node["name"]})
+    result = _project_mutation_start_task_in_project(
+        p,
+        task_id,
+        now=_now,
+        match_subtask_templates=match_subtask_templates,
+    )
     _save(p)
-
-    # 检查是否有匹配的子任务模板（不自动加载，返回提示信息）
-    matched = match_subtask_templates(task_id)
-    result = dict(node)
-    if matched:
-        result["_matched_templates"] = matched
     return result
 
 
 def done_task(project_id: str, task_id: str, note: str = "", force: bool = False, note_file: str = "") -> dict:
     p = _load(project_id)
-    node = _find_node(p, task_id)
-    if not node:
-        raise ValueError(f"任务不存在: {task_id}")
-    if node.get("status") == "done":
-        raise ValueError(f"任务已完成: {task_id}")
-    if node.get("status") == "blocked":
-        raise ValueError(f"任务当前处于阻塞状态，请先解除阻塞: {task_id}")
-    if node.get("status") == "expanded":
-        raise ValueError(f"任务已展开为子任务，无需再执行 pt done: {task_id}")
-    if node.get("status") not in ("pending", "in_progress"):
-        raise ValueError(f"任务当前状态不允许完成: {task_id} ({node.get('status')})")
-
-    # 检查依赖是否满足
-    deps = node.get("depends", [])
-    undone = _undone_dependencies(p, node)
-    if deps and not force:
-        if undone:
-            names = [_find_node(p, d).get("name", d) if _find_node(p, d) else d for d in undone]
-            raise ValueError(f"依赖未完成: {', '.join(names)}。使用 --force 强制完成")
-
     if note_file:
         _validate_repo_file(p, note_file, "备注文件")
-
-    if node.get("status") == "pending" and not node.get("started"):
-        node["started"] = _now()
-    node["status"] = "done"
-    node["completed"] = _now()
-    if note:
-        node["note"] = note
-    if note_file:
-        # 多行备注：关联文件路径，同时自动 attach 为文档
-        node["note_file"] = note_file
-        docs = node.get("docs", [])
-        if not any(d["path"] == note_file for d in docs):
-            docs.append({"path": note_file, "desc": "完成备注", "added": _now()})
-            node["docs"] = docs
-    p["log"].append({"time": _now(), "action": "done", "task": task_id,
-                     "detail": note or node["name"]})
+    result = _project_mutation_done_task_in_project(
+        p,
+        task_id,
+        now=_now,
+        note=note,
+        force=force,
+        note_file=note_file,
+    )
     _save(p)
-
-    # 返回进度信息
-    done_count, total = _progress_counts(p)
-    remaining = [n["name"] for n in _effective_nodes(p)
-                 if n.get("status") not in ("done", "skipped") and
-                 not _undone_dependencies(p, n)]
-    return {
-        "progress": f"{done_count}/{total}",
-        "remaining_ready": remaining[:3],
-    }
+    return result
 
 
 def block_task(project_id: str, task_id: str, reason: str) -> dict:
     p = _load(project_id)
-    node = _find_node(p, task_id)
-    if not node:
-        raise ValueError(f"任务不存在: {task_id}")
-    if node.get("status") == "done":
-        raise ValueError(f"任务已完成，不能阻塞: {task_id}")
-    if node.get("status") == "expanded":
-        raise ValueError(f"任务已展开为子任务，请阻塞具体子任务: {task_id}")
-    if node.get("status") == "blocked":
-        raise ValueError(f"任务已阻塞: {task_id}")
-
-    node["blocked_from_status"] = node.get("status", "pending")
-    node["status"] = "blocked"
-    node["blocked_reason"] = reason
-    p["blockers"].append({"task_id": task_id, "reason": reason, "date": _now()})
-    p["log"].append({"time": _now(), "action": "block", "task": task_id, "detail": reason})
+    result = _project_mutation_block_task_in_project(p, task_id, reason, now=_now)
     _save(p)
-    return {"task": task_id, "reason": reason}
+    return result
 
 
 def unblock_task(project_id: str, task_id: str) -> dict:
     p = _load(project_id)
-    node = _find_node(p, task_id)
-    if not node:
-        raise ValueError(f"任务不存在: {task_id}")
-    if node.get("status") != "blocked":
-        raise ValueError(f"任务未阻塞: {task_id}")
-
-    previous = node.pop("blocked_from_status", "pending")
-    if previous == "in_progress" and _undone_dependencies(p, node):
-        previous = "pending"
-    if previous not in ("pending", "in_progress"):
-        previous = "pending"
-    node["status"] = previous
-    node.pop("blocked_reason", None)
-    for b in p.get("blockers", []):
-        if b["task_id"] == task_id and not b.get("resolved"):
-            b["resolved"] = _now()
-            break
-    p["log"].append({"time": _now(), "action": "unblock", "task": task_id})
+    result = _project_mutation_unblock_task_in_project(p, task_id, now=_now)
     _save(p)
-    return {"task": task_id}
+    return result
 
 
 def add_note(project_id: str, text: str):
@@ -1449,79 +1369,29 @@ def add_note(project_id: str, text: str):
 def add_subtask(project_id: str, parent_id: str, subtask_id: str, name: str, **kwargs) -> dict:
     """添加子任务 — 作为一等节点插入"""
     p = _load(project_id)
-    parent = _find_node(p, parent_id)
-    if not parent:
-        raise ValueError(f"父任务不存在: {parent_id}")
-
-    full_id = f"{parent_id}.{subtask_id}"
-    if _find_node(p, full_id):
-        raise ValueError(f"子任务已存在: {full_id}")
-
-    sub_node = {
-        "id": full_id,
-        "name": name,
-        "type": "task",
-        "phase": parent.get("phase", ""),
-        "parent": parent_id,
-        "status": "pending",
-        "created": _now(),
-    }
-    for k in ("owner", "days", "depends", "deliverables", "description"):
-        if k in kwargs and kwargs[k]:
-            sub_node[k] = kwargs[k]
-
-    p["nodes"].append(sub_node)
-
-    # 父任务自动变为 in_progress
-    if parent.get("status") == "pending":
-        parent["status"] = "in_progress"
-        parent["started"] = _now()
-
-    p["log"].append({"time": _now(), "action": "subtask_add", "task": full_id, "detail": name})
+    result = _project_mutation_add_subtask_to_project(
+        p,
+        parent_id,
+        subtask_id,
+        name,
+        now=_now,
+        **kwargs,
+    )
     _save(p)
-    return sub_node
+    return result
 
 
 def done_subtask(project_id: str, full_id: str, note: str = "") -> dict:
     """完成子任务"""
     p = _load(project_id)
-    node = _find_node(p, full_id)
-    if not node:
-        raise ValueError(f"子任务不存在: {full_id}")
-
-    node["status"] = "done"
-    node["completed"] = _now()
-    if note:
-        node["note"] = note
-
-    p["log"].append({"time": _now(), "action": "subtask_done", "task": full_id,
-                     "detail": note or node["name"]})
-
-    # 检查同父的所有子任务是否完成
-    parent_id = node.get("parent", full_id.rsplit(".", 1)[0])
-    siblings = [n for n in p["nodes"] if n.get("parent") == parent_id]
-    all_done = all(s.get("status") == "done" for s in siblings)
-
-    result = {"subtask": full_id, "all_subtasks_done": all_done}
-    if all_done:
-        parent = _find_node(p, parent_id)
-        if parent and parent.get("status") == "expanded":
-            result["hint"] = "所有子任务已完成，父任务已由子任务替代。运行: pt next 查看后续任务"
-        else:
-            result["hint"] = f"所有子任务已完成，可以运行: pt done {parent_id}"
-
+    result = _project_mutation_done_subtask_in_project(p, full_id, now=_now, note=note)
     _save(p)
     return result
 
 
 def block_subtask(project_id: str, full_id: str, reason: str):
     p = _load(project_id)
-    node = _find_node(p, full_id)
-    if not node:
-        raise ValueError(f"子任务不存在: {full_id}")
-    node["status"] = "blocked"
-    node["blocked_reason"] = reason
-    p["log"].append({"time": _now(), "action": "subtask_block", "task": full_id, "detail": reason})
+    _project_mutation_block_subtask_in_project(p, full_id, reason, now=_now)
     _save(p)
 
 
@@ -1793,22 +1663,16 @@ def attach_doc(project_id: str, task_id: str, file_path: str, description: str =
     p = _load(project_id)
     if not p:
         raise ValueError(f"项目不存在: {project_id}")
-    node = _find_node(p, task_id)
-    if not node:
-        raise ValueError(f"任务不存在: {task_id}")
 
     _validate_repo_file(p, file_path, "文档")
 
-    docs = node.get("docs", [])
-    if any(d["path"] == file_path for d in docs):
-        raise ValueError(f"文档已关联: {file_path}")
-
-    docs.append({"path": file_path, "desc": description, "added": _now()})
-    node["docs"] = docs
-    p["log"].append({
-        "time": _now(), "action": "doc_attach",
-        "task": task_id, "detail": f"关联文档: {file_path}",
-    })
+    node = _project_mutation_attach_doc_to_task(
+        p,
+        task_id,
+        file_path,
+        now=_now,
+        description=description,
+    )
     _save(p)
     return node
 

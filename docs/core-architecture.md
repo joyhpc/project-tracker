@@ -26,7 +26,8 @@ tracker/core.py                 ← 兼容 façade / 持久化入口
         ├─ tracker/project_constants.py   ← schema 版本与枚举常量
         ├─ tracker/project_model.py       ← 纯项目模型辅助函数
         ├─ tracker/project_validation.py  ← schema + DAG 完整性校验
-        └─ tracker/project_query.py       ← 状态聚合 / fallback 查询
+        ├─ tracker/project_query.py       ← 状态聚合 / fallback 查询
+        └─ tracker/project_mutation.py    ← 状态机 / 任务变更规则
         │
         ├─ tracker/engine.py              ← DAG 分类 / CPM / 关键路径
         ├─ tracker/flow.py                ← 流程模板加载
@@ -122,6 +123,24 @@ projects/.pt_history/           ← 历史快照
 - 把“读取状态”和“修改状态”拆开
 - 避免 `core.py` 同时承担查询、写入、校验、展示拼装
 
+### `tracker/project_mutation.py`
+
+负责项目内的状态变更规则：
+
+- `start_task_in_project()`
+- `done_task_in_project()`
+- `block_task_in_project()` / `unblock_task_in_project()`
+- `add_subtask_to_project()` / `done_subtask_in_project()`
+- `attach_doc_to_task()`
+
+这个模块只处理**已加载项目对象上的状态机逻辑**，不负责文件读写。
+
+价值是：
+
+- 把“怎么改状态”从 `core.py` 文件系统层里拆出来
+- 让任务状态机更容易单测
+- 为后续继续抽 `subtask template loading` 或 mutation service 铺路
+
 ### `tracker/engine.py`
 
 `engine.py` 仍然是图引擎内核：
@@ -162,7 +181,7 @@ tracker/commands/project.py
 ```text
 tracker/commands/node_cmd.py
     → core.done(...)
-    → core._undone_dependencies(project, node)
+    → project_mutation.done_task_in_project(...)
     → core._save(project)
     → core.check_integrity(project)
 ```
@@ -200,7 +219,7 @@ tracker/commands/node_cmd.py
 
 - 纯展示格式化
 - 更细粒度的 project repository 抽象
-- project mutation service（start / done / block / unblock 的状态机规则）
+- subtask template loading / rewire 逻辑继续拆分
 - JSON Schema 导出 / schema 文档生成
 
 ## 当前闭环状态
@@ -215,7 +234,7 @@ tracker/commands/node_cmd.py
 
 ## 下一轮最值得做的优化
 
-1. 把 mutation 规则从 `core.py` 再拆成 `project_mutation.py`
+1. 把 subtask template loading / DAG rewire 继续从 `core.py` 拆出去
 2. 给 `project_validation.py` 补 JSON Schema 导出或 machine-readable schema
 3. 给 `project_query.py` 增加 explain/debug 输出，解释 ready / blocked / CPM 来源
 4. 给命令层补更细粒度单测，而不只依赖回归测试
