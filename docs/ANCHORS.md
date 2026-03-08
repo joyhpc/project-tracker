@@ -10,7 +10,7 @@
 2. `docs/core-architecture.md` — 当前核心架构分层与调用链
 3. `tracker/cli.py` — 所有 CLI 命令的总路由
 4. `tracker/core.py` — 兼容 façade，负责 YAML 读写、迁移、乐观锁、公共入口
-5. `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` / `tracker/subtask_templates.py` — 已抽出的纯模型、校验、查询、状态机、子任务模板层
+5. `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` / `tracker/subtask_templates.py` / `tracker/project_map.py` — 已抽出的纯模型、校验、查询、状态机、子任务模板、地图视图层
 6. `tracker/engine.py` — DAG、拓扑排序、关键路径、Slack、依赖分类
 7. `tracker/knowledge.py` — Markdown 切块 + BM25 检索
 8. `tracker/prompt.py` — Prompt 组装层，把项目上下文变成给 LLM 的输入
@@ -25,7 +25,7 @@
 
 ### B. 状态持久化层
 - 核心文件：`tracker/core.py`（兼容 façade）
-- 子模块：`tracker/project_constants.py`、`tracker/project_model.py`、`tracker/project_validation.py`、`tracker/project_query.py`、`tracker/project_mutation.py`、`tracker/subtask_templates.py`
+- 子模块：`tracker/project_constants.py`、`tracker/project_model.py`、`tracker/project_validation.py`、`tracker/project_query.py`、`tracker/project_mutation.py`、`tracker/subtask_templates.py`、`tracker/project_map.py`
 - 数据目录：`projects/`
 - 持久化格式：单项目单 YAML
 - 关键机制：
@@ -36,6 +36,7 @@
   - 状态聚合：`project_query.py`
   - 状态机规则：`project_mutation.py`
   - 子任务模板发现/重连：`subtask_templates.py`
+  - 项目地图快照/渲染：`project_map.py`
 
 ### C. 计划引擎层
 - 核心文件：`tracker/engine.py`
@@ -102,6 +103,7 @@
 python -m pip install -e .
 pytest -q
 ./pt validate
+./pt map
 ./pt list
 ./pt --help
 ```

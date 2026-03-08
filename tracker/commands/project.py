@@ -58,8 +58,10 @@ def cmd_status(args):
     phase_progress = core.get_phase_progress(p)
     if phase_progress:
         print(f"\n📍 阶段进度:")
+        bar_width = 12
         for ph in phase_progress:
-            bar = "█" * ph["done"] + "░" * (ph["total"] - ph["done"])
+            fill = round((ph["done"] / ph["total"]) * bar_width) if ph["total"] else 0
+            bar = "█" * fill + "░" * (bar_width - fill)
             check = " ✅" if ph["complete"] else ""
             print(f"   {ph['name']}: [{bar}] {ph['progress']}{check}")
 
@@ -116,6 +118,7 @@ def cmd_status(args):
         if len(infos) > 3:
             print(f"   ... 还有 {len(infos)-3} 个建议")
 
+    print("💡 项目地图: pt map   |   HTML 地图: pt map --html")
     print()
 
 

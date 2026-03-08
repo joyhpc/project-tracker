@@ -3,6 +3,7 @@ import sys
 import json
 from .. import core
 from ..engine import compute_cpm, build_graph, classify_tasks
+from ..project_map import build_project_map, render_project_map_text
 
 
 def _require():
@@ -18,63 +19,10 @@ def _icon(status: str) -> str:
 
 
 def cmd_plan(args):
-    """项目作战地图 — 全局 DAG 视图"""
-    p = _require()
-    flow = core._project_as_flow(p)
-    task_status = core._get_task_status(p)
-    cpm = compute_cpm(flow, task_status)
-    graph = build_graph(flow)
-
-    print(f"\n{'='*60}")
-    print(f"  📋 {p['name']} ({p['id']}) - 作战地图")
-    print(f"{'='*60}")
-    _, total_nodes = core._progress_counts(p)
-    print(f"  总工期: {cpm['total_days']:.0f} 天 | 节点: {total_nodes}")
-    print(f"  关键路径: {len(cpm['critical_path'])} 个节点")
-    print(f"{'='*60}\n")
-
-    # 按阶段分组显示
-    phases = flow.get("phases", [])
-    nodes_by_phase = {}
-    for n in flow["nodes"]:
-        ph = n.get("phase", "未分类")
-        nodes_by_phase.setdefault(ph, []).append(n)
-
-    for phase in phases:
-        pid = phase["id"]
-        phase_nodes = nodes_by_phase.get(pid, [])
-        if not phase_nodes:
-            continue
-
-        done = sum(1 for n in phase_nodes if n.get("status") == "done")
-        total = len(phase_nodes)
-        print(f"📍 {phase.get('name', pid)} [{done}/{total}]")
-        print(f"{'─'*50}")
-
-        for n in phase_nodes:
-            if n.get("parent") or n.get("status") == "expanded":
-                continue  # 子任务不在主视图显示
-            icon = _icon(n.get("status", "pending"))
-            r = cpm["nodes"].get(n["id"], {})
-            crit = " 🔴" if r.get("critical") else ""
-            slack_str = f" slack={r.get('slack',0):.0f}d" if not r.get("critical") else ""
-            ms = " 🏁" if n.get("type") == "milestone" else ""
-
-            line = f"  {icon} [{n['id']}] {n['name']}{ms}{crit}{slack_str}"
-            if n.get("owner"):
-                line += f"  ← {n['owner']}"
-            print(line)
-
-            # 显示依赖
-            deps = n.get("depends", [])
-            if deps:
-                dep_names = []
-                for d in deps:
-                    dn = graph["nodes"].get(d, {}).get("name", d)
-                    ds = task_status.get(d, {}).get("status", "pending")
-                    dep_names.append(f"{dn}({'✅' if ds == 'done' else '⏳'})")
-                print(f"      ← 依赖: {', '.join(dep_names)}")
-        print()
+    """项目作战地图 — 终端友好的项目状态地图"""
+    project = _require()
+    map_data = build_project_map(project)
+    print(render_project_map_text(map_data), end="")
 
 
 def cmd_digest(args):
@@ -180,6 +128,7 @@ def cmd_timeline(args):
         if phase_filter and pid.upper() != phase_filter.upper():
             continue
         phase_nodes = [n for n in nodes_by_phase.get(pid, []) if not n.get("parent") and n.get("status") != "expanded"]
+        phase_nodes.sort(key=lambda node: (cpm["nodes"].get(node["id"], {}).get("es", 0), node["id"]))
         if not phase_nodes:
             continue
 

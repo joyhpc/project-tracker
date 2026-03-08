@@ -14,7 +14,7 @@ from .commands.decision_cmd import cmd_decision
 from .commands.poc_cmd import cmd_poc
 from .commands.propose_cmd import cmd_propose
 from .commands.scan_cmd import cmd_scan
-from .commands.visual_cmd import cmd_visual
+from .commands.visual_cmd import cmd_map, cmd_visual
 from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace, cmd_promote
 
 
@@ -98,6 +98,11 @@ def main():
 
     # ── 分析 ──
     sub.add_parser("plan", help="项目作战地图")
+
+    p_map = sub.add_parser("map", help="项目地图（终端优先，可选 HTML/PNG）")
+    p_map.add_argument("--html", action="store_true", help="同时生成 HTML 地图")
+    p_map.add_argument("--output", "-o", default="/tmp", help="HTML/PNG 输出目录 (默认 /tmp)")
+    p_map.add_argument("--no-png", action="store_true", help="只生成 HTML，不截图")
 
     p_dig = sub.add_parser("digest", help="项目状态摘要")
     p_dig.add_argument("--json", action="store_true")
@@ -271,7 +276,7 @@ def main():
         "sub-block": cmd_sub_block, "sb": cmd_sub_block,
         "sub-list": cmd_sub_list, "sl": cmd_sub_list,
         "sub-load": cmd_sub_load,
-        "plan": cmd_plan, "digest": cmd_digest,
+        "plan": cmd_plan, "map": cmd_map, "digest": cmd_digest,
         "timeline": cmd_timeline, "tl": cmd_timeline,
         "estimate": cmd_estimate, "est": cmd_estimate,
         "guide": cmd_guide, "risk": cmd_risk,

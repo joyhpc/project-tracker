@@ -28,7 +28,8 @@ tracker/core.py                 ← 兼容 façade / 持久化入口
         ├─ tracker/project_validation.py  ← schema + DAG 完整性校验
         ├─ tracker/project_query.py       ← 状态聚合 / fallback 查询
         ├─ tracker/project_mutation.py    ← 状态机 / 任务变更规则
-        └─ tracker/subtask_templates.py   ← 子任务模板发现 / 匹配 / DAG rewire
+        ├─ tracker/subtask_templates.py   ← 子任务模板发现 / 匹配 / DAG rewire
+        └─ tracker/project_map.py         ← 项目地图快照 / 文本与 HTML 渲染
         │
         ├─ tracker/engine.py              ← DAG 分类 / CPM / 关键路径
         ├─ tracker/flow.py                ← 流程模板加载
@@ -151,6 +152,18 @@ projects/.pt_history/           ← 历史快照
 - 模板应用到项目后的子图插入、外部依赖提示处理、DAG rewire
 
 这让 `core.py` 不再自己承担模板发现 + YAML 解析 + 子图重连的混合职责。
+
+### `tracker/project_map.py`
+
+负责把项目状态快照整理成“适合人读”的地图视图：
+
+- 终端地图
+- HTML 地图
+- 当前焦点选择
+- 分阶段泳道视图
+- 仓库状态 / 决策 / 阻塞 / 关键路径摘要
+
+这样 `plan` / `map` / `visual` 三个入口共享同一份地图语义，而不是各自拼一套。
 
 ### `tracker/engine.py`
 

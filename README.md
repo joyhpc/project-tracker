@@ -39,6 +39,12 @@ pt init A57-CAMRX --name "A57 摄像头测试设备 - CAMRX" --flow duxin
 # 查看状态
 pt status
 
+# 终端项目地图（推荐）
+pt map
+
+# 生成 HTML / PNG 项目地图
+pt map --html --output /tmp/project-map
+
 # 显式校验项目 YAML / DAG
 pt validate
 
@@ -94,6 +100,7 @@ pytest -q
 - `docs/ANCHORS.md`：新 agent 快速定位核心模块
 - `docs/HANDOFF_PROMPT.md`：可直接贴给下一位 agent 的交接 prompt
 - `docs/core-architecture.md`：核心状态层 / 校验层 / 查询层 / 状态机层 / 子任务模板层架构
+- `docs/project-map-smart-sleep-pillow.md`：`smart-sleep-pillow` / `PILLOW` 项目地图示例
 - `docs/architecture.md`：知识检索 / prompt 架构
 - `docs/PLAN.md`：历史计划与阶段演进
 
@@ -112,6 +119,7 @@ project-tracker/
 │   ├── project_query.py  # 状态聚合 / fallback 查询
 │   ├── project_mutation.py # 状态机 / 任务变更规则
 │   ├── subtask_templates.py # 子任务模板发现 / DAG 重连
+│   ├── project_map.py   # 项目地图快照 / 文本与 HTML 渲染
 │   └── flow.py           # 流程定义加载
 ├── flows/
 │   └── duxin.yaml        # 度信平台流程定义

@@ -76,6 +76,33 @@ def topo_sort(graph: dict) -> list[str]:
     return order
 
 
+def stable_node_order(graph: dict) -> list[str]:
+    """用于展示/分类的稳定顺序；容忍 missing deps。"""
+    if not graph.get("missing_deps"):
+        return topo_sort(graph)
+
+    in_degree = {
+        nid: sum(1 for dep in graph["deps"].get(nid, []) if dep in graph["nodes"])
+        for nid in graph["nodes"]
+    }
+    queue = sorted([nid for nid, degree in in_degree.items() if degree == 0])
+    order = []
+
+    while queue:
+        nid = queue.pop(0)
+        order.append(nid)
+        for succ in sorted(graph["rdeps"].get(nid, [])):
+            in_degree[succ] -= 1
+            if in_degree[succ] == 0:
+                queue.append(succ)
+                queue.sort()
+
+    for nid in sorted(graph["nodes"]):
+        if nid not in order:
+            order.append(nid)
+    return order
+
+
 # ── CPM 关键路径 ──────────────────────────────────────
 
 def node_days(node: dict, custom_estimates: dict = None) -> float:
@@ -172,10 +199,11 @@ def classify_tasks(flow: dict, task_status: dict,
     graph = build_graph(flow)
     nodes = graph["nodes"]
 
+    topo_order = stable_node_order(graph)
     if phase_id:
-        node_ids = {nid for nid, n in nodes.items() if n.get("phase") == phase_id}
+        node_ids = [nid for nid in topo_order if nodes[nid].get("phase") == phase_id]
     else:
-        node_ids = set(nodes.keys())
+        node_ids = list(topo_order)
 
     result = {"ready": [], "in_progress": [], "blocked": [], "waiting": [], "done": []}
 
