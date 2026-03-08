@@ -1,10 +1,33 @@
-"""核心逻辑 v2 — 单文件自包含 + 扁平 DAG"""
+"""核心逻辑 v2 — 兼容 façade + 扁平 DAG"""
 import yaml
 import copy
 import shutil
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+
+from . import flow as flowmod
+from .project_constants import (
+    PROJECT_SCHEMA_VERSION,
+    VALID_DECISION_STATUSES,
+    VALID_NODE_STATUSES,
+    VALID_POC_STATUSES,
+    VALID_REVIEW_VERDICTS,
+)
+from .project_model import (
+    _effective_nodes as _project_model_effective_nodes,
+    _get_task_status as _project_model_get_task_status,
+    _progress_counts as _project_model_progress_counts,
+    _project_as_flow as _project_model_project_as_flow,
+    _undone_dependencies as _project_model_undone_dependencies,
+)
+from .project_query import get_status as _project_query_get_status
+from .project_validation import (
+    check_integrity as _project_validation_check_integrity,
+    summarize_validation_issues as _project_validation_summarize_validation_issues,
+    validate_project as _project_validation_validate_project,
+    validate_project_schema as _project_validation_validate_project_schema,
+)
 
 
 # ── 数据格式工具 ──────────────────────────────────────
@@ -22,15 +45,10 @@ def normalize_verdicts(raw) -> list[dict]:
         return [{"verdict": k, "topic": f"(legacy, {cnt}次)"}
                 for k, cnt in raw.items() for _ in range(cnt)]
     return raw or []
-from . import flow as flowmod
+
 
 PROJECTS_DIR = Path(__file__).parent.parent / "projects"
 CONFIG_FILE = PROJECTS_DIR / ".active"
-PROJECT_SCHEMA_VERSION = 2
-VALID_NODE_STATUSES = {"pending", "in_progress", "blocked", "done", "expanded", "skipped"}
-VALID_DECISION_STATUSES = {"active", "superseded", "reverted", "pending"}
-VALID_POC_STATUSES = {"pending", "go", "caution", "no-go"}
-VALID_REVIEW_VERDICTS = {"GO", "CAUTION", "NO-GO", "HIGH RISK", "CONDITIONAL GO", "HIGHLY FEASIBLE"}
 
 
 def _project_file(project_id: str) -> Path:
@@ -1912,3 +1930,16 @@ def load_from_repo(repo_path: str) -> dict:
     _save(project)
     _set_active(project["id"])
     return project
+
+
+_get_task_status = _project_model_get_task_status
+_project_as_flow = _project_model_project_as_flow
+_effective_nodes = _project_model_effective_nodes
+_progress_counts = _project_model_progress_counts
+_undone_dependencies = _project_model_undone_dependencies
+
+validate_project_schema = _project_validation_validate_project_schema
+validate_project = _project_validation_validate_project
+summarize_validation_issues = _project_validation_summarize_validation_issues
+check_integrity = _project_validation_check_integrity
+get_status = _project_query_get_status

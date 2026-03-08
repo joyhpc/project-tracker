@@ -7,12 +7,14 @@
 按这个顺序读：
 
 1. `README.md` — 安装、CLI 快速开始、基本目录结构
-2. `tracker/cli.py` — 所有 CLI 命令的总路由
-3. `tracker/core.py` — 项目 YAML 读写、迁移、乐观锁、任务状态变更
-4. `tracker/engine.py` — DAG、拓扑排序、关键路径、Slack、依赖分类
-5. `tracker/knowledge.py` — Markdown 切块 + BM25 检索
-6. `tracker/prompt.py` — Prompt 组装层，把项目上下文变成给 LLM 的输入
-7. `tests/test_regressions.py` — 回归保护网，里面基本能看出系统承诺了什么
+2. `docs/core-architecture.md` — 当前核心架构分层与调用链
+3. `tracker/cli.py` — 所有 CLI 命令的总路由
+4. `tracker/core.py` — 兼容 façade，负责 YAML 读写、迁移、乐观锁、公共入口
+5. `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` — 已抽出的纯模型、校验、查询层
+6. `tracker/engine.py` — DAG、拓扑排序、关键路径、Slack、依赖分类
+7. `tracker/knowledge.py` — Markdown 切块 + BM25 检索
+8. `tracker/prompt.py` — Prompt 组装层，把项目上下文变成给 LLM 的输入
+9. `tests/test_regressions.py` — 回归保护网，里面基本能看出系统承诺了什么
 
 ## 2. 当前架构锚点
 
@@ -22,13 +24,16 @@
 - 不该做：项目读写规则、依赖计算、知识检索细节
 
 ### B. 状态持久化层
-- 核心文件：`tracker/core.py`
+- 核心文件：`tracker/core.py`（兼容 façade）
+- 子模块：`tracker/project_constants.py`、`tracker/project_model.py`、`tracker/project_validation.py`、`tracker/project_query.py`
 - 数据目录：`projects/`
 - 持久化格式：单项目单 YAML
 - 关键机制：
   - schema 迁移：`migrate_project_data()`
   - 乐观锁：`_save(..., check_mtime=True)`
   - 历史快照：`.pt_history`
+  - 结构/完整性校验：`project_validation.py`
+  - 状态聚合：`project_query.py`
 
 ### C. 计划引擎层
 - 核心文件：`tracker/engine.py`
@@ -58,7 +63,7 @@
 优先看：`tracker/cli.py` + 对应 `tracker/commands/*.py`
 
 ### 如果要改任务状态机 / YAML 结构
-优先看：`tracker/core.py`
+优先看：`tracker/core.py`（持久化/状态变更）和 `tracker/project_model.py` / `tracker/project_validation.py`（纯逻辑/校验）
 
 ### 如果要改依赖、关键路径、ready 判断
 优先看：`tracker/engine.py`
@@ -80,6 +85,10 @@
 - `pt validate` / `core.validate_project_file(...)`
   - 作用：把结构级 schema 校验和 DAG 完整性检查显式暴露出来
   - 价值：新 agent 可以先验项目 YAML，再开始修改状态或流程
+
+- `tracker/project_constants.py` / `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py`
+  - 作用：把 `core.py` 里的常量、纯模型逻辑、校验逻辑、状态查询逻辑分层拆出
+  - 价值：后续优化可以在不动 CLI 入口的前提下继续细化架构
 
 - `.github/workflows/python-tests.yml`
   - 作用：对 `main` / PR 自动执行 `pip install -e . && pytest -q`
