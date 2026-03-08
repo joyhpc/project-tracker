@@ -39,6 +39,9 @@ pt init A57-CAMRX --name "A57 摄像头测试设备 - CAMRX" --flow duxin
 # 查看状态
 pt status
 
+# 显式校验项目 YAML / DAG
+pt validate
+
 # 查看所有任务
 pt tasks
 
@@ -80,6 +83,7 @@ python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .
 pytest -q
+./pt validate
 ./pt --help
 ```
 

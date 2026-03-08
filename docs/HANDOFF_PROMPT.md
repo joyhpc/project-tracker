@@ -31,12 +31,14 @@ Repository:
 - 新增 GitHub Actions：`.github/workflows/python-tests.yml`
 - 新增 `docs/ANCHORS.md`
 - 新增这份 `docs/HANDOFF_PROMPT.md`
+- 新增显式校验入口：`pt validate` / `core.validate_project_file(...)`
 - README 增补开发验证 / 文档入口
 
 当前建议先执行：
 ```bash
 python -m pip install -e .
 pytest -q
+./pt validate
 ./pt --help
 ```
 

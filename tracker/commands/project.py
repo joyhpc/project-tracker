@@ -1,5 +1,8 @@
-"""项目管理命令: init, list, switch, status, phases, note, log"""
+"""项目管理命令: init, list, switch, status, phases, note, log, validate"""
+import json
 import sys
+from pathlib import Path
+
 from .. import core
 
 
@@ -173,6 +176,75 @@ def cmd_log(args):
         task = f" [{entry['task']}]" if entry.get("task") else ""
         detail = f" {entry.get('detail', '')}" if entry.get("detail") else ""
         print(f"  {entry['time']}  {icon}{task}{detail}")
+
+
+def _validation_targets(args) -> list[Path]:
+    if getattr(args, "all", False):
+        core.PROJECTS_DIR.mkdir(exist_ok=True)
+        return sorted(core.PROJECTS_DIR.glob("*.yaml"))
+
+    project_id = getattr(args, "id", None)
+    if project_id:
+        return [core._project_file(project_id)]
+
+    active = core._get_active()
+    if not active:
+        raise RuntimeError("没有活跃项目。先运行: pt init <id> --name <name> 或使用 pt validate <id>")
+    return [core._project_file(active)]
+
+
+
+def _print_validation_result(result: dict):
+    counts = result.get("counts", {})
+    total = sum(counts.values()) if counts else len(result.get("issues", []))
+    header = f"{result.get('project_id', 'unknown')} | {result.get('path', '')}"
+    if total == 0:
+        print(f"✅ {header}")
+        print("   无问题\n")
+        return
+
+    status_icon = "✅" if result.get("valid") else "❌"
+    print(f"{status_icon} {header}")
+    print(
+        f"   critical={counts.get('critical', 0)}  error={counts.get('error', 0)}  warning={counts.get('warning', 0)}  info={counts.get('info', 0)}"
+    )
+    severity_order = {"critical": 0, "error": 1, "warning": 2, "info": 3}
+    issues = sorted(result.get("issues", []), key=lambda item: (severity_order.get(item.get("severity"), 9), item.get("type", "")))
+    for issue in issues:
+        icon = {"critical": "🔴", "error": "❌", "warning": "⚠️", "info": "💡"}.get(issue.get("severity"), "•")
+        print(f"   {icon} {issue.get('message', issue)}")
+    print()
+
+
+
+def cmd_validate(args):
+    try:
+        targets = _validation_targets(args)
+        if not targets:
+            print("没有项目文件可校验。")
+            return
+
+        results = [core.validate_project_file(target) for target in targets]
+        if getattr(args, "json", False):
+            payload = results[0] if len(results) == 1 else results
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            for result in results:
+                _print_validation_result(result)
+            if len(results) > 1:
+                total_errors = sum(result.get("counts", {}).get("error", 0) + result.get("counts", {}).get("critical", 0) for result in results)
+                total_warnings = sum(result.get("counts", {}).get("warning", 0) for result in results)
+                total_infos = sum(result.get("counts", {}).get("info", 0) for result in results)
+                print(f"汇总: errors={total_errors} warnings={total_warnings} info={total_infos}")
+
+        has_errors = any(result.get("counts", {}).get("critical", 0) or result.get("counts", {}).get("error", 0) for result in results)
+        has_warnings = any(result.get("counts", {}).get("warning", 0) for result in results)
+        if has_errors or (getattr(args, "strict", False) and has_warnings):
+            sys.exit(1)
+
+    except (RuntimeError, ValueError) as e:
+        print(f"❌ {e}")
+        sys.exit(1)
 
 
 def _require():

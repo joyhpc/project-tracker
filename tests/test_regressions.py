@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from tracker import core, engine, onboard
 from tracker.commands.decision_cmd import _select_action as select_decision_action
 from tracker.commands.poc_cmd import _select_action as select_poc_action
+from tracker.commands.project import cmd_validate
 from tracker.commands.prompt_cmd import cmd_prompt
 from tracker.commands.review_cmd import _select_action as select_review_action
 
@@ -87,6 +88,29 @@ class MigrationTests(ProjectSandboxTestCase):
 
 
 class CoreRegressionTests(ProjectSandboxTestCase):
+    def test_validate_project_schema_flags_invalid_node_status(self):
+        project = {
+            "id": "BAD",
+            "name": "bad",
+            "flow": "generic",
+            "phases": [{"id": "P1", "name": "P1"}],
+            "nodes": [{"id": "task", "name": "Task", "phase": "P1", "status": "mystery"}],
+            "blockers": [],
+            "log": [],
+        }
+        issues = core.validate_project_schema(project)
+        self.assertTrue(any(issue["type"] == "invalid_node_status" for issue in issues))
+
+    def test_validate_project_file_handles_non_mapping_yaml(self):
+        project_file = core.PROJECTS_DIR / "BROKEN.yaml"
+        project_file.parent.mkdir(parents=True, exist_ok=True)
+        project_file.write_text("- not-a-project\n", encoding="utf-8")
+
+        result = core.validate_project_file(project_file)
+
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["issues"][0]["type"], "invalid_project_root")
+
     def test_missing_dependency_is_not_ready(self):
         flow = {
             "phases": [{"id": "P1", "name": "P1"}],
@@ -137,6 +161,42 @@ class CoreRegressionTests(ProjectSandboxTestCase):
 
 
 class CommandValidationTests(ProjectSandboxTestCase):
+    def test_validate_command_reports_clean_project(self):
+        core.init_project("TMP", "tmp", "generic")
+        buffer = io.StringIO()
+        args = SimpleNamespace(id=None, all=False, strict=False, json=False)
+        with contextlib.redirect_stdout(buffer):
+            cmd_validate(args)
+        output = buffer.getvalue()
+        self.assertIn("TMP", output)
+        self.assertIn("error=0", output)
+
+    def test_validate_command_fails_on_schema_error(self):
+        project_file = core.PROJECTS_DIR / "BAD.yaml"
+        project_file.parent.mkdir(parents=True, exist_ok=True)
+        project_file.write_text(
+            """id: BAD
+name: broken
+flow: generic
+phases:
+- id: P1
+  name: P1
+nodes:
+- id: task
+  name: Task
+  phase: P1
+  status: mystery
+""",
+            encoding="utf-8",
+        )
+        core._set_active("BAD")
+        buffer = io.StringIO()
+        args = SimpleNamespace(id=None, all=False, strict=False, json=False)
+        with contextlib.redirect_stdout(buffer), self.assertRaises(SystemExit) as ctx:
+            cmd_validate(args)
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("status='mystery'", buffer.getvalue())
+
     def test_review_select_action_rejects_multiple_flags(self):
         args = SimpleNamespace(add="a.md", approve=None, report=None, analyze=True, list=False)
         with self.assertRaises(ValueError):

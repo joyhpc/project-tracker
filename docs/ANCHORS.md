@@ -77,6 +77,10 @@
   - 作用：保证直接在仓库根目录运行 `pytest` 时，`tracker` 包可被稳定导入
   - 价值：新机器不先 `pip install -e .` 也能直接跑回归
 
+- `pt validate` / `core.validate_project_file(...)`
+  - 作用：把结构级 schema 校验和 DAG 完整性检查显式暴露出来
+  - 价值：新 agent 可以先验项目 YAML，再开始修改状态或流程
+
 - `.github/workflows/python-tests.yml`
   - 作用：对 `main` / PR 自动执行 `pip install -e . && pytest -q`
   - 价值：把“测试能过”从口头承诺变成 GitHub 上的可见信号
@@ -86,6 +90,7 @@
 ```bash
 python -m pip install -e .
 pytest -q
+./pt validate
 ./pt list
 ./pt --help
 ```

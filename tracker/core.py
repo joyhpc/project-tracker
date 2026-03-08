@@ -27,6 +27,10 @@ from . import flow as flowmod
 PROJECTS_DIR = Path(__file__).parent.parent / "projects"
 CONFIG_FILE = PROJECTS_DIR / ".active"
 PROJECT_SCHEMA_VERSION = 2
+VALID_NODE_STATUSES = {"pending", "in_progress", "blocked", "done", "expanded", "skipped"}
+VALID_DECISION_STATUSES = {"active", "superseded", "reverted", "pending"}
+VALID_POC_STATUSES = {"pending", "go", "caution", "no-go"}
+VALID_REVIEW_VERDICTS = {"GO", "CAUTION", "NO-GO", "HIGH RISK", "CONDITIONAL GO", "HIGHLY FEASIBLE"}
 
 
 def _project_file(project_id: str) -> Path:
@@ -753,6 +757,291 @@ def _fallback_cpm(project: dict) -> dict:
         "total_days": 0,
         "topo_order": [],
     }
+
+
+# ── 项目验证 ──────────────────────────────────────────
+
+def _validation_issue(issue_type: str, severity: str, message: str, **extra) -> dict:
+    issue = {"type": issue_type, "severity": severity, "message": message}
+    issue.update(extra)
+    return issue
+
+
+
+def _validate_named_list_items(items, *, label: str, id_key: str = "id") -> list[dict]:
+    issues = []
+    if not isinstance(items, list):
+        return [
+            _validation_issue(
+                f"invalid_{label}_collection",
+                "warning",
+                f"{label} 必须是 list",
+            )
+        ]
+
+    seen_ids = set()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            issues.append(
+                _validation_issue(
+                    f"invalid_{label}_item",
+                    "warning",
+                    f"{label}[{index}] 必须是 object/map",
+                    index=index,
+                )
+            )
+            continue
+        item_id = item.get(id_key)
+        if item_id in (None, ""):
+            continue
+        if item_id in seen_ids:
+            issues.append(
+                _validation_issue(
+                    f"duplicate_{label}_id",
+                    "warning",
+                    f"{label} 出现重复 ID: {item_id}",
+                    item_id=item_id,
+                )
+            )
+            continue
+        seen_ids.add(item_id)
+    return issues
+
+
+
+def validate_project_schema(project: dict | None) -> list[dict]:
+    """验证项目 YAML 的结构和关键枚举字段。"""
+    issues = []
+    if not isinstance(project, dict):
+        return [
+            _validation_issue(
+                "invalid_project_root",
+                "error",
+                "项目文件顶层必须是 YAML object/map",
+            )
+        ]
+
+    for key in ("id", "name", "flow"):
+        value = project.get(key)
+        if not isinstance(value, str) or not value.strip():
+            issues.append(
+                _validation_issue(
+                    f"invalid_{key}",
+                    "error",
+                    f"顶层字段 `{key}` 必须是非空字符串",
+                    field=key,
+                )
+            )
+
+    schema_version = project.get("schema_version")
+    if schema_version != PROJECT_SCHEMA_VERSION:
+        issues.append(
+            _validation_issue(
+                "schema_version_mismatch",
+                "info",
+                f"schema_version={schema_version!r}，当前版本为 {PROJECT_SCHEMA_VERSION}",
+            )
+        )
+
+    phases = project.get("phases", [])
+    phase_ids = set()
+    if not isinstance(phases, list):
+        issues.append(_validation_issue("invalid_phases", "warning", "顶层字段 `phases` 应为 list"))
+    else:
+        for index, phase in enumerate(phases):
+            if not isinstance(phase, dict):
+                issues.append(_validation_issue("invalid_phase_item", "warning", f"phases[{index}] 必须是 object/map", index=index))
+                continue
+            phase_id = phase.get("id")
+            phase_name = phase.get("name")
+            if not isinstance(phase_id, str) or not phase_id.strip():
+                issues.append(_validation_issue("invalid_phase_id", "warning", f"phases[{index}].id 必须是非空字符串", index=index))
+                continue
+            if phase_id in phase_ids:
+                issues.append(_validation_issue("duplicate_phase_id", "warning", f"阶段 ID 重复: {phase_id}", phase=phase_id))
+            phase_ids.add(phase_id)
+            if not isinstance(phase_name, str) or not phase_name.strip():
+                issues.append(_validation_issue("invalid_phase_name", "warning", f"phases[{index}].name 必须是非空字符串", index=index, phase=phase_id))
+
+    nodes = project.get("nodes", [])
+    if not isinstance(nodes, list):
+        issues.append(_validation_issue("invalid_nodes", "error", "顶层字段 `nodes` 必须是 list"))
+    else:
+        seen_node_ids = set()
+        for index, node in enumerate(nodes):
+            if not isinstance(node, dict):
+                issues.append(_validation_issue("invalid_node_item", "error", f"nodes[{index}] 必须是 object/map", index=index))
+                continue
+
+            node_id = node.get("id")
+            if not isinstance(node_id, str) or not node_id.strip():
+                issues.append(_validation_issue("invalid_node_id", "error", f"nodes[{index}].id 必须是非空字符串", index=index))
+                continue
+            if node_id in seen_node_ids:
+                issues.append(_validation_issue("duplicate_node_id", "error", f"节点 ID 重复: {node_id}", node=node_id))
+            seen_node_ids.add(node_id)
+
+            name = node.get("name")
+            if not isinstance(name, str) or not name.strip():
+                issues.append(_validation_issue("invalid_node_name", "error", f"节点 [{node_id}] 缺少有效 name", node=node_id))
+
+            phase = node.get("phase")
+            if not isinstance(phase, str) or not phase.strip():
+                issues.append(_validation_issue("invalid_node_phase", "error", f"节点 [{node_id}] 缺少有效 phase", node=node_id))
+            elif phase_ids and phase not in phase_ids:
+                issues.append(_validation_issue("unknown_node_phase", "warning", f"节点 [{node_id}] 引用了未知阶段 `{phase}`", node=node_id, phase=phase))
+
+            status = node.get("status", "pending")
+            if status not in VALID_NODE_STATUSES:
+                issues.append(_validation_issue("invalid_node_status", "error", f"节点 [{node_id}] status={status!r} 非法", node=node_id, status=status))
+
+            depends = node.get("depends", [])
+            if not isinstance(depends, list) or any(not isinstance(dep, str) or not dep.strip() for dep in depends):
+                issues.append(_validation_issue("invalid_node_depends", "error", f"节点 [{node_id}] depends 必须是 string list", node=node_id))
+
+            docs = node.get("docs", [])
+            if docs is not None:
+                if not isinstance(docs, list):
+                    issues.append(_validation_issue("invalid_node_docs", "warning", f"节点 [{node_id}] docs 应为 list", node=node_id))
+                else:
+                    for doc_index, doc in enumerate(docs):
+                        if not isinstance(doc, dict):
+                            issues.append(_validation_issue("invalid_doc_item", "warning", f"节点 [{node_id}] docs[{doc_index}] 必须是 object/map", node=node_id, index=doc_index))
+                            continue
+                        doc_path = doc.get("path") or doc.get("file")
+                        if not isinstance(doc_path, str) or not doc_path.strip():
+                            issues.append(_validation_issue("invalid_doc_path", "warning", f"节点 [{node_id}] docs[{doc_index}] 缺少 path/file", node=node_id, index=doc_index))
+
+    for field_name in ("blockers", "log"):
+        items = project.get(field_name, [])
+        if not isinstance(items, list):
+            issues.append(_validation_issue(f"invalid_{field_name}", "warning", f"顶层字段 `{field_name}` 应为 list"))
+
+    reviews = project.get("reviews", [])
+    if not isinstance(reviews, list):
+        issues.append(_validation_issue("invalid_reviews", "warning", "顶层字段 `reviews` 应为 list"))
+    else:
+        for index, review in enumerate(reviews):
+            if not isinstance(review, dict):
+                issues.append(_validation_issue("invalid_review_item", "warning", f"reviews[{index}] 必须是 object/map", index=index))
+                continue
+            review_file = review.get("file") or review.get("path")
+            if not isinstance(review_file, str) or not review_file.strip():
+                issues.append(_validation_issue("invalid_review_file", "warning", f"reviews[{index}] 缺少 file/path", index=index))
+            verdicts = normalize_verdicts(review.get("verdicts", []))
+            if not isinstance(verdicts, list):
+                issues.append(_validation_issue("invalid_review_verdicts", "warning", f"reviews[{index}].verdicts 应为 list 或 legacy dict", index=index))
+                continue
+            for verdict_index, verdict in enumerate(verdicts):
+                if not isinstance(verdict, dict):
+                    issues.append(_validation_issue("invalid_review_verdict", "warning", f"reviews[{index}].verdicts[{verdict_index}] 必须是 object/map", index=index))
+                    continue
+                verdict_name = verdict.get("verdict")
+                if not isinstance(verdict_name, str) or not verdict_name.strip():
+                    issues.append(_validation_issue("missing_review_verdict", "warning", f"reviews[{index}].verdicts[{verdict_index}] 缺少 verdict", index=index))
+                elif verdict_name.upper() not in VALID_REVIEW_VERDICTS:
+                    issues.append(_validation_issue("unknown_review_verdict", "info", f"reviews[{index}] 使用了非标准 verdict `{verdict_name}`", index=index))
+
+    decisions = project.get("decisions", [])
+    issues.extend(_validate_named_list_items(decisions, label="decisions"))
+    if isinstance(decisions, list):
+        for index, decision in enumerate(decisions):
+            if not isinstance(decision, dict):
+                continue
+            status = decision.get("status", "active")
+            if status not in VALID_DECISION_STATUSES:
+                issues.append(_validation_issue("invalid_decision_status", "warning", f"decisions[{index}] status={status!r} 非法", index=index))
+            title = decision.get("title")
+            if not isinstance(title, str) or not title.strip():
+                issues.append(_validation_issue("invalid_decision_title", "warning", f"decisions[{index}] 缺少 title", index=index))
+
+    pocs = project.get("pocs", [])
+    issues.extend(_validate_named_list_items(pocs, label="pocs"))
+    if isinstance(pocs, list):
+        for index, poc in enumerate(pocs):
+            if not isinstance(poc, dict):
+                continue
+            status = poc.get("status", "pending")
+            if status not in VALID_POC_STATUSES:
+                issues.append(_validation_issue("invalid_poc_status", "warning", f"pocs[{index}] status={status!r} 非法", index=index))
+            title = poc.get("title")
+            if not isinstance(title, str) or not title.strip():
+                issues.append(_validation_issue("invalid_poc_title", "warning", f"pocs[{index}] 缺少 title", index=index))
+
+    return issues
+
+
+
+def validate_project(project: dict | None) -> list[dict]:
+    issues = validate_project_schema(project)
+    hard_errors = [issue for issue in issues if issue.get("severity") in ("error", "critical")]
+    if hard_errors or not isinstance(project, dict):
+        return issues
+    try:
+        issues.extend(check_integrity(project))
+    except Exception as exc:
+        issues.append(_validation_issue("integrity_check_failed", "error", f"完整性检查执行失败: {exc}"))
+    return issues
+
+
+
+def summarize_validation_issues(issues: list[dict]) -> dict:
+    return {
+        "critical": sum(1 for issue in issues if issue.get("severity") == "critical"),
+        "error": sum(1 for issue in issues if issue.get("severity") == "error"),
+        "warning": sum(1 for issue in issues if issue.get("severity") == "warning"),
+        "info": sum(1 for issue in issues if issue.get("severity") == "info"),
+    }
+
+
+
+def validate_project_file(project_file: str | Path) -> dict:
+    path = Path(project_file)
+    if not path.exists():
+        issues = [_validation_issue("missing_project_file", "error", f"项目文件不存在: {path}")]
+        return {
+            "project_id": path.stem,
+            "path": str(path),
+            "issues": issues,
+            "counts": summarize_validation_issues(issues),
+            "valid": False,
+            "migrated": False,
+        }
+
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        issues = [_validation_issue("yaml_parse_error", "error", f"YAML 解析失败: {exc}")]
+        return {
+            "project_id": path.stem,
+            "path": str(path),
+            "issues": issues,
+            "counts": summarize_validation_issues(issues),
+            "valid": False,
+            "migrated": False,
+        }
+
+    migrated_project, migrated = migrate_project_data(raw)
+    issues = validate_project(migrated_project)
+    if migrated:
+        issues.insert(0, _validation_issue("schema_migration_available", "info", "项目文件可自动迁移到当前 schema 版本"))
+
+    counts = summarize_validation_issues(issues)
+    project_id = migrated_project.get("id") if isinstance(migrated_project, dict) else path.stem
+    return {
+        "project_id": project_id or path.stem,
+        "path": str(path),
+        "issues": issues,
+        "counts": counts,
+        "valid": counts["critical"] == 0 and counts["error"] == 0,
+        "migrated": migrated,
+    }
+
+
+
+def validate_all_projects() -> list[dict]:
+    PROJECTS_DIR.mkdir(exist_ok=True)
+    return [validate_project_file(path) for path in sorted(PROJECTS_DIR.glob("*.yaml"))]
 
 
 # ── 任务操作 ──────────────────────────────────────────

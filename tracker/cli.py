@@ -1,6 +1,6 @@
 """CLI 入口 — 只做参数解析和路由"""
 import argparse
-from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_note, cmd_log
+from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_note, cmd_log, cmd_validate
 from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list, cmd_sub_load
 from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate
 from .commands.guide_cmd import cmd_guide
@@ -42,6 +42,12 @@ def main():
 
     p_log = sub.add_parser("log", help="查看项目日志")
     p_log.add_argument("-n", type=int, default=20, help="显示条数")
+
+    p_validate = sub.add_parser("validate", aliases=["check"], help="显式校验项目 YAML / DAG 完整性")
+    p_validate.add_argument("id", nargs="?", help="项目ID (默认当前活跃项目)")
+    p_validate.add_argument("--all", "-a", action="store_true", help="校验所有项目")
+    p_validate.add_argument("--strict", action="store_true", help="warning 也视为失败")
+    p_validate.add_argument("--json", action="store_true", help="JSON 输出")
 
     # ── 任务操作 ──
     p_tasks = sub.add_parser("tasks", aliases=["t"], help="查看任务列表")
@@ -256,6 +262,7 @@ def main():
         "status": cmd_status, "s": cmd_status,
         "phases": cmd_phases, "ph": cmd_phases,
         "note": cmd_note, "log": cmd_log,
+        "validate": cmd_validate, "check": cmd_validate,
         "tasks": cmd_tasks, "t": cmd_tasks,
         "next": cmd_next, "n": cmd_next,
         "start": cmd_start, "done": cmd_done, "d": cmd_done,
