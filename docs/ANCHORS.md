@@ -10,7 +10,7 @@
 2. `docs/core-architecture.md` — 当前核心架构分层与调用链
 3. `tracker/cli.py` — 所有 CLI 命令的总路由
 4. `tracker/core.py` — 兼容 façade，负责 YAML 读写、迁移、乐观锁、公共入口
-5. `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` — 已抽出的纯模型、校验、查询、状态机层
+5. `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` / `tracker/subtask_templates.py` — 已抽出的纯模型、校验、查询、状态机、子任务模板层
 6. `tracker/engine.py` — DAG、拓扑排序、关键路径、Slack、依赖分类
 7. `tracker/knowledge.py` — Markdown 切块 + BM25 检索
 8. `tracker/prompt.py` — Prompt 组装层，把项目上下文变成给 LLM 的输入
@@ -25,7 +25,7 @@
 
 ### B. 状态持久化层
 - 核心文件：`tracker/core.py`（兼容 façade）
-- 子模块：`tracker/project_constants.py`、`tracker/project_model.py`、`tracker/project_validation.py`、`tracker/project_query.py`、`tracker/project_mutation.py`
+- 子模块：`tracker/project_constants.py`、`tracker/project_model.py`、`tracker/project_validation.py`、`tracker/project_query.py`、`tracker/project_mutation.py`、`tracker/subtask_templates.py`
 - 数据目录：`projects/`
 - 持久化格式：单项目单 YAML
 - 关键机制：
@@ -35,6 +35,7 @@
   - 结构/完整性校验：`project_validation.py`
   - 状态聚合：`project_query.py`
   - 状态机规则：`project_mutation.py`
+  - 子任务模板发现/重连：`subtask_templates.py`
 
 ### C. 计划引擎层
 - 核心文件：`tracker/engine.py`
@@ -64,7 +65,7 @@
 优先看：`tracker/cli.py` + 对应 `tracker/commands/*.py`
 
 ### 如果要改任务状态机 / YAML 结构
-优先看：`tracker/core.py`（持久化包装）和 `tracker/project_mutation.py` / `tracker/project_model.py` / `tracker/project_validation.py`（状态机/纯逻辑/校验）
+优先看：`tracker/core.py`（持久化包装）和 `tracker/project_mutation.py` / `tracker/subtask_templates.py` / `tracker/project_model.py` / `tracker/project_validation.py`（状态机/子任务模板/纯逻辑/校验）
 
 ### 如果要改依赖、关键路径、ready 判断
 优先看：`tracker/engine.py`
@@ -87,8 +88,8 @@
   - 作用：把结构级 schema 校验和 DAG 完整性检查显式暴露出来
   - 价值：新 agent 可以先验项目 YAML，再开始修改状态或流程
 
-- `tracker/project_constants.py` / `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py`
-  - 作用：把 `core.py` 里的常量、纯模型逻辑、校验逻辑、状态查询逻辑、状态机规则分层拆出
+- `tracker/project_constants.py` / `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` / `tracker/subtask_templates.py`
+  - 作用：把 `core.py` 里的常量、纯模型逻辑、校验逻辑、状态查询逻辑、状态机规则、子任务模板编排逻辑分层拆出
   - 价值：后续优化可以在不动 CLI 入口的前提下继续细化架构
 
 - `.github/workflows/python-tests.yml`

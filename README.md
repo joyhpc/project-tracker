@@ -93,7 +93,7 @@ pytest -q
 
 - `docs/ANCHORS.md`：新 agent 快速定位核心模块
 - `docs/HANDOFF_PROMPT.md`：可直接贴给下一位 agent 的交接 prompt
-- `docs/core-architecture.md`：核心状态层 / 校验层 / 查询层 / 状态机层架构
+- `docs/core-architecture.md`：核心状态层 / 校验层 / 查询层 / 状态机层 / 子任务模板层架构
 - `docs/architecture.md`：知识检索 / prompt 架构
 - `docs/PLAN.md`：历史计划与阶段演进
 
@@ -111,6 +111,7 @@ project-tracker/
 │   ├── project_validation.py # schema + DAG 完整性校验
 │   ├── project_query.py  # 状态聚合 / fallback 查询
 │   ├── project_mutation.py # 状态机 / 任务变更规则
+│   ├── subtask_templates.py # 子任务模板发现 / DAG 重连
 │   └── flow.py           # 流程定义加载
 ├── flows/
 │   └── duxin.yaml        # 度信平台流程定义

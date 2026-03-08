@@ -32,6 +32,14 @@ from .project_mutation import (
     unblock_task_in_project as _project_mutation_unblock_task_in_project,
 )
 from .project_query import get_status as _project_query_get_status
+from .subtask_templates import (
+    apply_subtask_template_to_project as _subtask_templates_apply_to_project,
+    candidate_subtask_template_dirs as _subtask_template_candidate_dirs,
+    list_subtask_templates as _subtask_templates_list,
+    list_subtasks_in_project as _subtask_templates_list_subtasks_in_project,
+    load_subtask_template_definition as _subtask_templates_load_definition,
+    match_subtask_templates as _subtask_templates_match,
+)
 from .project_validation import (
     check_integrity as _project_validation_check_integrity,
     summarize_validation_issues as _project_validation_summarize_validation_issues,
@@ -1364,6 +1372,10 @@ def add_note(project_id: str, text: str):
     _save(p)
 
 
+def _subtask_template_dirs() -> list[Path]:
+    return _subtask_template_candidate_dirs(Path(__file__).resolve().parent)
+
+
 # ── 子任务（兼容旧接口，但数据存在节点里） ────────────
 
 def add_subtask(project_id: str, parent_id: str, subtask_id: str, name: str, **kwargs) -> dict:
@@ -1398,215 +1410,32 @@ def block_subtask(project_id: str, full_id: str, reason: str):
 def list_subtasks(project_id: str, parent_id: str) -> list[dict]:
     """列出某个父任务的所有子任务"""
     p = _load(project_id)
-    return [n for n in p.get("nodes", []) if n.get("parent") == parent_id]
+    return _subtask_templates_list_subtasks_in_project(p, parent_id)
 
 
 def load_subtask_template(project_id: str, parent_id: str, template_id: str) -> dict:
     """从模板批量导入子任务 — 作为一等节点插入"""
-    import os
     p = _load(project_id)
-    parent = _find_node(p, parent_id)
-    if not parent:
-        raise ValueError(f"父任务不存在: {parent_id}")
-
-    template_dirs = [
-        Path(__file__).resolve().parent / "flows" / "subtasks",
-        Path(__file__).resolve().parent.parent / "flows" / "subtasks",
-    ]
-    template_path = None
-    tpl_dir = None
-    for candidate in template_dirs:
-        candidate_file = candidate / f"{template_id}.yaml"
-        if candidate_file.exists():
-            template_path = str(candidate_file)
-            tpl_dir = str(candidate)
-            break
-    if not template_path or not os.path.exists(template_path):
-        for candidate in template_dirs:
-            if candidate.exists():
-                tpl_dir = str(candidate)
-                break
-        available = [f.replace(".yaml", "") for f in os.listdir(tpl_dir) if f.endswith(".yaml")] if tpl_dir else []
-        raise ValueError(f"模板不存在: {template_id}。可用: {', '.join(available)}")
-
-    with open(template_path, "r", encoding="utf-8") as f:
-        template = yaml.safe_load(f)
-
-    count = 0
-    for phase in template.get("phases", []):
-        for task in phase.get("tasks", []):
-            full_id = f"{parent_id}.{task['id']}"
-            if _find_node(p, full_id):
-                continue  # 跳过已存在
-
-            sub_node = {
-                "id": full_id,
-                "name": task["name"],
-                "type": "task",
-                "phase": parent.get("phase", ""),
-                "parent": parent_id,
-                "status": "pending",
-                "created": _now(),
-            }
-            if task.get("owner"):
-                sub_node["owner"] = task["owner"]
-            if task.get("days"):
-                sub_node["days"] = task["days"]
-            if task.get("depends"):
-                # 子任务依赖加前缀
-                sub_node["depends"] = [f"{parent_id}.{d}" for d in task["depends"]]
-            if task.get("deliverables"):
-                sub_node["deliverables"] = task["deliverables"]
-            if task.get("critical"):
-                sub_node["critical"] = True
-            if task.get("description"):
-                sub_node["description"] = task["description"]
-
-            # 处理外部依赖提示（external_depends_hint）
-            hints = task.get("external_depends_hint", [])
-            if hints:
-                sub_node["_external_hints"] = hints
-
-            p["nodes"].append(sub_node)
-            count += 1
-
-    # ── 外部依赖自动匹配 ──
-    ext_dep_suggestions = []
-    all_node_ids = {n["id"] for n in p["nodes"]}
-    for n in p["nodes"]:
-        if n.get("parent") != parent_id:
-            continue
-        hints = n.pop("_external_hints", [])
-        for hint in hints:
-            import fnmatch
-            pattern = hint["pattern"]
-            matched_nodes = [
-                nid for nid in all_node_ids
-                if fnmatch.fnmatch(nid, pattern)
-                and not nid.startswith(parent_id + ".")  # 排除自己的子任务
-                and nid != parent_id
-            ]
-            if matched_nodes and hint.get("required"):
-                # 自动添加外部依赖
-                existing = set(n.get("depends", []))
-                for mn in matched_nodes:
-                    if mn not in existing:
-                        n.setdefault("depends", []).append(mn)
-                        ext_dep_suggestions.append({
-                            "subtask": n["id"],
-                            "external_dep": mn,
-                            "reason": hint["reason"],
-                            "auto_added": True,
-                        })
-            elif matched_nodes and not hint.get("required"):
-                for mn in matched_nodes:
-                    ext_dep_suggestions.append({
-                        "subtask": n["id"],
-                        "external_dep": mn,
-                        "reason": hint["reason"],
-                        "auto_added": False,
-                    })
-
-    if count > 0:
-        # ── 边重连（Rewire）──
-        # 1. 找子图的入口节点（无内部依赖的子任务）
-        sub_ids = {n["id"] for n in p["nodes"] if n.get("parent") == parent_id}
-        entry_subs = []
-        for n in p["nodes"]:
-            if n["id"] not in sub_ids:
-                continue
-            internal_deps = [d for d in n.get("depends", []) if d in sub_ids]
-            if not internal_deps:
-                entry_subs.append(n["id"])
-
-        # 2. 找子图的出口节点（无内部后继的子任务）
-        depended_by = set()
-        for n in p["nodes"]:
-            if n["id"] not in sub_ids:
-                continue
-            for d in n.get("depends", []):
-                if d in sub_ids:
-                    depended_by.add(d)
-        exit_subs = [sid for sid in sub_ids if sid not in depended_by]
-
-        # 3. 入口子任务继承父任务的 depends
-        parent_deps = parent.get("depends", [])
-        if parent_deps:
-            for eid in entry_subs:
-                entry_node = _find_node(p, eid)
-                if entry_node:
-                    existing = set(entry_node.get("depends", []))
-                    new_deps = [d for d in parent_deps if d not in existing]
-                    if new_deps:
-                        entry_node.setdefault("depends", []).extend(new_deps)
-
-        # 4. 父任务的后继改为依赖出口子任务（替代依赖父任务）
-        if exit_subs:
-            for n in p["nodes"]:
-                if n["id"] in sub_ids or n["id"] == parent_id:
-                    continue
-                deps = n.get("depends", [])
-                if parent_id in deps:
-                    deps.remove(parent_id)
-                    deps.extend(exit_subs)
-                    n["depends"] = deps
-
-        # 5. 父任务标记为展开状态（不再参与依赖图）
-        parent["status"] = "expanded"
-        parent["expanded_to"] = sorted(sub_ids)
-
-    if parent.get("status") == "pending" and count > 0:
-        parent["status"] = "in_progress"
-        parent["started"] = _now()
-
-    p["log"].append({
-        "time": _now(), "action": "subtask_template_load",
-        "task": parent_id,
-        "detail": f"加载模板 {template_id}: {count} 个子任务"
-    })
+    template = _subtask_templates_load_definition(template_id, template_dirs=_subtask_template_dirs())
+    result = _subtask_templates_apply_to_project(
+        p,
+        parent_id,
+        template_id,
+        template,
+        now=_now,
+    )
     _save(p)
-    return {"loaded": count, "template": template_id, "parent": parent_id,
-            "template_name": template.get("name", template_id),
-            "external_dep_suggestions": ext_dep_suggestions}
+    return result
 
 
 def list_subtask_templates() -> list[dict]:
     """列出所有可用的子任务模板"""
-    import os
-    tpl_dirs = [
-        Path(__file__).resolve().parent / "flows" / "subtasks",
-        Path(__file__).resolve().parent.parent / "flows" / "subtasks",
-    ]
-    tpl_dir = next((str(path) for path in tpl_dirs if path.exists()), None)
-    if not tpl_dir:
-        return []
-    result = []
-    for f in sorted(os.listdir(tpl_dir)):
-        if not f.endswith(".yaml"):
-            continue
-        path = os.path.join(tpl_dir, f)
-        with open(path, "r", encoding="utf-8") as fh:
-            tpl = yaml.safe_load(fh)
-        task_count = sum(len(p.get("tasks", [])) for p in tpl.get("phases", []))
-        result.append({
-            "id": f.replace(".yaml", ""),
-            "name": tpl.get("name", ""),
-            "description": tpl.get("description", ""),
-            "attach_to": tpl.get("attach_to", []),
-            "task_count": task_count,
-            "phases": [p.get("name", "") for p in tpl.get("phases", [])],
-        })
-    return result
+    return _subtask_templates_list(template_dirs=_subtask_template_dirs())
 
 
 def match_subtask_templates(task_id: str) -> list[dict]:
-    """查找与任务 ID 匹配的子任务模板
-
-    匹配逻辑：task_id 出现在模板的 attach_to 列表中
-    Returns: 匹配的模板列表 [{id, name, task_count, ...}]
-    """
-    templates = list_subtask_templates()
-    return [t for t in templates if task_id in t["attach_to"]]
+    """查找与任务 ID 匹配的子任务模板。"""
+    return _subtask_templates_match(task_id, template_dirs=_subtask_template_dirs())
 
 
 # ── 阶段/里程碑 ──────────────────────────────────────

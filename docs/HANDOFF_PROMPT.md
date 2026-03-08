@@ -19,7 +19,7 @@ Repository:
 你接手时应先建立以下心智模型：
 - `tracker/cli.py`：命令入口和路由层
 - `tracker/core.py`：兼容 façade，负责项目 YAML 读写、迁移、乐观锁、快照
-- `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py`：已拆出的纯模型、校验、查询、状态机层
+- `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` / `tracker/subtask_templates.py`：已拆出的纯模型、校验、查询、状态机、子任务模板层
 - `tracker/engine.py`：依赖图、CPM、ready/waiting 分类
 - `tracker/knowledge.py`：Markdown 切块 + BM25 检索
 - `tracker/prompt.py`：给 LLM 的 prompt 组装
@@ -33,7 +33,7 @@ Repository:
 - 新增 `docs/ANCHORS.md`
 - 新增这份 `docs/HANDOFF_PROMPT.md`
 - 新增显式校验入口：`pt validate` / `core.validate_project_file(...)`
-- 将 `core.py` 中的共享常量、纯模型逻辑、校验逻辑、状态查询逻辑、状态机规则拆到 `project_*` 模块
+- 将 `core.py` 中的共享常量、纯模型逻辑、校验逻辑、状态查询逻辑、状态机规则、子任务模板编排逻辑拆到独立模块
 - README / anchors / handoff 增补开发验证与架构入口
 
 当前建议先执行：
@@ -51,7 +51,7 @@ pytest -q
 - 优先做“提高可接手性、可验证性、可解释性”的优化
 
 推荐下一步路线：
-1. 把 subtask template loading / rewire 继续从 `core.py` 拆到独立模块
+1. 把 project repository / persistence 抽象继续从 `core.py` 拆到独立模块
 2. 现代化 packaging（`pyproject.toml`）
 3. 给命令层补更细粒度单测
 4. 给 project YAML 补 schema / 校验器
