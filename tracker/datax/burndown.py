@@ -112,14 +112,21 @@ def compute_velocity(project: dict) -> dict:
     if first_dt and last_dt and last_dt > first_dt:
         elapsed_days = (last_dt - first_dt).total_seconds() / 86400.0
     else:
-        # All done on same day or unparseable — treat as 1 day
-        elapsed_days = 1.0
+        elapsed_days = 0.0
 
-    daily_velocity = completed / elapsed_days if elapsed_days > 0 else 0.0
-    weekly_velocity = daily_velocity * 7.0
+    # Guard against near-zero elapsed time (e.g. batch imports):
+    # need at least 1 full day of spread to produce meaningful velocity.
+    if elapsed_days < 1.0:
+        daily_velocity = 0.0
+        weekly_velocity = 0.0
+        velocity_reliable = False
+    else:
+        daily_velocity = completed / elapsed_days
+        weekly_velocity = daily_velocity * 7.0
+        velocity_reliable = True
 
     estimated_remaining_days: float | None = None
-    if daily_velocity > 0 and remaining > 0:
+    if velocity_reliable and daily_velocity > 0 and remaining > 0:
         estimated_remaining_days = round(remaining / daily_velocity, 1)
     elif remaining == 0:
         estimated_remaining_days = 0.0
@@ -159,17 +166,20 @@ def format_burndown_text(burndown: list[dict]) -> str:
     if total == 0:
         return "No tasks in project."
 
-    lines: list[str] = []
-    max_bar_width = 40
-    label_width = len(str(total)) + 1  # width for the y-axis label
-
-    lines.append("remaining")
-
     # Collect unique data points (deduplicate by date, keep last per date)
     seen: dict[str, dict] = {}
     for point in burndown:
         seen[point["date"]] = point
     unique_points = list(seen.values())
+
+    if len(unique_points) < 2:
+        # Not enough time spread for a meaningful chart
+        p = unique_points[0]
+        return (
+            f"Burndown: {p['done']}/{p['total']} done, "
+            f"{p['remaining']} remaining (all on {p['date']})\n"
+            f"(Need data across multiple days to draw a chart)"
+        )
 
     for point in unique_points:
         remaining = point["remaining"]

@@ -265,10 +265,15 @@ def cmd_burndown(args):
     vel = compute_velocity(project)
     print(f"\n速度统计:")
     print(f"  已完成: {vel['completed_count']}/{vel['total_count']}")
-    print(f"  日均: {vel['daily_velocity']:.2f} 任务/天")
-    print(f"  周均: {vel['weekly_velocity']:.2f} 任务/周")
-    if vel['estimated_remaining_days'] is not None:
-        print(f"  预估剩余: {vel['estimated_remaining_days']:.1f} 天")
+    elapsed = vel['elapsed_days']
+    if elapsed >= 1.0:
+        print(f"  跨度: {elapsed:.1f} 天")
+        print(f"  日均: {vel['daily_velocity']:.2f} 任务/天")
+        print(f"  周均: {vel['weekly_velocity']:.2f} 任务/周")
+        if vel['estimated_remaining_days'] is not None:
+            print(f"  预估剩余: {vel['estimated_remaining_days']:.1f} 天")
+    else:
+        print(f"  (数据跨度不足 1 天，速度统计暂不可用)")
 
 
 def cmd_export(args):
