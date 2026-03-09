@@ -16,6 +16,8 @@ from .commands.propose_cmd import cmd_propose
 from .commands.scan_cmd import cmd_scan
 from .commands.visual_cmd import cmd_map, cmd_visual
 from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace, cmd_promote
+from .commands.web_cmd import cmd_web
+from .commands.notify_cmd import cmd_notify
 
 
 def main():
@@ -266,6 +268,15 @@ def main():
     p_promote.add_argument("--dry-run", action="store_true", help="试运行 (不保存文件)")
     p_promote.add_argument("--json", action="store_true", help="JSON 输出 (机器可读)")
 
+    # ── Web 看板 ──
+    p_web = sub.add_parser("web", help="启动只读 Web 看板")
+    p_web.add_argument("--port", type=int, default=8080, help="端口 (默认 8080)")
+    p_web.add_argument("--host", default="localhost", help="绑定地址 (默认 localhost)")
+
+    # ── 通知管理 ──
+    p_notify = sub.add_parser("notify", help="Webhook 通知管理")
+    p_notify.add_argument("action", nargs="?", default="status", choices=["status", "test"], help="操作: status=查看配置, test=发送测试")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -304,6 +315,8 @@ def main():
         "poc": cmd_poc,
         "add": cmd_add, "rm": cmd_rm, "skip": cmd_skip, "undo": cmd_undo,
         "rewire": cmd_rewire, "replace": cmd_replace, "promote": cmd_promote,
+        "web": cmd_web,
+        "notify": cmd_notify,
     }
 
     fn = CMD.get(args.command)
