@@ -197,6 +197,8 @@ def render_dashboard(project: dict) -> str:
     phases = project.get("phases", [])
     nodes = project.get("nodes", [])
     log_entries = project.get("log", [])
+    gantt_mermaid = project.get("gantt_mermaid", "")
+    deps_mermaid = project.get("deps_mermaid", "")
 
     # --- Status distribution bar ---
     bar_segments = []
@@ -328,6 +330,35 @@ def render_dashboard(project: dict) -> str:
           <div class="cp-days">Total estimated: {total_days:.1f} days</div>
         </div>"""
 
+    # --- Mermaid chart sections ---
+    gantt_html = ""
+    if gantt_mermaid:
+        gantt_escaped = _e(gantt_mermaid)
+        gantt_html = f"""
+        <div class="section">
+          <h2 class="section-title">Gantt Chart (Mermaid)</h2>
+          <div class="mermaid-block">
+            <div class="mermaid-toolbar">
+              <button onclick="copyMermaid('gantt-code')" class="copy-btn">Copy</button>
+            </div>
+            <pre class="mermaid-code" id="gantt-code"><code>{gantt_escaped}</code></pre>
+          </div>
+        </div>"""
+
+    deps_html = ""
+    if deps_mermaid:
+        deps_escaped = _e(deps_mermaid)
+        deps_html = f"""
+        <div class="section">
+          <h2 class="section-title">Dependency Graph (Mermaid)</h2>
+          <div class="mermaid-block">
+            <div class="mermaid-toolbar">
+              <button onclick="copyMermaid('deps-code')" class="copy-btn">Copy</button>
+            </div>
+            <pre class="mermaid-code" id="deps-code"><code>{deps_escaped}</code></pre>
+          </div>
+        </div>"""
+
     # --- Log ---
     log_html = ""
     if log_entries:
@@ -387,6 +418,10 @@ def render_dashboard(project: dict) -> str:
   </div>
 
   {cp_html}
+
+  {gantt_html}
+
+  {deps_html}
 
   <!-- Phases / Nodes -->
   <div class="section">
@@ -528,6 +563,51 @@ def render_dashboard(project: dict) -> str:
 .log-action {{ font-weight: 600; color: var(--accent); }}
 .log-row code {{ font-size: 0.75rem; background: var(--bg); padding: 0.1rem 0.3rem; border-radius: 3px; }}
 .log-detail {{ color: var(--text-dim); }}
+
+/* ---- mermaid code blocks ---- */
+.mermaid-block {{
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}}
+.mermaid-toolbar {{
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}}
+.copy-btn {{
+  background: var(--accent);
+  color: #000;
+  border: none;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}}
+.copy-btn:hover {{ opacity: 0.8; }}
+.mermaid-code {{
+  margin: 0;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: transparent;
+}}
 </style>
+
+<script>
+function copyMermaid(id) {
+  var el = document.getElementById(id);
+  var text = el.textContent || el.innerText;
+  navigator.clipboard.writeText(text).then(function() {
+    var btns = el.parentElement.querySelectorAll('.copy-btn');
+    if (btns.length) { btns[0].textContent = 'Copied!'; setTimeout(function(){ btns[0].textContent = 'Copy'; }, 2000); }
+  });
+}
+</script>
 """
     return _page(f"{pname} - Project Tracker", body)
