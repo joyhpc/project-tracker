@@ -91,6 +91,20 @@ def load_project_detail(project_id: str) -> dict | None:
             }
         )
 
+    # Generate Mermaid diagrams from datax module
+    from tracker.datax.gantt import export_gantt_mermaid
+    from tracker.datax.deps_graph import export_deps_mermaid
+
+    try:
+        gantt_mermaid = export_gantt_mermaid(project)
+    except Exception:
+        gantt_mermaid = ""
+
+    try:
+        deps_mermaid = export_deps_mermaid(project)
+    except Exception:
+        deps_mermaid = ""
+
     return {
         "id": project.get("id", project_id),
         "name": project.get("name", project_id),
@@ -105,4 +119,6 @@ def load_project_detail(project_id: str) -> dict | None:
         "critical_path": cpm.get("critical_path", []),
         "total_days": cpm.get("total_days", 0),
         "log": log_entries,
+        "gantt_mermaid": gantt_mermaid,
+        "deps_mermaid": deps_mermaid,
     }
