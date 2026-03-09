@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..engine import compute_cpm, build_graph
 from ..project_model import _get_task_status, _project_as_flow
+from . import sanitise_mermaid_id as _sanitise_id
 
 
 # Status -> fill colour
@@ -13,11 +14,6 @@ _STATUS_COLOUR = {
     "blocked": "#F44336",     # red
     "pending": "#9E9E9E",     # grey
 }
-
-
-def _sanitise_id(node_id: str) -> str:
-    """Make *node_id* safe for Mermaid identifiers."""
-    return node_id.replace("-", "_")
 
 
 def export_deps_mermaid(project: dict) -> str:

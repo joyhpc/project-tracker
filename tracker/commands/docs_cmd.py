@@ -1,6 +1,7 @@
 """文档管理命令: docs"""
 import sys
 from .. import core
+from . import _require
 
 
 def cmd_docs(args):
@@ -132,13 +133,5 @@ def _load_from_repo(args):
         print(f"✅ 已从仓库加载: {p['id']} ({p['name']})")
         print(f"   节点: {len(p.get('nodes', []))}")
     except (ValueError, RuntimeError) as e:
-        print(f"❌ {e}")
-        sys.exit(1)
-
-
-def _require():
-    try:
-        return core.require_active()
-    except RuntimeError as e:
         print(f"❌ {e}")
         sys.exit(1)

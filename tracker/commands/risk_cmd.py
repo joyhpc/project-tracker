@@ -2,14 +2,7 @@
 import sys
 from .. import core
 from ..risk import assess_project_risk, format_risk_report
-
-
-def _require():
-    try:
-        return core.require_active()
-    except RuntimeError as e:
-        print(f"❌ {e}")
-        sys.exit(1)
+from . import _require
 
 
 def cmd_risk(args):
