@@ -2,7 +2,7 @@
 import argparse
 from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_note, cmd_log, cmd_validate
 from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list, cmd_sub_load
-from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate, cmd_gantt, cmd_stats, cmd_deps
+from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate, cmd_gantt, cmd_stats, cmd_deps, cmd_burndown, cmd_export
 from .commands.guide_cmd import cmd_guide
 from .commands.risk_cmd import cmd_risk
 from .commands.conflict_cmd import cmd_conflict
@@ -130,6 +130,15 @@ def main():
 
     p_deps = sub.add_parser("deps", help="输出 Mermaid 依赖图")
     p_deps.add_argument("--project", help="项目ID (默认当前活跃项目)")
+
+    p_burndown = sub.add_parser("burndown", help="Burndown 图表与速度分析")
+    p_burndown.add_argument("--project", help="项目ID")
+    p_burndown.add_argument("--mermaid", action="store_true", help="输出 Mermaid 格式")
+    p_burndown.add_argument("--json", action="store_true", help="JSON 输出")
+
+    p_export = sub.add_parser("export", help="导出项目数据为 CSV")
+    p_export.add_argument("format", choices=["nodes", "stats", "burndown"], help="导出格式")
+    p_export.add_argument("--project", help="项目ID")
 
     # ── 引导 ──
     p_guide = sub.add_parser("guide", help="启发式项目引导")
@@ -302,6 +311,7 @@ def main():
         "timeline": cmd_timeline, "tl": cmd_timeline,
         "estimate": cmd_estimate, "est": cmd_estimate,
         "gantt": cmd_gantt, "stats": cmd_stats, "deps": cmd_deps,
+        "burndown": cmd_burndown, "export": cmd_export,
         "guide": cmd_guide, "risk": cmd_risk,
         "conflict": cmd_conflict, "cf": cmd_conflict,
         "prompt": cmd_prompt,

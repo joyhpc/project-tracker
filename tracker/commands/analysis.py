@@ -244,3 +244,47 @@ def cmd_deps(args):
 
     project = _resolve_project(args)
     print(export_deps_mermaid(project), end="")
+
+
+def cmd_burndown(args):
+    """输出 Burndown 图表"""
+    from ..datax.burndown import compute_burndown, compute_velocity, format_burndown_text, export_burndown_mermaid
+    project = _resolve_project(args)
+    burndown = compute_burndown(project)
+
+    if getattr(args, "mermaid", False):
+        print(export_burndown_mermaid(burndown, project.get("name", "")))
+        return
+
+    if getattr(args, "json", False):
+        print(json.dumps({"burndown": burndown, "velocity": compute_velocity(project)}, ensure_ascii=False, indent=2))
+        return
+
+    # 默认: ASCII 图表 + velocity 摘要
+    print(format_burndown_text(burndown))
+    vel = compute_velocity(project)
+    print(f"\n速度统计:")
+    print(f"  已完成: {vel['completed_count']}/{vel['total_count']}")
+    print(f"  日均: {vel['daily_velocity']:.2f} 任务/天")
+    print(f"  周均: {vel['weekly_velocity']:.2f} 任务/周")
+    if vel['estimated_remaining_days'] is not None:
+        print(f"  预估剩余: {vel['estimated_remaining_days']:.1f} 天")
+
+
+def cmd_export(args):
+    """导出项目数据为 CSV"""
+    from ..datax.csv_export import export_nodes_csv, export_stats_csv, export_burndown_csv
+    from ..datax.stats import compute_phase_stats
+    from ..datax.burndown import compute_burndown
+
+    project = _resolve_project(args)
+    fmt = getattr(args, "format", "nodes")
+
+    if fmt == "nodes":
+        print(export_nodes_csv(project))
+    elif fmt == "stats":
+        stats = compute_phase_stats(project)
+        print(export_stats_csv(stats))
+    elif fmt == "burndown":
+        burndown = compute_burndown(project)
+        print(export_burndown_csv(burndown))
