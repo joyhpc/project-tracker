@@ -1,4 +1,4 @@
-"""分析命令: plan, digest, timeline, estimate"""
+"""分析命令: plan, digest, timeline, estimate, gantt, stats, deps"""
 import sys
 import json
 from .. import core
@@ -193,3 +193,65 @@ def cmd_estimate(args):
         print()
     else:
         print("用法: pt estimate <task_id> <days>  或  pt estimate --show")
+
+
+# ── datax: Mermaid / stats 导出 ──────────────────────────
+
+
+def _resolve_project(args):
+    """Load project by --project flag or fall back to active project."""
+    pid = getattr(args, "project", None)
+    if pid:
+        p = core._load(pid)
+        if not p:
+            print(f"项目不存在: {pid}")
+            sys.exit(1)
+        return p
+    return _require()
+
+
+def cmd_gantt(args):
+    """输出 Mermaid Gantt 图"""
+    from ..datax.gantt import export_gantt_mermaid
+
+    project = _resolve_project(args)
+    print(export_gantt_mermaid(project), end="")
+
+
+def cmd_stats(args):
+    """输出阶段耗时统计表"""
+    from ..datax.stats import compute_phase_stats
+
+    project = _resolve_project(args)
+    stats = compute_phase_stats(project)
+
+    if getattr(args, "json", False):
+        print(json.dumps(stats, ensure_ascii=False, indent=2))
+        return
+
+    # Human-readable table
+    overall = stats.pop("overall", {})
+    print(f"\n{'阶段':<12} {'总数':>4} {'完成':>4} {'均值':>6} {'P50':>6} {'P90':>6} {'最大':>6}")
+    print("─" * 52)
+    for phase_id, s in stats.items():
+        print(
+            f"{phase_id:<12} {s['count']:>4} {s['done']:>4} "
+            f"{s['avg_days']:>5.1f}d {s['p50']:>5.1f}d "
+            f"{s['p90']:>5.1f}d {s['max']:>5.1f}d"
+        )
+    print("─" * 52)
+    if overall:
+        print(
+            f"{'总计':<12} {overall['total_nodes']:>4}  "
+            f"done={overall['done']}  in_progress={overall['in_progress']}  "
+            f"pending={overall['pending']}  blocked={overall['blocked']}"
+        )
+    print()
+
+
+def cmd_deps(args):
+    """输出 Mermaid 依赖图"""
+    from ..datax.deps_graph import export_deps_mermaid
+
+    project = _resolve_project(args)
+    print(export_deps_mermaid(project), end="")
