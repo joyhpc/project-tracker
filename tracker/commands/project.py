@@ -4,10 +4,7 @@ import sys
 from pathlib import Path
 
 from .. import core
-
-
-def _icon(status: str) -> str:
-    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳", "expanded": "📦"}.get(status, "❓")
+from . import _icon, _require
 
 
 def cmd_init(args):
@@ -246,13 +243,5 @@ def cmd_validate(args):
             sys.exit(1)
 
     except (RuntimeError, ValueError) as e:
-        print(f"❌ {e}")
-        sys.exit(1)
-
-
-def _require():
-    try:
-        return core.require_active()
-    except RuntimeError as e:
         print(f"❌ {e}")
         sys.exit(1)

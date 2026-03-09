@@ -4,18 +4,7 @@ import json
 from .. import core
 from ..engine import compute_cpm, build_graph, classify_tasks
 from ..project_map import build_project_map, render_project_map_text
-
-
-def _require():
-    try:
-        return core.require_active()
-    except RuntimeError as e:
-        print(f"❌ {e}")
-        sys.exit(1)
-
-
-def _icon(status: str) -> str:
-    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳", "expanded": "📦"}.get(status, "❓")
+from . import _icon, _require
 
 
 def cmd_plan(args):

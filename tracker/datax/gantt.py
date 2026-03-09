@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..engine import compute_cpm
 from ..project_model import _get_task_status, _project_as_flow
+from . import sanitise_mermaid_id as _sanitise_id
 
 
 # Mermaid status tag mapping
@@ -13,11 +14,6 @@ _STATUS_TAG = {
     "blocked": "crit",
     # pending -> empty (no tag)
 }
-
-
-def _sanitise_id(node_id: str) -> str:
-    """Make *node_id* safe for Mermaid identifiers (no hyphens)."""
-    return node_id.replace("-", "_")
 
 
 def export_gantt_mermaid(project: dict) -> str:

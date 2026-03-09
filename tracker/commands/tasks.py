@@ -2,18 +2,7 @@
 import sys
 from .. import core
 from ..engine import analyze, compute_cpm
-
-
-def _icon(status: str) -> str:
-    return {"done": "✅", "in_progress": "🔄", "blocked": "🚫", "pending": "⏳", "expanded": "📦"}.get(status, "❓")
-
-
-def _require():
-    try:
-        return core.require_active()
-    except RuntimeError as e:
-        print(f"❌ {e}")
-        sys.exit(1)
+from . import _icon, _require
 
 
 def cmd_tasks(args):
