@@ -59,17 +59,18 @@ def main():
     sub.add_parser("next", aliases=["n"], help="查看下一步行动")
 
     p_start = sub.add_parser("start", help="开始任务")
-    p_start.add_argument("task_id")
+    p_start.add_argument("task_id", nargs="+", help="任务ID (支持多个)")
 
     p_done = sub.add_parser("done", aliases=["d"], help="完成任务")
-    p_done.add_argument("task_id")
+    p_done.add_argument("task_id", nargs="+", help="任务ID (支持多个)")
     p_done.add_argument("--note", help="备注（一行）")
     p_done.add_argument("--note-file", help="备注文件（相对于仓库根目录）")
     p_done.add_argument("--force", action="store_true", help="跳过依赖检查")
+    p_done.add_argument("--quick", "-q", action="store_true", help="跳过 start，直接完成")
 
     p_block = sub.add_parser("block", help="标记任务阻塞")
     p_block.add_argument("task_id")
-    p_block.add_argument("--reason", "-r", required=True, help="阻塞原因")
+    p_block.add_argument("reason", help="阻塞原因")
 
     p_unblock = sub.add_parser("unblock", help="解除任务阻塞")
     p_unblock.add_argument("task_id")
