@@ -93,10 +93,10 @@ def compute_phase_stats(project: dict) -> dict:
         durations: list[float] = []
         for n in done_nodes:
             actual = _node_actual_days(n)
-            if actual is not None:
+            if actual is not None and actual > 0:
                 durations.append(actual)
             else:
-                # Fallback to estimated days
+                # Fallback to estimated days when actual duration is zero or unavailable
                 durations.append(float(n.get("days", 3)))
 
         durations.sort()

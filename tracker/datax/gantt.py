@@ -43,10 +43,17 @@ def export_gantt_mermaid(project: dict) -> str:
         ph = n.get("phase", "UNKNOWN")
         nodes_by_phase.setdefault(ph, []).append(n)
 
-    # Sort nodes within each phase by ES
+    # Get topo order for stable secondary sort
+    topo_order = cpm.get("topo_order", [])
+    topo_rank = {nid: i for i, nid in enumerate(topo_order)}
+
+    # Sort nodes within each phase by (ES, topo_rank) instead of (ES, node_id)
     for ph in nodes_by_phase:
         nodes_by_phase[ph].sort(
-            key=lambda n: (cpm["nodes"].get(n["id"], {}).get("es", 0), n["id"])
+            key=lambda n: (
+                cpm["nodes"].get(n["id"], {}).get("es", 0),
+                topo_rank.get(n["id"], 999),
+            )
         )
 
     lines: list[str] = [
