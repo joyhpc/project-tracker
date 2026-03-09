@@ -304,6 +304,12 @@ def mutate(project: dict, dry_run: bool = False):
         if not dry_run:
             _snapshot(project)
             _save(project)
+            # 通知 hook (无侵入)
+            try:
+                from .notify import fire_event as _fire_event
+                _fire_event("mutation", {"project_id": project["id"], "report": project.get("_mutation_report", {})})
+            except Exception:
+                pass
 
 
 # ── 节点 CRUD ─────────────────────────────────────────
@@ -1333,6 +1339,10 @@ def start_task(project_id: str, task_id: str) -> dict:
         match_subtask_templates=match_subtask_templates,
     )
     _save(p)
+    try:
+        from .notify import fire_event as _fe; _fe("start", {"project_id": project_id, "task_id": task_id})
+    except Exception:
+        pass
     return result
 
 
@@ -1349,6 +1359,10 @@ def done_task(project_id: str, task_id: str, note: str = "", force: bool = False
         note_file=note_file,
     )
     _save(p)
+    try:
+        from .notify import fire_event as _fe; _fe("done", {"project_id": project_id, "task_id": task_id})
+    except Exception:
+        pass
     return result
 
 
@@ -1356,6 +1370,10 @@ def block_task(project_id: str, task_id: str, reason: str) -> dict:
     p = _load(project_id)
     result = _project_mutation_block_task_in_project(p, task_id, reason, now=_now)
     _save(p)
+    try:
+        from .notify import fire_event as _fe; _fe("block", {"project_id": project_id, "task_id": task_id, "reason": reason})
+    except Exception:
+        pass
     return result
 
 
@@ -1363,6 +1381,10 @@ def unblock_task(project_id: str, task_id: str) -> dict:
     p = _load(project_id)
     result = _project_mutation_unblock_task_in_project(p, task_id, now=_now)
     _save(p)
+    try:
+        from .notify import fire_event as _fe; _fe("unblock", {"project_id": project_id, "task_id": task_id})
+    except Exception:
+        pass
     return result
 
 
