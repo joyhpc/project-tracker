@@ -18,6 +18,7 @@ from .commands.visual_cmd import cmd_map, cmd_visual
 from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace, cmd_promote
 from .commands.web_cmd import cmd_web
 from .commands.notify_cmd import cmd_notify
+from .commands.who_cmd import cmd_who
 
 
 def main():
@@ -147,6 +148,12 @@ def main():
     p_guide.add_argument("--overview", action="store_true")
     p_guide.add_argument("--flow", "-f", default="duxin")
     p_guide.add_argument("--save", "-s")
+
+    # ── 人员视图 ──
+    p_who = sub.add_parser("who", help="按人员查看任务分配")
+    p_who.add_argument("--owner", help="筛选特定人员")
+    p_who.add_argument("--status", choices=["pending", "in_progress", "blocked", "done"], help="筛选状态")
+    p_who.add_argument("--all", "-a", action="store_true", help="显示已完成的任务")
 
     # ── 风险 ──
     p_risk = sub.add_parser("risk", help="风险评估")
@@ -312,7 +319,7 @@ def main():
         "estimate": cmd_estimate, "est": cmd_estimate,
         "gantt": cmd_gantt, "stats": cmd_stats, "deps": cmd_deps,
         "burndown": cmd_burndown, "export": cmd_export,
-        "guide": cmd_guide, "risk": cmd_risk,
+        "guide": cmd_guide, "risk": cmd_risk, "who": cmd_who,
         "conflict": cmd_conflict, "cf": cmd_conflict,
         "prompt": cmd_prompt,
         "docs": cmd_docs,
