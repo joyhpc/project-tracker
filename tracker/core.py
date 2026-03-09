@@ -1366,6 +1366,34 @@ def done_task(project_id: str, task_id: str, note: str = "", force: bool = False
     return result
 
 
+def quick_done(project_id: str, task_id: str, note: str = "") -> dict:
+    """直接将 pending 任务标记为 done（跳过 in_progress）"""
+    p = _load(project_id)
+    node = _find_node(p, task_id)
+    if not node:
+        raise ValueError(f"任务不存在: {task_id}")
+    if node.get("status") == "done":
+        raise ValueError(f"任务已完成: {task_id}")
+    # 如果是 pending，先自动 start
+    if node.get("status") == "pending":
+        # 检查依赖
+        undone = _project_model_undone_dependencies(p, node)
+        if undone:
+            raise ValueError(f"依赖未完成: {', '.join(undone)}")
+        node["status"] = "in_progress"
+        node["started"] = _now()
+        p.setdefault("log", []).append({"time": _now(), "action": "start", "task": task_id, "detail": node["name"]})
+    # 然后 done
+    result = _project_mutation_done_task_in_project(p, task_id, now=_now, note=note, force=False)
+    _snapshot(p)
+    _save(p)
+    try:
+        from .notify import fire_event as _fe; _fe("done", {"project_id": project_id, "task_id": task_id})
+    except Exception:
+        pass
+    return result
+
+
 def block_task(project_id: str, task_id: str, reason: str) -> dict:
     p = _load(project_id)
     result = _project_mutation_block_task_in_project(p, task_id, reason, now=_now)

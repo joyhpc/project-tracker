@@ -84,50 +84,82 @@ def cmd_next(args):
 
 
 def cmd_start(args):
-    try:
-        p = _require()
-        task = core.start_task(p["id"], args.task_id)
-        print(f"🔄 已开始: [{args.task_id}] {task['name']}")
+    p = _require()
+    task_ids = args.task_id  # now a list
+    for task_id in task_ids:
+        try:
+            task = core.start_task(p["id"], task_id)
+            print(f"🔄 已开始: [{task_id}] {task['name']}")
 
-        # 自动提示匹配的子任务模板
-        matched = task.get("_matched_templates", [])
-        for t in matched:
-            print(f"\n💡 发现匹配的子任务模板: [{t['id']}] {t['name']} ({t['task_count']}个子任务)")
-            print(f"   阶段: {' → '.join(t['phases'])}")
-            print(f"   加载: pt sub-load {args.task_id} {t['id']}")
-    except (RuntimeError, ValueError) as e:
-        print(f"❌ {e}")
-        sys.exit(1)
+            # 自动提示匹配的子任务模板
+            matched = task.get("_matched_templates", [])
+            for t in matched:
+                print(f"\n💡 发现匹配的子任务模板: [{t['id']}] {t['name']} ({t['task_count']}个子任务)")
+                print(f"   阶段: {' → '.join(t['phases'])}")
+                print(f"   加载: pt sub-load {task_id} {t['id']}")
+        except (RuntimeError, ValueError) as e:
+            print(f"❌ {task_id}: {e}")
+            if len(task_ids) == 1:
+                sys.exit(1)
 
 
 def cmd_done(args):
-    try:
-        p = _require()
-        note_file = getattr(args, 'note_file', '') or ''
+    p = _require()
+    task_ids = args.task_id  # now a list
+    note = getattr(args, 'note', '') or ''
+    note_file = getattr(args, 'note_file', '') or ''
+    force = getattr(args, 'force', False)
+    quick = getattr(args, 'quick', False)
 
-        # 检查该任务是否有未审核的 review
-        reviews = p.get("reviews", [])
-        unreviewed = [r for r in reviews if r.get("task") == args.task_id and r.get("reviewed") is False]
-        if unreviewed:
-            print(f"  ⚠️ {len(unreviewed)} 份回复未审核:")
-            for r in unreviewed:
-                print(f"     - {r['file']}")
-            print(f"  使用 pt review --approve <file> 审核，或 --force 强制完成")
-            if not getattr(args, 'force', False):
+    for task_id in task_ids:
+        try:
+            # 检查该任务是否有未审核的 review
+            reviews = p.get("reviews", [])
+            unreviewed = [r for r in reviews if r.get("task") == task_id and r.get("reviewed") is False]
+            if unreviewed:
+                print(f"  ⚠️ {len(unreviewed)} 份回复未审核:")
+                for r in unreviewed:
+                    print(f"     - {r['file']}")
+                print(f"  使用 pt review --approve <file> 审核，或 --force 强制完成")
+                if not force:
+                    if len(task_ids) == 1:
+                        sys.exit(1)
+                    continue
+
+            if quick:
+                result = core.quick_done(p["id"], task_id, note=note)
+            else:
+                result = core.done_task(p["id"], task_id, note,
+                                        force=force,
+                                        note_file=note_file)
+            print(f"✅ 已完成: {task_id}")
+            print(f"   进度: {result['progress']}")
+            if note_file:
+                print(f"   📎 备注文件: {note_file}")
+            if result.get("remaining_ready"):
+                print(f"   下一步可做: {', '.join(result['remaining_ready'])}")
+
+            # 检查阶段完成
+            p_data = core._load(p["id"])
+            node = core._find_node(p_data, task_id)
+            if node:
+                phase = node.get("phase", "")
+                if phase:
+                    phase_nodes = [n for n in p_data.get("nodes", [])
+                                   if n.get("phase") == phase and n.get("status") != "expanded"]
+                    all_done = all(n.get("status") == "done" for n in phase_nodes)
+                    if all_done and phase_nodes:
+                        phase_name = phase
+                        for ph in p_data.get("phases", []):
+                            if ph.get("id") == phase:
+                                phase_name = ph.get("name", phase)
+                                break
+                        print(f"🎉 阶段完成: {phase_name} ({len(phase_nodes)}/{len(phase_nodes)})")
+
+        except (RuntimeError, ValueError) as e:
+            print(f"❌ {task_id}: {e}")
+            if len(task_ids) == 1:
                 sys.exit(1)
-
-        result = core.done_task(p["id"], args.task_id, args.note or "",
-                                force=getattr(args, 'force', False),
-                                note_file=note_file)
-        print(f"✅ 已完成: {args.task_id}")
-        print(f"   进度: {result['progress']}")
-        if note_file:
-            print(f"   📎 备注文件: {note_file}")
-        if result.get("remaining_ready"):
-            print(f"   下一步可做: {', '.join(result['remaining_ready'])}")
-    except (RuntimeError, ValueError) as e:
-        print(f"❌ {e}")
-        sys.exit(1)
 
 
 def cmd_block(args):
