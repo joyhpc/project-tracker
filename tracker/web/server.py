@@ -26,9 +26,10 @@ _RE_API_PROJECT = re.compile(r"^/api/project/([A-Za-z0-9_.-]+)$")
 class _Handler(BaseHTTPRequestHandler):
     """Simple router that dispatches GET requests to the appropriate handler."""
 
-    # Suppress default stderr logging per-request (keep it clean)
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: D401
-        pass  # silent by default; override for debugging
+        # Log to stderr so background launches still show activity
+        import sys
+        sys.stderr.write(f"{self.address_string()} - {fmt % args}\n")
 
     # ------------------------------------------------------------------
     # Routing
@@ -118,12 +119,18 @@ class _Handler(BaseHTTPRequestHandler):
 
 def start_server(host: str = "localhost", port: int = 8080) -> None:
     """Start the read-only web kanban server."""
-    server = HTTPServer((host, port), _Handler)
-    print(f"Project Tracker kanban running on http://{host}:{port}/")
+    import sys
+    try:
+        server = HTTPServer((host, port), _Handler)
+    except OSError as e:
+        print(f"Error: cannot bind to {host}:{port} — {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Project Tracker kanban running on http://{host}:{port}/", flush=True)
+    print(f"Press Ctrl+C to stop.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
-        print("\nServer stopped.")
+        print("\nServer stopped.", file=sys.stderr)
