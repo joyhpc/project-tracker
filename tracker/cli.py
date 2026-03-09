@@ -2,7 +2,7 @@
 import argparse
 from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_note, cmd_log, cmd_validate
 from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list, cmd_sub_load
-from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate
+from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate, cmd_gantt, cmd_stats, cmd_deps
 from .commands.guide_cmd import cmd_guide
 from .commands.risk_cmd import cmd_risk
 from .commands.conflict_cmd import cmd_conflict
@@ -117,6 +117,17 @@ def main():
     p_est.add_argument("days", nargs="?", type=int)
     p_est.add_argument("--show", action="store_true")
     p_est.add_argument("--all", action="store_true")
+
+    # ── datax 导出 ──
+    p_gantt = sub.add_parser("gantt", help="输出 Mermaid Gantt 图")
+    p_gantt.add_argument("--project", help="项目ID (默认当前活跃项目)")
+
+    p_stats = sub.add_parser("stats", help="输出阶段耗时统计表")
+    p_stats.add_argument("--project", help="项目ID (默认当前活跃项目)")
+    p_stats.add_argument("--json", action="store_true", help="JSON 输出")
+
+    p_deps = sub.add_parser("deps", help="输出 Mermaid 依赖图")
+    p_deps.add_argument("--project", help="项目ID (默认当前活跃项目)")
 
     # ── 引导 ──
     p_guide = sub.add_parser("guide", help="启发式项目引导")
@@ -279,6 +290,7 @@ def main():
         "plan": cmd_plan, "map": cmd_map, "digest": cmd_digest,
         "timeline": cmd_timeline, "tl": cmd_timeline,
         "estimate": cmd_estimate, "est": cmd_estimate,
+        "gantt": cmd_gantt, "stats": cmd_stats, "deps": cmd_deps,
         "guide": cmd_guide, "risk": cmd_risk,
         "conflict": cmd_conflict, "cf": cmd_conflict,
         "prompt": cmd_prompt,
