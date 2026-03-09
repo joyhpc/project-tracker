@@ -292,26 +292,36 @@ def render_dashboard(project: dict) -> str:
 
             crit_cls = " node-critical" if is_crit else ""
 
+            note = _e(n.get("note", ""))
+            note_html = ""
+            if note:
+                note_html = f'<div class="node-note">Note: {note}</div>'
+
             node_rows.append(f"""
-            <div class="node-card{crit_cls}">
+            <div class="node-card{crit_cls}" data-name="{nname}" data-id="{nid}" data-status="{nstatus}" onclick="toggleNode(this)">
               <div class="node-header">
                 <span class="node-name">{nname}</span>
                 <span class="badge {badge_cls}">{status_label}</span>
                 {extra_badges}
               </div>
-              <div class="node-meta">
-                <code class="node-id">{nid}</code>
-                {owner_html}
-                <span class="node-slack" title="Slack (days)">Slack: {slack:.1f}d</span>
+              <div class="node-detail">
+                <div class="node-meta">
+                  <code class="node-id">{nid}</code>
+                  {owner_html}
+                  <span class="node-slack" title="Slack (days)">Slack: {slack:.1f}d</span>
+                </div>
+                {dep_html}
+                {deliv_html}
+                {gate_html}
+                {note_html}
               </div>
-              {dep_html}
-              {deliv_html}
-              {gate_html}
             </div>""")
 
         phase_sections.append(f"""
         <div class="phase-section">
-          <h3 class="phase-title">{ph_name}</h3>
+          <h3 class="phase-title" onclick="togglePhase(this)" style="cursor:pointer;">
+            <span class="collapse-icon">&#9660;</span> {ph_name}
+          </h3>
           <div class="phase-nodes">{"".join(node_rows)}</div>
         </div>""")
 
@@ -426,6 +436,16 @@ def render_dashboard(project: dict) -> str:
   <!-- Phases / Nodes -->
   <div class="section">
     <h2 class="section-title">Nodes by Phase</h2>
+    <div class="filter-bar">
+      <input type="text" id="search-input" placeholder="搜索节点名称或 ID..." class="search-input" oninput="filterNodes()">
+      <div class="filter-btns">
+        <button class="filter-btn active" data-status="all" onclick="toggleFilter('all')">All</button>
+        <button class="filter-btn" data-status="pending" onclick="toggleFilter('pending')">Pending</button>
+        <button class="filter-btn" data-status="in_progress" onclick="toggleFilter('in_progress')">In Progress</button>
+        <button class="filter-btn" data-status="done" onclick="toggleFilter('done')">Done</button>
+        <button class="filter-btn" data-status="blocked" onclick="toggleFilter('blocked')">Blocked</button>
+      </div>
+    </div>
     {"".join(phase_sections)}
   </div>
 
@@ -597,17 +617,113 @@ def render_dashboard(project: dict) -> str:
   color: var(--text);
   background: transparent;
 }}
+
+/* ---- filter bar ---- */
+.filter-bar {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}}
+.search-input {{
+  flex: 1;
+  min-width: 200px;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.875rem;
+  outline: none;
+}}
+.search-input:focus {{ border-color: var(--accent); }}
+.filter-btns {{ display: flex; gap: 0.35rem; flex-wrap: wrap; }}
+.filter-btn {{
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+}}
+.filter-btn:hover {{ border-color: var(--accent); color: var(--text); }}
+.filter-btn.active {{ background: var(--accent); color: #000; border-color: var(--accent); }}
+
+/* ---- phase collapse ---- */
+.collapse-icon {{ display: inline-block; transition: transform 0.2s; font-size: 0.7em; }}
+.collapse-icon.collapsed {{ transform: rotate(-90deg); }}
+.phase-nodes.collapsed {{ display: none; }}
+
+/* ---- node card interactivity ---- */
+.node-card {{ cursor: pointer; transition: border-color 0.15s; }}
+.node-card:hover {{ border-color: var(--accent); }}
+.node-detail {{ display: none; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }}
+.node-card.expanded .node-detail {{ display: block; }}
+.node-note {{ font-size: 0.8rem; color: var(--text-dim); margin-top: 0.25rem; }}
 </style>
 
 <script>
-function copyMermaid(id) {
+function copyMermaid(id) {{
   var el = document.getElementById(id);
   var text = el.textContent || el.innerText;
-  navigator.clipboard.writeText(text).then(function() {
+  navigator.clipboard.writeText(text).then(function() {{
     var btns = el.parentElement.querySelectorAll('.copy-btn');
-    if (btns.length) { btns[0].textContent = 'Copied!'; setTimeout(function(){ btns[0].textContent = 'Copy'; }, 2000); }
-  });
-}
+    if (btns.length) {{ btns[0].textContent = 'Copied!'; setTimeout(function(){{ btns[0].textContent = 'Copy'; }}, 2000); }}
+  }});
+}}
+
+// --- Search & Filter ---
+var activeFilter = 'all';
+
+function filterNodes() {{
+  var query = document.getElementById('search-input').value.toLowerCase();
+  var cards = document.querySelectorAll('.node-card');
+  cards.forEach(function(card) {{
+    var name = (card.getAttribute('data-name') || '').toLowerCase();
+    var id = (card.getAttribute('data-id') || '').toLowerCase();
+    var status = card.getAttribute('data-status') || '';
+    var matchText = !query || name.indexOf(query) >= 0 || id.indexOf(query) >= 0;
+    var matchStatus = activeFilter === 'all' || status === activeFilter;
+    card.style.display = (matchText && matchStatus) ? '' : 'none';
+  }});
+  // Update phase visibility (hide phase if all nodes hidden)
+  document.querySelectorAll('.phase-section').forEach(function(sec) {{
+    var hasVisible = false;
+    sec.querySelectorAll('.node-card').forEach(function(c) {{
+      if (c.style.display !== 'none') hasVisible = true;
+    }});
+    sec.style.display = hasVisible ? '' : 'none';
+  }});
+}}
+
+function toggleFilter(status) {{
+  activeFilter = status;
+  document.querySelectorAll('.filter-btn').forEach(function(btn) {{
+    btn.classList.toggle('active', btn.getAttribute('data-status') === status);
+  }});
+  filterNodes();
+}}
+
+// --- Phase Collapse ---
+function togglePhase(el) {{
+  var icon = el.querySelector('.collapse-icon');
+  var nodes = el.nextElementSibling;
+  if (nodes && nodes.classList.contains('phase-nodes')) {{
+    nodes.classList.toggle('collapsed');
+    icon.classList.toggle('collapsed');
+  }}
+}}
+
+// --- Node Detail Toggle ---
+function toggleNode(el) {{
+  el.classList.toggle('expanded');
+}}
 </script>
 """
     return _page(f"{pname} - Project Tracker", body)
