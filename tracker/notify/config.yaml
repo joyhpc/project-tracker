@@ -1,0 +1,10 @@
+enabled: false
+webhooks:
+  - name: "飞书"
+    type: feishu
+    url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+    events: [start, done, block]
+  - name: "钉钉"
+    type: dingtalk
+    url: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+    events: []  # 空=全部事件
