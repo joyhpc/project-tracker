@@ -1,8 +1,36 @@
 """任务命令: tasks, start, done, block, unblock, next, sub*"""
+import os
+import re
 import sys
+from pathlib import Path
 from .. import core
 from ..engine import analyze, compute_cpm
 from . import _icon, _require
+
+
+def _auto_gate_check(project: dict, node_id: str) -> str:
+    """自动执行门禁检查，返回 verdict: GO/CAUTION/NO-GO。"""
+    repo = project.get("repo", "")
+    total_p0 = 0
+
+    # 检查已注册 reviews 中的 P0 计数
+    for rv in project.get("reviews", []):
+        total_p0 += rv.get("p0_count", 0)
+
+    # 快速扫描 sch-review/reports 如果存在
+    reports_dir = Path.home() / "sch-review" / "reports"
+    if reports_dir.is_dir():
+        for rpt in reports_dir.rglob("*.md"):
+            try:
+                content = rpt.read_text(encoding="utf-8")
+                if re.search(r'投板就绪[：:]\s*否', content) or re.search(r'NOT READY', content, re.IGNORECASE):
+                    return "NO-GO"
+            except Exception:
+                continue
+
+    if total_p0 > 0:
+        return "NO-GO"
+    return "GO"
 
 
 def cmd_tasks(args):
@@ -113,6 +141,21 @@ def cmd_done(args):
 
     for task_id in task_ids:
         try:
+            # ── 自动 gate 检查：有 gate 条件或名含 review/审核 的节点 ──
+            node = core._find_node(p, task_id)
+            if node and not force:
+                has_gate = bool(node.get("gate"))
+                name_lower = (node.get("name") or "").lower()
+                is_review_node = any(kw in name_lower for kw in ("review", "审核", "评审"))
+                if has_gate or is_review_node:
+                    gate_result = _auto_gate_check(p, task_id)
+                    if gate_result == "NO-GO":
+                        print(f"⛔ 门禁不通过: [{task_id}] 有未闭合的 P0 问题")
+                        print(f"   运行 pt gate {task_id} 查看详情，或 --force 强制完成")
+                        if len(task_ids) == 1:
+                            sys.exit(1)
+                        continue
+
             # 检查该任务是否有未审核的 review
             reviews = p.get("reviews", [])
             unreviewed = [r for r in reviews if r.get("task") == task_id and r.get("reviewed") is False]

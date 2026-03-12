@@ -191,6 +191,13 @@ def _save(project: dict, check_mtime: bool = True):
     project["_mtime"] = f.stat().st_mtime
     project.pop("_schema_dirty", None)
 
+    # post-save hooks (best-effort, never break main flow)
+    try:
+        from .post_save import run_post_save_hooks
+        run_post_save_hooks(project)
+    except Exception:
+        pass
+
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")

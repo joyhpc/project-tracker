@@ -6,7 +6,29 @@
 - 新增 Slack（松弛时间）计算
 """
 
-DEFAULT_DAYS = 3  # 未估算工时的默认值
+DEFAULT_DAYS = 3  # 未估算工时的 fallback
+
+# 按任务名称关键词给出更合理的默认工时估算
+# 避免所有未估算任务统一 3 天导致 CPM 失真
+_SMART_DEFAULTS = {
+    # 硬件设计
+    "原理图": 10, "schematic": 10,
+    "pcb布局": 15, "pcb_layout": 15, "layout": 15, "pcb走线": 10, "pcb_routing": 10,
+    "评审": 2, "review": 2, "审核": 2,
+    # 制样
+    "打样": 7, "pcb_sample": 7, "pcb_fab": 7, "smt": 5, "贴片": 5, "stencil": 2, "钢网": 2,
+    # 固件
+    "fpga": 30, "mcu": 20, "固件": 20,
+    # 软件
+    "sdk": 25, "驱动": 20, "app": 25,
+    # 测试
+    "联调": 10, "integration": 10, "测试": 10, "test": 10,
+    "调试": 7, "bringup": 7, "debug": 7,
+    # 试产
+    "试产": 5, "trial": 5,
+    # 其他
+    "验证": 5, "verify": 5, "选型": 3, "估算": 2, "封装": 3,
+}
 
 
 # ── DAG 构建 ──────────────────────────────────────────
@@ -106,12 +128,24 @@ def stable_node_order(graph: dict) -> list[str]:
 # ── CPM 关键路径 ──────────────────────────────────────
 
 def node_days(node: dict, custom_estimates: dict = None) -> float:
-    """获取节点工时（天）"""
+    """获取节点工时（天）
+
+    优先级：custom_estimates > node.days > 智能默认 > DEFAULT_DAYS
+    """
     if custom_estimates and node["id"] in custom_estimates:
         return custom_estimates[node["id"]]
     if node.get("type") == "milestone":
         return 0
-    return node.get("days", DEFAULT_DAYS)
+    if "days" in node:
+        return node["days"]
+
+    # 智能默认：按任务名/ID 关键词匹配
+    name_lower = (node.get("name", "") + " " + node.get("id", "")).lower()
+    for keyword, days in _SMART_DEFAULTS.items():
+        if keyword in name_lower:
+            return days
+
+    return DEFAULT_DAYS
 
 
 def compute_cpm(flow: dict, task_status: dict = None,

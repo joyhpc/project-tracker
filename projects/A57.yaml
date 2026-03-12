@@ -328,6 +328,9 @@ log:
 - action: note
   detail: '优化: 联调拆分(dcurx_integration+camrx_integration并行) + 原理图拆分(base+mipi并行验证)'
   time: 2026-02-26 01:45
+- time: 2026-03-12 15:22
+  action: note
+  detail: 项目计划已完成
 name: A57 域控测试盒
 nodes:
 - completed: 2026-02-24 22:56
