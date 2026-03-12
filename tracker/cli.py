@@ -21,6 +21,7 @@ from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, 
 from .commands.web_cmd import cmd_web
 from .commands.notify_cmd import cmd_notify
 from .commands.who_cmd import cmd_who
+from .commands.update_cmd import cmd_update, cmd_find
 
 
 def main():
@@ -55,6 +56,13 @@ def main():
     p_validate.add_argument("--json", action="store_true", help="JSON 输出")
 
     # ── 任务操作 ──
+    p_update = sub.add_parser("update", aliases=["u"], help="自然语言更新项目状态（如 \"FMC改线完了\"）")
+    p_update.add_argument("text", help="变动描述（自然语言）")
+
+    p_find = sub.add_parser("find", aliases=["f"], help="模糊搜索节点（如 \"MIPI\"）")
+    p_find.add_argument("query", help="搜索关键词")
+    p_find.add_argument("--all", "-a", action="store_true", help="包含已完成节点")
+
     p_tasks = sub.add_parser("tasks", aliases=["t"], help="查看任务列表")
     p_tasks.add_argument("--phase", "-p", help="按阶段过滤")
     p_tasks.add_argument("--all", "-a", action="store_true", help="包含子任务")
@@ -319,6 +327,8 @@ def main():
         "phases": cmd_phases, "ph": cmd_phases,
         "note": cmd_note, "log": cmd_log,
         "validate": cmd_validate, "check": cmd_validate,
+        "update": cmd_update, "u": cmd_update,
+        "find": cmd_find, "f": cmd_find,
         "tasks": cmd_tasks, "t": cmd_tasks,
         "next": cmd_next, "n": cmd_next,
         "start": cmd_start, "done": cmd_done, "d": cmd_done,
