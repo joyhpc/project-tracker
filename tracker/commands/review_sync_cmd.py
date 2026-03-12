@@ -140,7 +140,6 @@ def cmd_review_sync(args):
             if "reviews" not in project:
                 project["reviews"] = []
             project["reviews"].append(review_entry)
-            registered += 1
 
         print()
 
