@@ -39,7 +39,8 @@ def _auto_html_map(project: dict) -> None:
     map_data = build_project_map(project, info)
     html = render_project_map_html(map_data)
 
-    out = repo_path / "a57_project_map.html"
+    pid = project.get("id", "project").lower()
+    out = repo_path / f"{pid}_project_map.html"
     out.write_text(html, encoding="utf-8")
 
 
