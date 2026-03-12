@@ -14,6 +14,8 @@ from .commands.decision_cmd import cmd_decision
 from .commands.poc_cmd import cmd_poc
 from .commands.propose_cmd import cmd_propose
 from .commands.scan_cmd import cmd_scan
+from .commands.gate_cmd import cmd_gate
+from .commands.review_sync_cmd import cmd_review_sync
 from .commands.visual_cmd import cmd_map, cmd_visual
 from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace, cmd_promote
 from .commands.web_cmd import cmd_web
@@ -230,6 +232,16 @@ def main():
     p_scan.add_argument("--onboard", action="store_true", help="生成项目导入 prompt（喂给 LLM 生成项目 YAML）")
     p_scan.add_argument("--arch", action="store_true", help="生成项目架构理解 prompt（中途介入第一步）")
 
+    # ── 投板门禁 ──
+    p_gate = sub.add_parser("gate", help="投板/推进门禁检查 — 汇总审核 P0/P1/P2 状态")
+    p_gate.add_argument("task_id", help="节点ID")
+    p_gate.add_argument("--scan-dir", help="额外扫描审核报告目录")
+
+    # ── 审核同步 ──
+    p_rsync = sub.add_parser("review-sync", aliases=["rs"], help="从 sch-review 自动同步审核报告")
+    p_rsync.add_argument("--dir", "-d", help="审核报告目录 (默认 ~/sch-review/reports)")
+    p_rsync.add_argument("--dry-run", action="store_true", help="试运行，不实际注册")
+
     # ── 可视化 ──
     p_vis = sub.add_parser("visual", aliases=["vis", "v"], help="生成项目进度可视化图")
     p_vis.add_argument("--output", "-o", default="/tmp", help="输出目录 (默认 /tmp)")
@@ -326,6 +338,8 @@ def main():
         "docs": cmd_docs,
         "propose": cmd_propose, "pp": cmd_propose,
         "scan": cmd_scan,
+        "gate": cmd_gate,
+        "review-sync": cmd_review_sync, "rs": cmd_review_sync,
         "visual": cmd_visual, "vis": cmd_visual, "v": cmd_visual,
         "brief": cmd_brief, "br": cmd_brief,
         "review": cmd_review, "rv": cmd_review,

@@ -12,8 +12,6 @@
 - 子任务一等节点
 - 19个场景闭环验证通过
 
-## 待完成
-
 ### v2.1 (2/19) — 跨阶段依赖 ✅
 - 29条跨阶段依赖，总工期 24天→132天
 - 关键路径贯穿14阶段(49节点)
@@ -28,24 +26,41 @@
 - generic流程跨阶段依赖（8条，18→45天）
 - 3流程通用性验证通过
 
-### v3.0 — Skills 版本 (2/20 开始)
-**目标**: 把PT做成OpenClaw Skill，AI增强层
+### v2.4 — 项目地图 + Web + 数据导出 ✅
+- 终端文本项目地图 `pt map`
+- HTML 项目地图（暗色主题，响应式）
+- datax 子包：burndown / gantt / csv / deps_graph / stats
+- Web 看板子包
+- notify 通知子包
 
-#### Phase 1: LLM意图理解 (1-2天)
-- [ ] 用LLM替代keyword匹配做意图分类
-- [ ] 语义匹配("画板子" → "PCB Layout")
-- [ ] 歧义消解("PCB"匹配正确任务)
+### v2.5 (3/12) — 硬件审核工具链集成 ✅
+- **`pt gate`** — 投板门禁命令：扫描审核报告汇总 P0/P1/P2，NO-GO 判定
+- **`pt review-sync`** — sch-review 报告自动同步（P0→NO-GO, P1→CAUTION, P2→GO）
+- **BM25 分词增强** — 硬件位号/型号（U4/TPS56C215）、规格值（3.5Gbps）、FPGA pin 格式整体保留
+- **A57 数据补全** — 5 个 decisions、3 个 POCs、11 个关键任务工时估算，CPM 总工期 100→148 天
+- **repo 路径修复** — /tmp → ~/A57-docs
 
-#### Phase 2: Skill打包 (0.5天)
-- [ ] 用skill-creator打包
-- [ ] SKILL.md编写
-- [ ] 发布到clawhub
+## 待完成
 
-#### Phase 3: 实战验证 (持续)
-- [ ] 用真实项目(度信摄像头)跑一遍完整流程
-- [ ] 收集反馈，迭代优化
+### v2.6 — 审核深度集成
+- [ ] `pt gate` 自动关联节点与板卡名，无需手动 --scan-dir
+- [ ] review-sync 增量同步（只同步新增/变更的报告）
+- [ ] gate 结果写入项目 log，可追溯
+- [ ] BM25 索引审核报告内容（审核结论参与 pt prompt 检索）
+
+### v3.0 — 多工具协同
+- [ ] `pt component <位号>` — 调用 opendatasheet 查询器件参数
+- [ ] `pt analyze <板名>` — 调用 hardware-copilot 拓扑/时序分析
+- [ ] 知识库整合：审核报告 + 器件数据 + 拓扑分析 → 统一 BM25 索引
+- [ ] Claude Code / MCP 集成：pt 作为 MCP tool server
+
+### v3.1 — 多项目/多板卡结构
+- [ ] 父子项目关系（A57 → DCURX / CAMRX / PMU）
+- [ ] 跨项目依赖和关键路径
+- [ ] 资源瓶颈跨项目可视化
 
 ### 远期
 - [ ] pip install 打包分发
-- [ ] 多人协作(Git友好的项目文件)
-- [ ] Web UI (可选)
+- [ ] Web Dashboard 增强（burndown 趋势、审核状态卡片）
+- [ ] 多人协作（Git 友好的乐观锁已就绪）
+- [ ] Skills / AI Agent 集成

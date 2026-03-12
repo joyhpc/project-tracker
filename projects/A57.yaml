@@ -988,6 +988,7 @@ nodes:
   started: 2026-02-24 23:03
   status: in_progress
   type: task
+  days: 30
 - deliverables:
   - 《代码review记录》
   depends:
@@ -1014,6 +1015,7 @@ nodes:
   started: 2026-02-24 23:03
   status: in_progress
   type: task
+  days: 20
 - deliverables:
   - 《代码review记录》
   depends:
@@ -1040,6 +1042,7 @@ nodes:
   started: 2026-02-24 23:03
   status: in_progress
   type: task
+  days: 25
 - depends:
   - dcurx_integration
   - camrx_integration
@@ -1052,6 +1055,7 @@ nodes:
   reviewer: 研发经理/研发主管/FPGA组长
   status: pending
   type: task
+  days: 10
 - deliverables:
   - 《代码QC问题登记表》
   depends:
@@ -1105,6 +1109,7 @@ nodes:
   reviewer: 硬件/主管
   status: pending
   type: task
+  days: 15
 - deliverables:
   - 《A版本测试简报》
   - 《缺陷清单》
@@ -1149,6 +1154,7 @@ nodes:
   reviewer: 测试组长
   status: pending
   type: task
+  days: 10
 - deliverables:
   - 《测试简报》
   depends:
@@ -1184,6 +1190,7 @@ nodes:
   reviewer: 测试组长
   status: pending
   type: task
+  days: 7
 - critical: true
   deliverables:
   - 《产品总体测试报告》
@@ -1219,6 +1226,7 @@ nodes:
   reviewer: PMO
   status: pending
   type: task
+  days: 5
 - deliverables:
   - 固件
   - 测试AP
@@ -1491,7 +1499,7 @@ nodes:
   owner: 硬件工程师
   phase: DETAIL
   status: pending
-- days: 2
+- days: 3
   depends:
   - camrx_schematic
   id: camrx_schematic_review
@@ -1499,7 +1507,7 @@ nodes:
   owner: 硬件工程师
   phase: DETAIL
   status: pending
-- days: 5
+- days: 15
   deliverables:
   - CAMRX PCB布局
   depends:
@@ -1544,7 +1552,7 @@ nodes:
   owner: 硬件工程师
   phase: SAMPLE
   status: pending
-- days: 5
+- days: 10
   depends:
   - camrx_smt
   - fpga_dev
@@ -1728,7 +1736,7 @@ phases:
   name: 发布阶段
 - id: ACCEPT
   name: 验收阶段
-repo: /tmp/A57-docs
+repo: /home/ubuntu/A57-docs
 reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   source: scan
@@ -1750,6 +1758,141 @@ reviews:
     topic: (legacy, 2次)
   - verdict: GO
     topic: (legacy, 2次)
+- file: /home/ubuntu/sch-review/reports/00_审核报告索引.md
+  source: sch-review-sync
+  board: 00_审核报告索引
+  title: A57_GWBRGIC_TST 审核报告索引
+  verdicts:
+  - verdict: NO-GO
+  synced: 2026-03-12 10:03
+  p0_count: 2
+  p1_count: 5
+  p2_count: 0
+- file: /home/ubuntu/sch-review/reports/A57_GWBRGIC_TST_V1_0_review.md
+  source: sch-review-sync
+  board: GWBRGIC_TST_V1_0
+  title: A57_GWBRGIC_TST_V1_0_A0_0 原理图深度审核报告
+  verdicts:
+  - verdict: NO-GO
+  synced: 2026-03-12 10:03
+  p0_count: 1
+  p1_count: 1
+  p2_count: 1
+- file: /home/ubuntu/sch-review/reports/A57_GWBRGIC_TST_deep_review.md
+  source: sch-review-sync
+  board: GWBRGIC_TST
+  title: A57_GWBRGIC_TST_V1_0_A0_0 深度原理图审核报告
+  verdicts:
+  - verdict: NO-GO
+  synced: 2026-03-12 10:03
+  p0_count: 1
+  p1_count: 11
+  p2_count: 13
+- file: /home/ubuntu/sch-review/reports/A57_design_report.md
+  source: sch-review-sync
+  board: design
+  title: A57 相机主板 — 设计辅助报告
+  verdicts:
+  - verdict: CAUTION
+  synced: 2026-03-12 10:03
+  p0_count: 0
+  p1_count: 25
+  p2_count: 13
+- file: /home/ubuntu/sch-review/reports/GW5AT60_design_report.md
+  source: sch-review-sync
+  board: GW5AT60_design_report
+  title: — 设计辅助报告
+  verdicts:
+  - verdict: CAUTION
+  synced: 2026-03-12 10:03
+  p0_count: 0
+  p1_count: 18
+  p2_count: 15
+- file: /home/ubuntu/sch-review/reports/gwbrgic/A57_GWBRGIC_architecture_review_2026-03-10.md
+  source: sch-review-sync
+  board: GWBRGIC
+  title: A57_GWBRGIC_TST_V1_0_A0_0 架构级深度审核
+  verdicts:
+  - verdict: NO-GO
+  synced: 2026-03-12 10:03
+  p0_count: 3
+  p1_count: 3
+  p2_count: 1
+- file: /home/ubuntu/sch-review/reports/gwbrgic/A57_GWBRGIC_fix_checklist_2026-03-11.md
+  source: sch-review-sync
+  board: GWBRGIC
+  title: A57_GWBRGIC_TST Fix Checklist
+  verdicts:
+  - verdict: NO-GO
+  synced: 2026-03-12 10:03
+  p0_count: 2
+  p1_count: 1
+  p2_count: 1
+- file: /home/ubuntu/sch-review/reports/gwbrgic/A57_GWBRGIC_power_tree_review_2026-03-10.md
+  source: sch-review-sync
+  board: GWBRGIC_power
+  title: A57_GWBRGIC_TST_V1_0_A0_0 电源树审核
+  verdicts:
+  - verdict: NO-GO
+  synced: 2026-03-12 10:03
+  p0_count: 3
+  p1_count: 3
+  p2_count: 0
+- file: /home/ubuntu/sch-review/reports/gwbrgic/sch_review_improvement_backlog_2026-03-10.md
+  source: sch-review-sync
+  board: sch_review_improvement_backlog_2026-03-10
+  title: sch-review 改进 Backlog 与 Roadmap（基于 A57_GWBRGIC 架构审核复盘）
+  verdicts:
+  - verdict: NO-GO
+  synced: 2026-03-12 10:03
+  p0_count: 8
+  p1_count: 9
+  p2_count: 5
 schema_version: 2
-decisions: []
-pocs: []
+decisions:
+- id: 1
+  title: LM5060替代JW7221热插拔芯片
+  source: ECN-001
+  impact: U39电源口需重新设计
+  status: active
+  date: '2026-03-12'
+- id: 2
+  title: 3.5Gbps DPHY采用GW5AT-LV60
+  source: FPGA寻样评估
+  impact: CAMRX原理图MIPI部分设计基准
+  status: active
+  date: '2026-03-12'
+- id: 3
+  title: DCURX+CAMRX联调拆分为两条并行线
+  source: 架构评审
+  impact: 缩短关键路径，允许DCURX先行联调
+  status: active
+  date: '2026-03-12'
+- id: 4
+  title: STM32H745作为域控核心板MCU
+  source: 器件评估+代码评审2026-02-24
+  impact: 固件架构基于双核H7
+  status: active
+  date: '2026-03-12'
+- id: 5
+  title: QSPI改FMC连接方式(ECN-001)
+  source: ECN-001 2026-03-12
+  impact: 核心板STM32-KU3P通信架构变更
+  status: active
+  date: '2026-03-12'
+pocs:
+- id: 1
+  title: 3.5Gbps DPHY 8通道验证
+  metric: 眼图裕量>=15%，8通道同时锁定
+  status: pending
+  date: '2026-03-12'
+- id: 2
+  title: LM5060热插拔验证
+  metric: 反向保护+OVP+UVLO全过，漏电流<1uA
+  status: pending
+  date: '2026-03-12'
+- id: 3
+  title: CPHY桥接方案可行性(60K评估板)
+  metric: IO扩展+CPHY功能+VDDIO灵活调节验证通过
+  status: pending
+  date: '2026-03-12'

@@ -19,15 +19,34 @@ class KnowledgeChunk:
 
 
 def tokenize(text: str) -> List[str]:
-    """混合分词：英文/数字连字 + 中文单字 + 中文 Bigram"""
+    """混合分词：硬件术语保留 + 英文/数字连字 + 中文单字 + 中文 Bigram
+
+    硬件增强：
+    - 位号/型号（U4/TPS56C215）→ 完整 + 拆分双 token
+    - 带单位规格（3.5Gbps, 0.1uF）→ 整体保留
+    - FPGA bank/pin 格式 → 整体保留
+    """
     text = text.lower()
     tokens = []
-    # 英文、数字、特殊符号连字（stm32, type-c, 0.1uf, i2c）
+    # 1) 硬件位号/型号组合（U4/TPS56C215, R108/47K, C311/0.1UF）
+    for m in re.finditer(r'([a-z]\d+)\s*/\s*([a-z0-9._-]+)', text):
+        tokens.append(m.group(1) + '/' + m.group(2))  # u4/tps56c215
+        tokens.append(m.group(1))                       # u4
+        tokens.append(m.group(2))                       # tps56c215
+    # 2) 带单位的规格值（3.5gbps, 100mhz, 0.1uf, 1.8v, 47k）
+    tokens.extend(re.findall(
+        r'\d+\.?\d*\s*(?:gbps|mbps|mhz|khz|ghz|[munp]?f|[munp]?h|[mk]?ohm|[mk]?r|[v])\b',
+        text))
+    # 3) FPGA bank/pin 格式（bank0_hp, io_l12p_t1）
+    tokens.extend(re.findall(r'(?:bank|io_)[a-z0-9_]+', text))
+    # 4) P0/P1/P2 严重级别标记
+    tokens.extend(re.findall(r'\bp[0-4]\b', text))
+    # 5) 通用英文、数字、连字（stm32, type-c, 0.1uf, i2c）
     tokens.extend(re.findall(r'[a-z0-9_.-]+', text))
-    # 中文字符
+    # 6) 中文字符
     cjk = re.findall(r'[\u4e00-\u9fa5]', text)
     tokens.extend(cjk)
-    # 中文 Bigram
+    # 7) 中文 Bigram
     for i in range(len(cjk) - 1):
         tokens.append(cjk[i] + cjk[i + 1])
     return tokens

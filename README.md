@@ -1,10 +1,10 @@
 # Project Tracker (项目推进助手)
 
-基于度信平台机型流程的硬件项目推进 CLI 工具。
+基于 DAG + CPM 关键路径的硬件项目推进 CLI 工具。
+
+**核心能力**: 全局 DAG + CPM 引擎 | BM25 知识检索 | LLM Prompt 生成 | 投板门禁 | 风险量化 | 审核工具链集成
 
 ## 安装
-
-推荐使用虚拟环境安装，避免系统 Python 的 PEP 668 限制：
 
 ```bash
 git clone git@github.com:joyhpc/project-tracker.git
@@ -14,134 +14,144 @@ python3 -m venv .venv
 pip install -e .
 ```
 
-如果你只是临时使用，也可以不安装，直接运行：
-
-```bash
-./pt --help
-./pt status
-```
-
-## 数据迁移
-
-旧项目 YAML 会在运行时自动兼容到当前 schema；如果你想把历史文件直接升级落盘：
-
-```bash
-python tools/migrate_projects.py --dry-run
-python tools/migrate_projects.py
-```
+或直接运行：`./pt --help`
 
 ## 快速开始
 
 ```bash
-# 创建项目
-pt init A57-CAMRX --name "A57 摄像头测试设备 - CAMRX" --flow duxin
+# 项目管理
+pt init A57 --name "A57 域控测试盒" --flow duxin
+pt status                      # 查看状态
+pt map                         # 终端项目地图
+pt map --html                  # HTML 项目地图
+pt list                        # 列出所有项目
+pt switch A57                  # 切换项目
 
-# 查看状态
-pt status
+# 任务操作
+pt tasks                       # 查看任务列表
+pt next                        # 下一步行动
+pt start pcb_sample            # 开始任务
+pt done pcb_sample --note "已发板厂"  # 完成任务
+pt block pcb_eq --reason "等EQ"      # 标记阻塞
 
-# 终端项目地图（推荐）
-pt map
+# 分析与决策
+pt risk                        # 风险评估
+pt prompt "MIPI问题" --deep    # 生成带知识上下文的 LLM prompt
+pt decision --add "方案变更"   # 登记决策
+pt poc --add "验证项" --metric "红线指标"  # PoC 追踪
 
-# 生成 HTML / PNG 项目地图
-pt map --html --output /tmp/project-map
+# 审核集成（v2.5 新增）
+pt review-sync                 # 从 sch-review 自动同步审核报告
+pt gate schematic_review       # 投板门禁检查（P0/P1/P2 汇总）
+pt gate schematic_review --scan-dir ~/sch-review/reports/gwbrgic/
 
-# 显式校验项目 YAML / DAG
-pt validate
-
-# 查看所有任务
-pt tasks
-
-# 查看下一步
-pt next
-
-# 开始任务
-pt start pcb_sample
-
-# 完成任务
-pt done pcb_sample --note "PCB已发板厂"
-
-# 标记阻塞
-pt block pcb_eq --reason "等板厂回复EQ"
-
-# 解除阻塞
-pt unblock pcb_eq
-
-# 查看阶段进度
-pt phases
-
-# 添加备注
-pt note "今天和PCB工程师确认了堆叠方案"
-
-# 查看项目历史
-pt log
-
-# 列出所有项目
-pt list
-
-# 切换项目
-pt switch A57-DCURX
+# 数据导出
+pt gantt                       # Mermaid Gantt 图
+pt deps                        # 依赖图
+pt burndown                    # 燃尽图
+pt export nodes                # CSV 导出
 ```
-
-## 开发与验证
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .
-pytest -q
-./pt validate
-./pt --help
-```
-
-如果你是新机器 fresh clone，优先先跑一次 `pytest -q` 确认环境和核心回归都正常。
-
-## 交接文档
-
-- `docs/ANCHORS.md`：新 agent 快速定位核心模块
-- `docs/HANDOFF_PROMPT.md`：可直接贴给下一位 agent 的交接 prompt
-- `docs/core-architecture.md`：核心状态层 / 校验层 / 查询层 / 状态机层 / 子任务模板层架构
-- `docs/project-map-smart-sleep-pillow.md`：`smart-sleep-pillow` / `PILLOW` 项目地图示例
-- `docs/architecture.md`：知识检索 / prompt 架构
-- `docs/PLAN.md`：历史计划与阶段演进
 
 ## 项目结构
 
 ```
 project-tracker/
-├── pt                    # CLI 入口 (可直接 ./pt)
+├── pt                           # CLI 入口
 ├── tracker/
-│   ├── __init__.py
-│   ├── cli.py            # CLI 命令定义
-│   ├── core.py           # 兼容 façade / 持久化入口
-│   ├── project_constants.py # schema 版本与共享枚举
-│   ├── project_model.py  # 纯项目模型辅助函数
-│   ├── project_validation.py # schema + DAG 完整性校验
-│   ├── project_query.py  # 状态聚合 / fallback 查询
-│   ├── project_mutation.py # 状态机 / 任务变更规则
-│   ├── subtask_templates.py # 子任务模板发现 / DAG 重连
-│   ├── project_map.py   # 项目地图快照 / 文本与 HTML 渲染
-│   └── flow.py           # 流程定义加载
-├── flows/
-│   └── duxin.yaml        # 度信平台流程定义
-├── projects/             # 项目数据 (git tracked)
-│   └── A57-CAMRX.yaml
-├── setup.py
-└── README.md
+│   ├── cli.py                   # 命令路由
+│   ├── core.py                  # 持久化 façade
+│   ├── engine.py                # DAG + CPM 引擎
+│   ├── knowledge.py             # BM25 知识检索（硬件术语增强）
+│   ├── prompt.py                # LLM Prompt 生成（v4: BM25 + 角色聚焦）
+│   ├── risk.py                  # 多维度风险评分
+│   ├── conflict.py              # 多项目资源冲突
+│   ├── project_map.py           # 项目地图（终端 + HTML）
+│   ├── project_model.py         # 纯函数辅助
+│   ├── project_validation.py    # schema + DAG 校验
+│   ├── project_mutation.py      # 状态机规则
+│   ├── project_query.py         # 状态聚合
+│   ├── project_constants.py     # schema 版本
+│   ├── subtask_templates.py     # 子任务模板 DAG 重连
+│   ├── flow.py                  # 流程定义加载
+│   ├── onboard.py               # 中途导入
+│   ├── guide.py                 # 启发式引导
+│   ├── commands/
+│   │   ├── gate_cmd.py          # 投板门禁（P0→NO-GO 映射）
+│   │   ├── review_sync_cmd.py   # sch-review 报告自动同步
+│   │   ├── prompt_cmd.py        # Prompt 导出
+│   │   ├── node_cmd.py          # 节点 CRUD
+│   │   ├── scan_cmd.py          # 仓库扫描
+│   │   └── ...
+│   ├── datax/                   # 数据导出（burndown/gantt/csv/deps）
+│   ├── notify/                  # 通知子包
+│   └── web/                     # Web 看板子包
+├── flows/                       # 流程模板
+│   ├── duxin_v2.yaml            # 度信平台流程
+│   ├── generic_v2.yaml          # 通用流程
+│   └── subtasks/                # 子任务模板
+│       ├── board_bringup.yaml
+│       ├── schematic_design.yaml
+│       ├── signal_validation.yaml
+│       └── mcu_firmware.yaml
+├── projects/                    # 项目数据 (git tracked)
+├── docs/                        # 架构文档
+└── setup.py
 ```
+
+## 硬件审核工具集成
+
+```
+sch-review (审核判定)          opendatasheet (器件参数)
+        │                              │
+        └──── pt review-sync ──────────┘
+                    │
+         project-tracker (项目中枢)
+           │ DAG + CPM │ 知识库 │ 门禁 │
+                    │
+              pt prompt --deep
+                    │
+              Claude Code (AI 对话)
+```
+
+### 投板门禁 (`pt gate`)
+
+- 自动汇总节点关联的所有审核报告
+- sch-review P0 → pt NO-GO | P1 → CAUTION | P2 → GO
+- 有 P0 未闭合 → 输出阻断清单 → 阻止投板
+
+### 审核同步 (`pt review-sync`)
+
+- 扫描 `~/sch-review/reports/` 中的审核报告
+- 解析 P0/P1/P2 标记，自动注册到项目 reviews
+- 支持 `--dry-run` 试运行
 
 ## 流程阶段
 
 ```
 REQ → FEAS → INIT → OUTLINE → DETAIL → SAMPLE → SW_DEV → INTEG
- │                    MS1                  MS2              MS3
- ↓
+                      MS1                  MS2              MS3
 TEST_A → TEST_B → TEST_C → TRIAL → RELEASE → ACCEPT
                               MS4
 ```
 
 ## 设计原则
 
-1. **数据即 Git** - 所有项目状态都是 YAML，换电脑 clone 即可
-2. **CLI 闭环** - 所有操作通过命令行完成
-3. **流程驱动** - 基于标准流程自动推荐下一步
-4. **零依赖** - 只需 Python 3.10+ 和 PyYAML
+1. **数据即 Git** — YAML 文件，clone 即用
+2. **CLI 闭环** — 所有操作命令行完成
+3. **流程驱动** — 标准流程 + CPM 自动推荐
+4. **零依赖** — Python 3.10 + PyYAML
+5. **审核闭环** — 与 sch-review 双向打通，投板决策有据可查
+
+## 开发
+
+```bash
+pytest -q
+./pt validate --all
+```
+
+## 文档
+
+- `docs/architecture.md` — 知识检索 / prompt 架构
+- `docs/PLAN.md` — 开发计划与版本演进
+- `docs/DECISION_FRAMEWORK.md` — 决策框架
+- `docs/graph-refactor-design.md` — DAG 重构设计
