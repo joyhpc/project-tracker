@@ -1,5 +1,7 @@
 # Project Tracker (项目推进助手)
 
+> **[REVIEW] 新增: 钩子协议 (`pt hooks`) + 领域同步桥 (`pt domain-sync`) — 详见 `tracker/post_save.py`, `tracker/domain_sync.py`**
+
 基于 DAG + CPM 关键路径的硬件项目推进 CLI 工具。
 
 **核心能力**: 全局 DAG + CPM 引擎 | BM25 知识检索 | LLM Prompt 生成 | 投板门禁 | 风险量化 | 审核工具链集成
