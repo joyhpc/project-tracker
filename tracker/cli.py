@@ -22,6 +22,8 @@ from .commands.web_cmd import cmd_web
 from .commands.notify_cmd import cmd_notify
 from .commands.who_cmd import cmd_who
 from .commands.update_cmd import cmd_update, cmd_find
+from .commands.hooks_cmd import cmd_hooks
+from .commands.domain_sync_cmd import cmd_domain_sync
 
 
 def main():
@@ -250,6 +252,11 @@ def main():
     p_rsync.add_argument("--dir", "-d", help="审核报告目录 (默认 ~/sch-review/reports)")
     p_rsync.add_argument("--dry-run", action="store_true", help="试运行，不实际注册")
 
+    # ── 领域同步 ──
+    p_dsync = sub.add_parser("domain-sync", aliases=["ds"], help="通用领域工具包同步（扫描 pt-sync.yaml manifest）")
+    p_dsync.add_argument("--dry-run", action="store_true", help="试运行，不实际写入")
+    p_dsync.add_argument("--list", "-l", action="store_true", help="列出已发现的 manifest")
+
     # ── 可视化 ──
     p_vis = sub.add_parser("visual", aliases=["vis", "v"], help="生成项目进度可视化图")
     p_vis.add_argument("--output", "-o", default="/tmp", help="输出目录 (默认 /tmp)")
@@ -314,6 +321,10 @@ def main():
     p_notify = sub.add_parser("notify", help="Webhook 通知管理")
     p_notify.add_argument("action", nargs="?", default="status", choices=["status", "test"], help="操作: status=查看配置, test=发送测试")
 
+    # ── 钩子管理 ──
+    p_hooks = sub.add_parser("hooks", help="列出/测试已注册的 pt 钩子")
+    p_hooks.add_argument("--test", action="store_true", help="测试所有钩子的 condition 是否满足")
+
     # ── 路由 ──
     args = parser.parse_args()
     if not args.command:
@@ -350,6 +361,7 @@ def main():
         "scan": cmd_scan,
         "gate": cmd_gate,
         "review-sync": cmd_review_sync, "rs": cmd_review_sync,
+        "domain-sync": cmd_domain_sync, "ds": cmd_domain_sync,
         "visual": cmd_visual, "vis": cmd_visual, "v": cmd_visual,
         "brief": cmd_brief, "br": cmd_brief,
         "review": cmd_review, "rv": cmd_review,
@@ -359,6 +371,7 @@ def main():
         "rewire": cmd_rewire, "replace": cmd_replace, "promote": cmd_promote,
         "web": cmd_web,
         "notify": cmd_notify,
+        "hooks": cmd_hooks,
     }
 
     fn = CMD.get(args.command)
