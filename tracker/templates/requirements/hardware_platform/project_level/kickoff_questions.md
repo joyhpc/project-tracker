@@ -1,3 +1,13 @@
+---
+pt_role: {{ROLE_ID}}
+pt_project: {{PROJECT_ID}}
+id: {{DOC_ID}}
+version: {{DOC_VERSION}}
+status: {{DOC_STATUS}}
+baseline: {{DOC_BASELINE}}
+supersedes: {{DOC_SUPERSEDES}}
+---
+
 # {{PROJECT_ID}} 项目起始三问
 
 - 项目: {{PROJECT_NAME}}

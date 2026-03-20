@@ -1,3 +1,14 @@
+---
+pt_role: {{ROLE_ID}}
+pt_project: {{PROJECT_ID}}
+pt_subproject: {{SUBPROJECT}}
+id: {{DOC_ID}}
+version: {{DOC_VERSION}}
+status: {{DOC_STATUS}}
+baseline: {{DOC_BASELINE}}
+supersedes: {{DOC_SUPERSEDES}}
+---
+
 # {{SUBPROJECT}} 应用目标矩阵
 
 - 项目: {{PROJECT_NAME}}

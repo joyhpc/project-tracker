@@ -67,10 +67,12 @@ def _init(args):
     print("🔍 req init 试运行" if args.dry_run else "✅ req init 完成")
     print(f"   root: {result['root']}")
     print(f"   profile: {result['profile']}")
+    print(f"   manifest: {result['manifest']}")
     if result.get("subprojects"):
         print("   subprojects: " + ", ".join(item["name"] for item in result["subprojects"]))
     print(f"   created: {len(result['created'])}")
     print(f"   skipped: {len(result['skipped'])}")
+    print(f"   bindings: {len(result.get('bindings', {}))}")
     for item in result["created"][:10]:
         print(f"   + {item}")
 

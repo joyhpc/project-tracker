@@ -1575,7 +1575,9 @@ def init_requirements(
         p["requirements"] = {
             "profile": profile,
             "root": root,
-            "subprojects": normalized_subprojects,
+            "manifest": _requirements.MANIFEST_REL_PATH.as_posix(),
+            "subprojects": result["subprojects"],
+            "bindings_count": len(result.get("bindings", {})),
             "generated_at": _now(),
         }
         p["log"].append({
@@ -1601,9 +1603,12 @@ def rebuild_requirements_indexes(project_id: str, *, dry_run: bool = False) -> d
     result = _requirements.rebuild_indexes(p, repo, root=root, subprojects=subprojects, dry_run=dry_run)
 
     if not dry_run:
+        repo_manifest = _requirements.load_repo_manifest(repo)
         req_state["root"] = root
-        req_state["profile"] = req_state.get("profile", _requirements.DEFAULT_PROFILE)
-        req_state["subprojects"] = subprojects
+        req_state["profile"] = repo_manifest.get("profile", req_state.get("profile", _requirements.DEFAULT_PROFILE))
+        req_state["manifest"] = _requirements.MANIFEST_REL_PATH.as_posix()
+        req_state["subprojects"] = repo_manifest.get("subprojects", subprojects)
+        req_state["bindings_count"] = len(repo_manifest.get("bindings", {}))
         req_state["indexed_at"] = _now()
         p["requirements"] = req_state
         p["log"].append({
@@ -1625,9 +1630,13 @@ def check_requirements(project_id: str, *, strict: bool = False, save: bool = Tr
 
     result = _requirements.check_requirements(p, repo, strict=strict)
     if save:
+        repo_manifest = _requirements.load_repo_manifest(repo)
         req_state = p.get("requirements", {}) or {}
-        req_state["profile"] = req_state.get("profile", _requirements.DEFAULT_PROFILE)
-        req_state["root"] = req_state.get("root", _requirements.DEFAULT_ROOT)
+        req_state["profile"] = repo_manifest.get("profile", _requirements.DEFAULT_PROFILE)
+        req_state["root"] = repo_manifest.get("root", _requirements.DEFAULT_ROOT)
+        req_state["manifest"] = _requirements.MANIFEST_REL_PATH.as_posix()
+        req_state["subprojects"] = repo_manifest.get("subprojects", req_state.get("subprojects", []))
+        req_state["bindings_count"] = len(repo_manifest.get("bindings", {}))
         req_state["last_checked_at"] = _now()
         req_state["last_check_status"] = "pass" if result["valid"] else "fail"
         p["requirements"] = req_state

@@ -42,6 +42,7 @@
 - `pt req` 提供的是“骨架生成 + 索引 + 校验”。
 - 具体内容由项目团队在目标 repo 中持续实例化和审核。
 - 模板必须能裁剪，不能把 A57 当前结论硬编码成所有项目的默认真理。
+- 运行期真理源依赖显式角色绑定，而不是文件名猜测。
 
 ### 2.4 需求链路必须可追溯
 
@@ -51,6 +52,18 @@
 2. 系统级约束或业务场景
 3. 接口/硬件/实现文档
 4. 验证记录与放行结论
+
+### 2.5 显式绑定优于运行时猜测
+
+- `pt req` 的运行期真理源是角色绑定 manifest。
+- 文件名 pattern 只允许在 `pt req init` 首次接入时执行一次，用于自动发现历史文档。
+- `pt req check / index` 运行期只认显式 binding，不再回退到 pattern 猜测。
+
+### 2.6 文档元数据契约
+
+- 核心需求文档需要带 frontmatter。
+- 当前最小元数据契约为：`pt_role`、`id`、`version`、`status`、`baseline`。
+- `status` 应显式受控，而不是按“最新文档优先”这种隐式规则判断。
 
 ## 3. 模块边界
 
@@ -65,8 +78,11 @@
 2. 生成层
    - 将模板写入目标 repo
    - 根据项目 ID、子项目名、日期、语言风格填充初值
+   - 首次接入时自动发现历史文档并固化 binding
 3. 校验层
    - 校验文档存在性
+   - 校验 binding 是否存在并指向有效文件
+   - 校验 frontmatter 元数据是否完整
    - 校验索引页引用是否闭环
    - 校验追溯矩阵字段是否齐全
    - 校验链接是否断裂
@@ -81,6 +97,23 @@
 2. 不替代 `sch-review` 的审核职责
 3. 不替代具体项目团队做业务判断
 4. 不自动修改设计结论，只负责骨架、索引和一致性检查
+
+## 3.1 当前真理源
+
+当前实现中，`pt req` 的运行期真理源是目标 repo 下的：
+
+```text
+.pt/requirements_manifest.yaml
+```
+
+其中记录：
+
+- `profile`
+- `root`
+- `subprojects`
+- `bindings`
+
+`bindings` 负责把“逻辑角色 ID”绑定到“实际文件路径”。
 
 ## 4. 目标用户与使用场景
 
@@ -121,6 +154,7 @@ pt req ...
 - 在目标 repo 中生成需求目录骨架
 - 写入项目级起始文档和索引页
 - 可选生成子项目模板
+- 首次接入时自动发现历史文档，并把 binding 固化到 manifest
 
 建议参数：
 
@@ -176,6 +210,7 @@ pt req baseline release-criteria --subproject CAMRX
 
 - 重建需求阶段索引页
 - 汇总项目级文档、子项目文档、执行记录、当前有效结论
+- 按 manifest 的显式 binding 组织核心入口
 
 建议参数：
 
@@ -190,6 +225,7 @@ pt req index --subproject CAMRX
 
 - 对需求链路做静态校验
 - 给出缺页、断链、未闭环项、无当前有效结论项
+- 校验 binding 文档 frontmatter 是否满足最小契约
 
 建议参数：
 
@@ -295,6 +331,8 @@ tracker/templates/requirements/
 requirements:
   profile: hardware-platform
   root: 01_需求阶段_Requirements
+  manifest: .pt/requirements_manifest.yaml
+  bindings_count: 7
   generated_at: 2026-03-20 12:00
   last_checked_at: 2026-03-20 12:10
   last_check_status: pass
@@ -308,7 +346,7 @@ requirements:
 
 ## 8.2 `.pt/` 中的元信息
 
-若需要更细粒度控制，可在目标 repo 的 `.pt/` 下生成：
+当前实现中，目标 repo 的 `.pt/` 下生成：
 
 ```text
 .pt/requirements_manifest.yaml
@@ -316,12 +354,12 @@ requirements:
 
 用于记录：
 
-- 已生成文件
-- 文件角色
-- 是否为必需项
-- 上次校验结果
+- profile 与 root
+- 子项目清单
+- 显式角色 binding
+- 自动发现/生成结果
 
-这能避免把过多模板元信息塞进项目主 YAML。
+项目主 YAML 只保留轻量摘要，不复制完整 binding 表。
 
 ## 9. 校验规则
 
@@ -329,18 +367,18 @@ requirements:
 
 最小校验集：
 
-1. 必需文档是否存在
-2. 索引页引用是否存在目标文件
-3. 追溯矩阵必需列是否完整
-4. 当前有效结论页是否存在
-5. 子项目是否至少有一个应用目标矩阵
-6. 执行记录页是否至少有索引页
+1. requirements manifest 是否存在
+2. 必需 binding 是否存在
+3. binding 指向的文件是否存在
+4. binding 文档 frontmatter 元数据是否完整
+5. 追溯矩阵必需列是否完整
+6. 当前有效结论页是否存在
+7. 子项目是否至少有一个应用目标矩阵
 
 `--strict` 下再追加：
 
 1. Markdown 相对链接不可断裂
-2. 同一需求 ID 不可重复
-3. 追溯矩阵中的目标文档必须实际存在
+2. 元数据与 binding 不一致时报错
 
 ## 10. 与现有模块的关系
 

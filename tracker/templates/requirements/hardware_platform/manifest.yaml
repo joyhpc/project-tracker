@@ -1,42 +1,42 @@
 project_level:
-  - id: first_principles
+  - id: req_first_principles
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_第一性原理需求.md"
     template: "project_level/first_principles.md"
     required: true
     patterns:
       - "第一性原理需求"
       - "第一性原理需求范式"
-  - id: kickoff_questions
+  - id: req_kickoff_questions
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_项目起始三问.md"
     template: "project_level/kickoff_questions.md"
     required: true
     patterns:
       - "项目起始三问"
-  - id: trace_matrix
+  - id: req_trace_matrix
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_项目级需求追溯矩阵.md"
     template: "project_level/trace_matrix.md"
     required: true
     patterns:
       - "项目级需求追溯矩阵"
       - "需求追溯矩阵"
-  - id: current_conclusion
+  - id: req_current_conclusion
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_当前有效结论.md"
     template: "project_level/current_conclusion.md"
     required: true
     patterns:
       - "当前有效结论"
 subproject:
-  - id: app_matrix
+  - id: req_app_goal_matrix
     path: "{{SUBPROJECT_DIR}}/{{SUBPROJECT}}_应用目标矩阵.md"
     template: "subproject/app_goal_matrix.md"
     required: true
     patterns:
       - "应用目标矩阵"
-  - id: baseline_index
+  - id: req_baseline_index
     path: "{{SUBPROJECT_DIR}}/10_专项基线_Baselines/README.md"
     template: "subproject/baseline_readme.md"
     required: false
-  - id: execution_index
+  - id: req_execution_index
     path: "{{SUBPROJECT_DIR}}/20_执行记录_Execution/README.md"
     template: "subproject/execution_readme.md"
     required: false
