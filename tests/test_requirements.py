@@ -26,6 +26,15 @@ class RequirementsSandboxTestCase(unittest.TestCase):
 
 
 class RequirementsTests(RequirementsSandboxTestCase):
+    def _set_doc_metadata(self, path: Path, **updates):
+        content = path.read_text(encoding="utf-8")
+        self.assertTrue(content.startswith("---\n"))
+        header, body = content[4:].split("\n---\n", 1)
+        metadata = yaml.safe_load(header) or {}
+        metadata.update(updates)
+        rendered = "---\n" + yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip() + "\n---\n" + body
+        path.write_text(rendered, encoding="utf-8")
+
     def test_init_requirements_creates_manifest_bindings_and_state(self):
         repo = self.tempdir / "repo"
         repo.mkdir()
@@ -109,6 +118,87 @@ class RequirementsTests(RequirementsSandboxTestCase):
 
         self.assertFalse(result["valid"])
         self.assertTrue(any(issue["type"] == "broken_markdown_link" for issue in result["issues"]))
+
+    def test_trace_requirements_writes_bound_trace_matrix(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57", subprojects=["CAMRX"])
+
+        first_principles = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_第一性原理需求.md"
+        app_goal = repo / "01_需求阶段_Requirements" / "01_CAMRX" / "CAMRX_应用目标矩阵.md"
+        self._set_doc_metadata(first_principles, status="Active", verification_refs=["verify/project_fp.md"])
+        self._set_doc_metadata(app_goal, status="Draft")
+
+        result = core.trace_requirements("A57", save=False)
+
+        self.assertTrue(result["valid"])
+        trace = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_项目级需求追溯矩阵.md"
+        trace_content = trace.read_text(encoding="utf-8")
+        self.assertIn("A57-REQ_FIRST_PRINCIPLES", trace_content)
+        self.assertIn("项目级/第一性原理", trace_content)
+        self.assertIn("verify/project_fp.md", trace_content)
+        self.assertIn("A57_当前有效结论.md", trace_content)
+
+    def test_trace_requirements_active_doc_without_verification_refs_is_invalid(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57")
+
+        first_principles = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_第一性原理需求.md"
+        self._set_doc_metadata(first_principles, status="Active", verification_refs=[])
+
+        result = core.trace_requirements("A57", save=False)
+
+        self.assertFalse(result["valid"])
+        self.assertTrue(any(issue["type"] == "missing_verification_refs" for issue in result["issues"]))
+
+    def test_trace_requirements_draft_doc_allows_missing_verification_refs(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57")
+
+        first_principles = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_第一性原理需求.md"
+        self._set_doc_metadata(first_principles, status="Draft", verification_refs=[])
+
+        result = core.trace_requirements("A57", save=False)
+
+        self.assertTrue(result["valid"])
+        self.assertFalse(any(issue["type"] == "missing_verification_refs" for issue in result["issues"]))
+
+    def test_trace_requirements_uses_current_conclusion_binding_as_default_reference(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57")
+
+        first_principles = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_第一性原理需求.md"
+        self._set_doc_metadata(first_principles, status="Frozen", verification_refs=["verify/fp.md"], conclusion_refs=[])
+
+        result = core.trace_requirements("A57", save=False)
+
+        self.assertTrue(result["valid"])
+        trace = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_项目级需求追溯矩阵.md"
+        self.assertIn("A57_当前有效结论.md", trace.read_text(encoding="utf-8"))
+
+    def test_trace_requirements_persists_project_state_when_save_enabled(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57")
+
+        first_principles = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_第一性原理需求.md"
+        self._set_doc_metadata(first_principles, status="Draft", verification_refs=[])
+
+        result = core.trace_requirements("A57")
+
+        self.assertTrue(result["valid"])
+        project = core._load("A57")
+        self.assertEqual(project["requirements"]["last_trace_status"], "pass")
+        self.assertEqual(project["requirements"]["last_trace_rows"], result["summary"]["rows"])
+        self.assertIn("last_traced_at", project["requirements"])
 
 
 if __name__ == "__main__":

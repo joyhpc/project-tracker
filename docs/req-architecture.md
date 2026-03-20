@@ -179,14 +179,17 @@ pt req init --dry-run
 作用：
 
 - 创建或刷新追溯矩阵
-- 将项目级需求映射到子项目目标、接口、基线、验证、结论
+- 将显式 binding 的需求文档收敛到统一追溯矩阵
+- 当前默认纳入 `trace_included: true` 的角色
+- 对 `Active/Frozen` 文档强制检查 `verification_refs`
+- 若文档未显式给出 `conclusion_refs`，默认回落到 `req_current_conclusion` 绑定
 
 建议参数：
 
 ```bash
 pt req trace
-pt req trace --subproject CAMRX
-pt req trace --refresh
+pt req trace --dry-run
+pt req trace --json
 ```
 
 ### `pt req baseline`

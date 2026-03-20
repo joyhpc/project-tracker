@@ -1649,6 +1649,41 @@ def check_requirements(project_id: str, *, strict: bool = False, save: bool = Tr
     return result
 
 
+def trace_requirements(project_id: str, *, dry_run: bool = False, save: bool = True) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    repo = get_repo_path(p)
+    if not repo:
+        raise ValueError("项目未关联仓库。使用: pt docs --link <path>")
+
+    result = _requirements.trace_requirements(p, repo, dry_run=dry_run)
+    if save and not dry_run:
+        repo_manifest = _requirements.load_repo_manifest(repo)
+        req_state = p.get("requirements", {}) or {}
+        req_state["profile"] = repo_manifest.get("profile", _requirements.DEFAULT_PROFILE)
+        req_state["root"] = repo_manifest.get("root", _requirements.DEFAULT_ROOT)
+        req_state["manifest"] = _requirements.MANIFEST_REL_PATH.as_posix()
+        req_state["subprojects"] = repo_manifest.get("subprojects", req_state.get("subprojects", []))
+        req_state["bindings_count"] = len(repo_manifest.get("bindings", {}))
+        req_state["last_traced_at"] = _now()
+        req_state["last_trace_status"] = "pass" if result["valid"] else "fail"
+        req_state["last_trace_rows"] = result.get("summary", {}).get("rows", 0)
+        p["requirements"] = req_state
+        p["log"].append({
+            "time": _now(),
+            "action": "requirements_trace",
+            "detail": (
+                "requirements trace: "
+                f"status={req_state['last_trace_status']}, "
+                f"rows={result.get('summary', {}).get('rows', 0)}, "
+                f"output={result.get('path', '-')}"
+            ),
+        })
+        _save(p)
+    return result
+
+
 def attach_doc(project_id: str, task_id: str, file_path: str, description: str = ""):
     """给任务关联文档文件（相对于仓库根目录的路径）"""
     p = _load(project_id)

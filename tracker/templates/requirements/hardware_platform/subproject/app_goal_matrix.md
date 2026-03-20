@@ -7,6 +7,7 @@ version: {{DOC_VERSION}}
 status: {{DOC_STATUS}}
 baseline: {{DOC_BASELINE}}
 supersedes: {{DOC_SUPERSEDES}}
+verification_refs: []
 ---
 
 # {{SUBPROJECT}} 应用目标矩阵

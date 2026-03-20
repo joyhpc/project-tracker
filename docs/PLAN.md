@@ -53,7 +53,7 @@
 - [x] `req init` 在目标 repo 中生成需求骨架，不把项目正文写入 `project-tracker`
 - [x] `req index` 维护需求阶段索引页
 - [x] `req check` 校验需求链路缺页、断链、当前有效结论
-- [ ] `req trace` 管理项目级需求到子项目目标/验证/结论的追溯矩阵
+- [x] `req trace` 管理项目级需求到子项目目标/验证/结论的追溯矩阵
 - [ ] `req attach` 将关键需求文档批量挂接到项目任务
 - [x] 项目 YAML 增加轻量 `requirements` 状态，供 `status/brief/prompt` 后续使用
 

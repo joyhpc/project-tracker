@@ -244,6 +244,11 @@ def main():
     p_req_index = req_sub.add_parser("index", help="重建需求索引页")
     p_req_index.add_argument("--dry-run", action="store_true", help="试运行，不写文件")
 
+    p_req_trace = req_sub.add_parser("trace", help="刷新需求追溯矩阵")
+    p_req_trace.add_argument("--dry-run", action="store_true", help="试运行，不写文件")
+    p_req_trace.add_argument("--json", action="store_true", help="JSON 输出")
+    p_req_trace.add_argument("--no-save", action="store_true", help="不写回项目中的 trace 状态")
+
     p_req_check = req_sub.add_parser("check", help="校验需求链路")
     p_req_check.add_argument("--strict", action="store_true", help="启用 Markdown 链接断链校验")
     p_req_check.add_argument("--json", action="store_true", help="JSON 输出")

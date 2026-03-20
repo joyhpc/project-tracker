@@ -3,6 +3,8 @@ project_level:
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_第一性原理需求.md"
     template: "project_level/first_principles.md"
     required: true
+    trace_included: true
+    trace_source_level: "项目级/第一性原理"
     patterns:
       - "第一性原理需求"
       - "第一性原理需求范式"
@@ -10,12 +12,16 @@ project_level:
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_项目起始三问.md"
     template: "project_level/kickoff_questions.md"
     required: true
+    trace_included: true
+    trace_source_level: "项目级/起始三问"
     patterns:
       - "项目起始三问"
   - id: req_trace_matrix
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_项目级需求追溯矩阵.md"
     template: "project_level/trace_matrix.md"
     required: true
+    trace_included: false
+    trace_source_level: "系统/追溯矩阵"
     patterns:
       - "项目级需求追溯矩阵"
       - "需求追溯矩阵"
@@ -23,6 +29,8 @@ project_level:
     path: "00_项目级需求_Project_Level/{{PROJECT_ID}}_当前有效结论.md"
     template: "project_level/current_conclusion.md"
     required: true
+    trace_included: false
+    trace_source_level: "系统/当前有效结论"
     patterns:
       - "当前有效结论"
 subproject:
@@ -30,13 +38,17 @@ subproject:
     path: "{{SUBPROJECT_DIR}}/{{SUBPROJECT}}_应用目标矩阵.md"
     template: "subproject/app_goal_matrix.md"
     required: true
+    trace_included: true
+    trace_source_level: "子项目/应用目标"
     patterns:
       - "应用目标矩阵"
   - id: req_baseline_index
     path: "{{SUBPROJECT_DIR}}/10_专项基线_Baselines/README.md"
     template: "subproject/baseline_readme.md"
     required: false
+    trace_included: false
   - id: req_execution_index
     path: "{{SUBPROJECT_DIR}}/20_执行记录_Execution/README.md"
     template: "subproject/execution_readme.md"
     required: false
+    trace_included: false

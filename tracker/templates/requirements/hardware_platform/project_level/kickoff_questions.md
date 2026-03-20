@@ -6,6 +6,7 @@ version: {{DOC_VERSION}}
 status: {{DOC_STATUS}}
 baseline: {{DOC_BASELINE}}
 supersedes: {{DOC_SUPERSEDES}}
+verification_refs: []
 ---
 
 # {{PROJECT_ID}} 项目起始三问

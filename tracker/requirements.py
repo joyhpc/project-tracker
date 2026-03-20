@@ -612,6 +612,80 @@ def _check_required_columns(path: Path, columns: list[str], issue_type: str) -> 
     }]
 
 
+def _as_list(value) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _escape_cell(value: str) -> str:
+    return str(value).replace("|", "\\|")
+
+
+def _binding_display_path(path: str, root: str) -> str:
+    rel = Path(path)
+    root_path = Path(root)
+    try:
+        return rel.relative_to(root_path).as_posix()
+    except ValueError:
+        return rel.as_posix()
+
+
+def _render_trace_matrix(
+    *,
+    project: dict,
+    metadata: dict,
+    rows: list[dict],
+    summary: dict,
+) -> str:
+    lines = ["---"]
+    for key, value in metadata.items():
+        dumped = yaml.safe_dump({key: value}, allow_unicode=True, sort_keys=False).strip()
+        lines.append(dumped)
+    lines.extend([
+        "---",
+        "",
+        f"# {project['id']} 项目级需求追溯矩阵",
+        "",
+        f"- 项目: {project['name']}",
+        f"- 日期: {_today()}",
+        f"- trace rows: {summary['rows']}",
+        f"- active_or_frozen: {summary['active_or_frozen']}",
+        f"- missing_verification: {summary['missing_verification']}",
+        f"- missing_conclusion: {summary['missing_conclusion']}",
+        "",
+        "| 需求ID | 版本 | 状态 | Baseline | Supersedes | 来源层级 | 子项目/场景 | 目标文档 | 验证文档 | 当前结论 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ])
+    if rows:
+        for row in rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    _escape_cell(row[column])
+                    for column in (
+                        "需求ID",
+                        "版本",
+                        "状态",
+                        "Baseline",
+                        "Supersedes",
+                        "来源层级",
+                        "子项目/场景",
+                        "目标文档",
+                        "验证文档",
+                        "当前结论",
+                    )
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | - | - | - | - | - | - | - |")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _validate_binding_metadata(
     repo: Path,
     binding: dict,
@@ -788,6 +862,131 @@ def check_requirements(project: dict, repo: Path, *, strict: bool = False) -> di
         issues.extend(_check_link_targets(root_dir))
 
     return _summarize_check(root, profile, issues)
+
+
+def trace_requirements(project: dict, repo: Path, *, dry_run: bool = False) -> dict:
+    repo_manifest = load_repo_manifest(repo)
+    profile = str(repo_manifest.get("profile", DEFAULT_PROFILE) or DEFAULT_PROFILE)
+    root = str(repo_manifest.get("root", DEFAULT_ROOT) or DEFAULT_ROOT)
+    bindings = repo_manifest.get("bindings", {}) or {}
+    manifest_def = _load_manifest(profile)
+    role_defs = {
+        item["id"]: item
+        for section in ("project_level", "subproject")
+        for item in manifest_def.get(section, [])
+    }
+    trace_binding = bindings.get("req_trace_matrix")
+    if not trace_binding:
+        raise ValueError("缺少 req_trace_matrix 绑定。先运行: pt req init")
+
+    current_conclusion_binding = bindings.get("req_current_conclusion")
+    current_conclusion_path = ""
+    if current_conclusion_binding:
+        candidate = str(current_conclusion_binding.get("path", "")).strip()
+        if candidate and (repo / candidate).exists():
+            current_conclusion_path = candidate
+    rows = []
+    issues = []
+    summary = {"rows": 0, "active_or_frozen": 0, "missing_verification": 0, "missing_conclusion": 0}
+
+    for key, binding in sorted(bindings.items()):
+        role_id = binding.get("role_id", "")
+        role_def = role_defs.get(role_id, {})
+        if role_id in {"req_trace_matrix", "req_current_conclusion"}:
+            continue
+        if not role_def.get("trace_included", False):
+            continue
+
+        target = repo / binding["path"]
+        if not target.exists():
+            issues.append({
+                "type": "trace_missing_target",
+                "severity": "error",
+                "file": binding["path"],
+                "message": f"trace 目标文档不存在: {binding['path']}",
+            })
+            continue
+
+        metadata, _ = _parse_frontmatter(target)
+        requirement_id = str(metadata.get("id", "")).strip() or role_id
+        version = str(metadata.get("version", "")).strip() or "-"
+        status = str(metadata.get("status", "")).strip() or "-"
+        baseline = str(metadata.get("baseline", "")).strip() or "-"
+        supersedes = str(metadata.get("supersedes", "")).strip() or "-"
+        verification_refs = _as_list(metadata.get("verification_refs"))
+        conclusion_refs = _as_list(metadata.get("conclusion_refs"))
+        if not conclusion_refs and current_conclusion_path:
+            conclusion_refs = [current_conclusion_path]
+
+        verification_display = ", ".join(verification_refs) if verification_refs else "-"
+        conclusion_display = ", ".join(conclusion_refs) if conclusion_refs else "-"
+        source_level = str(role_def.get("trace_source_level", "待定义"))
+        scene = str(binding.get("subproject", "项目级"))
+
+        if status in {"Active", "Frozen"}:
+            summary["active_or_frozen"] += 1
+            if not verification_refs:
+                summary["missing_verification"] += 1
+                verification_display = "MISSING"
+                issues.append({
+                    "type": "missing_verification_refs",
+                    "severity": "error",
+                    "file": binding["path"],
+                    "message": f"{binding['path']} 状态为 {status}，但缺少 verification_refs",
+                })
+            if not conclusion_refs:
+                summary["missing_conclusion"] += 1
+                conclusion_display = "MISSING"
+                issues.append({
+                    "type": "missing_conclusion_refs",
+                    "severity": "error",
+                    "file": binding["path"],
+                    "message": f"{binding['path']} 状态为 {status}，但缺少当前有效结论引用",
+                })
+
+        rows.append({
+            "需求ID": requirement_id,
+            "版本": version,
+            "状态": status,
+            "Baseline": baseline,
+            "Supersedes": supersedes,
+            "来源层级": source_level,
+            "子项目/场景": scene,
+            "目标文档": _binding_display_path(binding["path"], root),
+            "验证文档": verification_display,
+            "当前结论": conclusion_display,
+        })
+
+    summary["rows"] = len(rows)
+    trace_target = repo / trace_binding["path"]
+    if trace_target.exists():
+        metadata, _ = _parse_frontmatter(trace_target)
+    else:
+        metadata = {}
+    if not metadata:
+        metadata = _required_metadata(
+            _base_template_vars(project, "req_trace_matrix"),
+            project_id=project["id"],
+            role_id="req_trace_matrix",
+        )
+    rendered = _render_trace_matrix(project=project, metadata=metadata, rows=rows, summary=summary)
+    status = _write_file(trace_target, rendered, overwrite=True, dry_run=dry_run)
+
+    counts = {
+        "critical": 0,
+        "error": sum(1 for issue in issues if issue.get("severity") == "error"),
+        "warning": sum(1 for issue in issues if issue.get("severity") == "warning"),
+        "info": sum(1 for issue in issues if issue.get("severity") == "info"),
+    }
+    return {
+        "path": trace_binding["path"],
+        "rows": rows,
+        "summary": summary,
+        "issues": issues,
+        "counts": counts,
+        "valid": counts["error"] == 0,
+        "write_status": status,
+    }
 
 
 def _summarize_check(root: str, profile: str, issues: list[dict]) -> dict:
