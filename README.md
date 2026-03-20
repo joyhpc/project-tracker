@@ -154,6 +154,8 @@ pytest -q
 ## 文档
 
 - `docs/architecture.md` — 知识检索 / prompt 架构
+- `docs/req-architecture.md` — 需求体系平台化架构
 - `docs/PLAN.md` — 开发计划与版本演进
 - `docs/DECISION_FRAMEWORK.md` — 决策框架
+- `docs/KNOWLEDGE_ROUTING.md` — 项目经验沉淀与规则升级法则
 - `docs/graph-refactor-design.md` — DAG 重构设计

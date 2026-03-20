@@ -48,6 +48,15 @@
 - [ ] gate 结果写入项目 log，可追溯
 - [ ] BM25 索引审核报告内容（审核结论参与 pt prompt 检索）
 
+### v2.7 — 需求体系平台化
+- [ ] 新增 `pt req` 一级命令，围绕 active project + linked repo 工作
+- [ ] `req init` 在目标 repo 中生成需求骨架，不把项目正文写入 `project-tracker`
+- [ ] `req index` 维护需求阶段索引页
+- [ ] `req check` 校验需求链路缺页、断链、当前有效结论
+- [ ] `req trace` 管理项目级需求到子项目目标/验证/结论的追溯矩阵
+- [ ] `req attach` 将关键需求文档批量挂接到项目任务
+- [ ] 项目 YAML 增加轻量 `requirements` 状态，供 `status/brief/prompt` 后续使用
+
 ### v3.0 — 多工具协同
 - [ ] `pt component <位号>` — 调用 opendatasheet 查询器件参数
 - [ ] `pt analyze <板名>` — 调用 hardware-copilot 拓扑/时序分析
