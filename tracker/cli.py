@@ -24,6 +24,7 @@ from .commands.who_cmd import cmd_who
 from .commands.update_cmd import cmd_update, cmd_find
 from .commands.hooks_cmd import cmd_hooks
 from .commands.domain_sync_cmd import cmd_domain_sync
+from .commands.req_cmd import cmd_req
 
 
 def main():
@@ -230,6 +231,24 @@ def main():
     p_docs.add_argument("--push", action="store_true", help="同步后自动 git commit + push")
     p_docs.add_argument("--load", help="从仓库加载项目 (仓库路径)")
 
+    # ── Requirements ──
+    p_req = sub.add_parser("req", help="需求体系管理")
+    req_sub = p_req.add_subparsers(dest="req_command")
+
+    p_req_init = req_sub.add_parser("init", help="生成需求骨架")
+    p_req_init.add_argument("--profile", default="hardware-platform", help="需求模板 profile")
+    p_req_init.add_argument("--root", default="01_需求阶段_Requirements", help="需求根目录（相对于仓库根）")
+    p_req_init.add_argument("--subprojects", help="子项目列表，逗号分隔，如 CAMRX,DCURX")
+    p_req_init.add_argument("--dry-run", action="store_true", help="试运行，不写文件")
+
+    p_req_index = req_sub.add_parser("index", help="重建需求索引页")
+    p_req_index.add_argument("--dry-run", action="store_true", help="试运行，不写文件")
+
+    p_req_check = req_sub.add_parser("check", help="校验需求链路")
+    p_req_check.add_argument("--strict", action="store_true", help="启用 Markdown 链接断链校验")
+    p_req_check.add_argument("--json", action="store_true", help="JSON 输出")
+    p_req_check.add_argument("--no-save", action="store_true", help="不写回项目中的最后校验状态")
+
     # ── 方案推荐 ──
     p_propose = sub.add_parser("propose", aliases=["pp"], help="基于 review 回复生成方案推荐 prompt")
     p_propose.add_argument("--full", action="store_true", help="完整输出（方便复制）")
@@ -357,6 +376,7 @@ def main():
         "conflict": cmd_conflict, "cf": cmd_conflict,
         "prompt": cmd_prompt,
         "docs": cmd_docs,
+        "req": cmd_req,
         "propose": cmd_propose, "pp": cmd_propose,
         "scan": cmd_scan,
         "gate": cmd_gate,

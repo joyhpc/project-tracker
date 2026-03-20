@@ -52,6 +52,11 @@ pt gantt                       # Mermaid Gantt 图
 pt deps                        # 依赖图
 pt burndown                    # 燃尽图
 pt export nodes                # CSV 导出
+
+# 需求体系（v2.7）
+pt req init --subprojects CAMRX,DCURX
+pt req index
+pt req check --strict
 ```
 
 ## 项目结构

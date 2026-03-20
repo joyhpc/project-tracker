@@ -46,6 +46,7 @@ from .project_validation import (
     validate_project as _project_validation_validate_project,
     validate_project_schema as _project_validation_validate_project_schema,
 )
+from . import requirements as _requirements
 
 
 # ── 数据格式工具 ──────────────────────────────────────
@@ -1542,6 +1543,101 @@ def set_repo(project_id: str, repo_path: str):
     p["log"].append({"time": _now(), "action": "repo_link", "detail": f"关联仓库: {rp}"})
     _save(p)
     return str(rp)
+
+
+def init_requirements(
+    project_id: str,
+    *,
+    profile: str = _requirements.DEFAULT_PROFILE,
+    root: str = _requirements.DEFAULT_ROOT,
+    subprojects: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    repo = get_repo_path(p)
+    if not repo:
+        raise ValueError("项目未关联仓库。使用: pt docs --link <path>")
+
+    existing = (p.get("requirements", {}) or {}).get("subprojects", [])
+    normalized_subprojects = _requirements.normalize_subprojects(subprojects, existing=existing)
+    result = _requirements.init_requirements(
+        p,
+        repo,
+        profile=profile,
+        root=root,
+        subprojects=normalized_subprojects,
+        dry_run=dry_run,
+    )
+
+    if not dry_run:
+        p["requirements"] = {
+            "profile": profile,
+            "root": root,
+            "subprojects": normalized_subprojects,
+            "generated_at": _now(),
+        }
+        p["log"].append({
+            "time": _now(),
+            "action": "requirements_init",
+            "detail": f"requirements init: profile={profile}, root={root}, created={len(result['created'])}",
+        })
+        _save(p)
+    return result
+
+
+def rebuild_requirements_indexes(project_id: str, *, dry_run: bool = False) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    repo = get_repo_path(p)
+    if not repo:
+        raise ValueError("项目未关联仓库。使用: pt docs --link <path>")
+
+    req_state = p.get("requirements", {}) or {}
+    root = req_state.get("root", _requirements.DEFAULT_ROOT)
+    subprojects = _requirements.normalize_subprojects(None, req_state.get("subprojects", []))
+    result = _requirements.rebuild_indexes(p, repo, root=root, subprojects=subprojects, dry_run=dry_run)
+
+    if not dry_run:
+        req_state["root"] = root
+        req_state["profile"] = req_state.get("profile", _requirements.DEFAULT_PROFILE)
+        req_state["subprojects"] = subprojects
+        req_state["indexed_at"] = _now()
+        p["requirements"] = req_state
+        p["log"].append({
+            "time": _now(),
+            "action": "requirements_index",
+            "detail": f"requirements index: root={root}, written={len(result['created']) + len(result['updated'])}",
+        })
+        _save(p)
+    return result
+
+
+def check_requirements(project_id: str, *, strict: bool = False, save: bool = True) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    repo = get_repo_path(p)
+    if not repo:
+        raise ValueError("项目未关联仓库。使用: pt docs --link <path>")
+
+    result = _requirements.check_requirements(p, repo, strict=strict)
+    if save:
+        req_state = p.get("requirements", {}) or {}
+        req_state["profile"] = req_state.get("profile", _requirements.DEFAULT_PROFILE)
+        req_state["root"] = req_state.get("root", _requirements.DEFAULT_ROOT)
+        req_state["last_checked_at"] = _now()
+        req_state["last_check_status"] = "pass" if result["valid"] else "fail"
+        p["requirements"] = req_state
+        p["log"].append({
+            "time": _now(),
+            "action": "requirements_check",
+            "detail": f"requirements check: status={req_state['last_check_status']}, strict={strict}",
+        })
+        _save(p)
+    return result
 
 
 def attach_doc(project_id: str, task_id: str, file_path: str, description: str = ""):
