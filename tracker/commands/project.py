@@ -89,10 +89,12 @@ def cmd_status(args):
             print(
                 f"   ❌ [{entry['task_id']}] {entry['name']} | status={entry.get('status')} | issues={entry.get('issue_count')}"
             )
-            if entry.get("close_mode") or entry.get("formal_object"):
+            if entry.get("close_mode") or entry.get("formal_object_id"):
                 print(
-                    f"      mode={entry.get('close_mode') or '-'} | formal={entry.get('formal_object') or '-'}"
+                    f"      mode={entry.get('close_mode') or '-'} | formal={entry.get('formal_object_id') or '-'}"
                 )
+            if entry.get("docs_anchor"):
+                print(f"      anchor={entry.get('docs_anchor')}")
             if entry.get("top_issues"):
                 print("      缺少/问题: " + " | ".join(entry["top_issues"]))
         if len(invalid_entries) > 5:

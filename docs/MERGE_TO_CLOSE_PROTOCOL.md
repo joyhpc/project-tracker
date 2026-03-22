@@ -107,16 +107,18 @@
 
 对应当前 CLI / YAML 结构，至少应映射为：
 
-- `formal_object`
-- `borrowed_object`
+- `conclusion`
+- `formal_object_id`
+- `sample_entity_id`
+- `protocol_object_id`
+- `borrowed_object_id`
 - `borrowed_purpose`
 - `scope`
-- `sample_id`
-- `protocol_object`
 - `firmware_version`
 - `fpga_version`
-- `evidence`
-- `docs_backwrite`
+- `docs_anchor`
+- `evidence_paths`
+- `docs_backwrite_path`
 - `close_mode`
 
 ## 工具落地点
@@ -133,16 +135,24 @@
 
 建议把以下字段写入任务节点的 `closure` 元数据：
 
-- `formal_object`
-- `borrowed_object`
+- `conclusion`
+- `formal_object_id`
+- `formal_object_class`
+- `sample_entity_id`
+- `protocol_object_id`
+- `protocol_object_class`
+- `borrowed_object_id`
+- `borrowed_object_class`
 - `borrowed_purpose`
 - `scope`
-- `sample_id`
-- `protocol_object`
 - `firmware_version`
 - `fpga_version`
-- `evidence`
-- `docs_backwrite`
+- `pcb_version`
+- `bom_version`
+- `docs_anchor`
+- `evidence_paths`
+- `docs_backwrite_path`
+- `need_human_check_fields`
 - `close_mode`
 
 ## 推荐命令示例
@@ -150,15 +160,18 @@
 ```bash
 pt close set edp_bringup \
   --require \
-  --formal-object DCURX_MAIN \
+  --conclusion "eDP 底层已跑通，但正式版本和样机实体仍待补齐" \
+  --formal-object-id DCURX_MAIN \
   --scope "DCURX eDP 底层链路" \
-  --sample-id SN-003 \
-  --protocol-object DCURX_TI984_DECODER \
-  --firmware-version STM32_v0.9.1 \
-  --fpga-version KU3P_bit_2026_03_22 \
-  --docs-backwrite "01_需求阶段_Requirements/.../DCURX_当前有效结论.md" \
+  --sample-entity-id NEED_HUMAN_CHECK \
+  --protocol-object-id DCURX_TI984_DECODER \
+  --firmware-version NEED_HUMAN_CHECK \
+  --fpga-version NEED_HUMAN_CHECK \
+  --docs-anchor A57.DCURX.EDP_OLDI.EXEC_V1_V2 \
+  --docs-backwrite-path "01_需求阶段_Requirements/.../DCURX_V1_V2_执行记录页.md" \
   --close-mode merged_fix \
-  --evidence "records/2026-03-22/edp_pass.md"
+  --evidence "records/2026-03-22/edp_pass.md" \
+  --need-human-check-fields sample_entity_id,firmware_version,fpga_version
 
 pt close check edp_bringup
 pt close list --invalid-only

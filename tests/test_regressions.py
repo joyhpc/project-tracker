@@ -171,15 +171,16 @@ class CoreRegressionTests(ProjectSandboxTestCase):
             "TMP",
             "bringup",
             updates={
-                "formal_object": "DCURX_MAIN",
+                "formal_object_id": "DCURX_MAIN",
                 "scope": "DCURX eDP",
-                "sample_id": "SN-01",
-                "protocol_object": "TI984_DECODER",
+                "sample_entity_id": "SN-01",
+                "protocol_object_id": "TI984_DECODER",
                 "firmware_version": "STM32_v0.9.1",
                 "fpga_version": "KU3P_2026_03_22",
-                "docs_backwrite": "docs_backwrite.md",
+                "docs_anchor": "A57.DCURX.EDP_OLDI.EXEC_V1_V2",
+                "docs_backwrite_path": "docs_backwrite.md",
                 "close_mode": "merged_fix",
-                "evidence": ["evidence.md"],
+                "evidence_paths": ["evidence.md"],
             },
             require=True,
         )
@@ -190,7 +191,8 @@ class CoreRegressionTests(ProjectSandboxTestCase):
         self.assertEqual(listed["required_count"], 1)
         self.assertEqual(listed["valid_count"], 1)
         shown = core.get_task_closure("TMP", "bringup")
-        self.assertEqual(shown["closure"]["formal_object"], "DCURX_MAIN")
+        self.assertEqual(shown["closure"]["formal_object_id"], "DCURX_MAIN")
+        self.assertEqual(shown["closure"]["docs_anchor"], "A57.DCURX.EDP_OLDI.EXEC_V1_V2")
 
 
 class CommandValidationTests(ProjectSandboxTestCase):
@@ -240,17 +242,30 @@ nodes:
         set_args = SimpleNamespace(
             close_command="set",
             task_id="bringup",
+            conclusion=None,
+            formal_object_id="DCURX_MAIN",
             formal_object="DCURX_MAIN",
+            formal_object_class=None,
+            borrowed_object_id=None,
             borrowed_object=None,
+            borrowed_object_class=None,
             borrowed_purpose=None,
             scope="DCURX eDP",
+            sample_entity_id="SN-01",
             sample_id="SN-01",
+            protocol_object_id="TI984_DECODER",
             protocol_object="TI984_DECODER",
+            protocol_object_class=None,
             firmware_version="STM32_v0.9.1",
             fpga_version="KU3P_2026_03_22",
+            pcb_version=None,
+            bom_version=None,
+            docs_anchor="A57.DCURX.EDP_OLDI.EXEC_V1_V2",
+            docs_backwrite_path="docs_backwrite.md",
             docs_backwrite="docs_backwrite.md",
             close_mode="merged_fix",
             evidence=["evidence.md"],
+            need_human_check_fields=None,
             clear=None,
             require=True,
             optional=False,
@@ -265,7 +280,8 @@ nodes:
             cmd_close(show_args)
 
         output = buffer.getvalue()
-        self.assertIn('"formal_object": "DCURX_MAIN"', output)
+        self.assertIn('"formal_object_id": "DCURX_MAIN"', output)
+        self.assertIn('"docs_anchor": "A57.DCURX.EDP_OLDI.EXEC_V1_V2"', output)
         self.assertIn('"required": true', output)
 
     def test_status_command_prints_close_gate_summary(self):
@@ -276,7 +292,7 @@ nodes:
             "TMP",
             "bringup",
             updates={
-                "formal_object": "DCURX_MAIN",
+                "formal_object_id": "DCURX_MAIN",
             },
             require=True,
         )

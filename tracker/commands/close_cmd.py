@@ -31,10 +31,14 @@ def _print_check(result: dict):
         print(f"   {issue_icon} {issue.get('message', issue)}")
     if result.get("valid") and result.get("required"):
         closure = result.get("closure", {})
-        print(f"   formal_object: {closure.get('formal_object')}")
-        if closure.get("borrowed_object"):
-            print(f"   borrowed_object: {closure.get('borrowed_object')}")
-        print(f"   docs_backwrite: {closure.get('docs_backwrite')}")
+        print(f"   formal_object_id: {closure.get('formal_object_id')}")
+        if closure.get("sample_entity_id"):
+            print(f"   sample_entity_id: {closure.get('sample_entity_id')}")
+        if closure.get("borrowed_object_id"):
+            print(f"   borrowed_object_id: {closure.get('borrowed_object_id')}")
+        if closure.get("docs_anchor"):
+            print(f"   docs_anchor: {closure.get('docs_anchor')}")
+        print(f"   docs_backwrite_path: {closure.get('docs_backwrite_path')}")
 
 
 def cmd_close(args):
@@ -60,14 +64,26 @@ def _set(args):
         project = core.require_active()
         updates = {}
         mappings = {
+            "conclusion": args.conclusion,
+            "formal_object_id": args.formal_object_id,
             "formal_object": args.formal_object,
+            "formal_object_class": args.formal_object_class,
+            "borrowed_object_id": args.borrowed_object_id,
             "borrowed_object": args.borrowed_object,
+            "borrowed_object_class": args.borrowed_object_class,
             "borrowed_purpose": args.borrowed_purpose,
             "scope": args.scope,
+            "sample_entity_id": args.sample_entity_id,
             "sample_id": args.sample_id,
+            "protocol_object_id": args.protocol_object_id,
             "protocol_object": args.protocol_object,
+            "protocol_object_class": args.protocol_object_class,
             "firmware_version": args.firmware_version,
             "fpga_version": args.fpga_version,
+            "pcb_version": args.pcb_version,
+            "bom_version": args.bom_version,
+            "docs_anchor": args.docs_anchor,
+            "docs_backwrite_path": args.docs_backwrite_path,
             "docs_backwrite": args.docs_backwrite,
             "close_mode": args.close_mode,
         }
@@ -76,7 +92,10 @@ def _set(args):
                 updates[key] = value
         evidence = _parse_evidence(args.evidence)
         if evidence:
-            updates["evidence"] = evidence
+            updates["evidence_paths"] = evidence
+        need_human_check_fields = _parse_evidence(getattr(args, "need_human_check_fields", None))
+        if need_human_check_fields:
+            updates["need_human_check_fields"] = need_human_check_fields
 
         require = None
         if getattr(args, "require", False):
@@ -125,21 +144,35 @@ def _show(args):
         closure = result.get("closure", {})
         if closure:
             for key in (
+                "conclusion",
+                "formal_object_id",
                 "formal_object",
+                "formal_object_class",
+                "sample_entity_id",
+                "protocol_object_id",
+                "protocol_object_class",
+                "borrowed_object_id",
                 "borrowed_object",
+                "borrowed_object_class",
                 "borrowed_purpose",
                 "scope",
                 "sample_id",
                 "protocol_object",
                 "firmware_version",
                 "fpga_version",
+                "pcb_version",
+                "bom_version",
+                "docs_anchor",
+                "docs_backwrite_path",
                 "docs_backwrite",
                 "close_mode",
             ):
                 if key in closure:
                     print(f"   {key}: {closure.get(key)}")
-            if closure.get("evidence"):
-                print("   evidence: " + ", ".join(closure["evidence"]))
+            if closure.get("evidence_paths"):
+                print("   evidence_paths: " + ", ".join(closure["evidence_paths"]))
+            if closure.get("need_human_check_fields"):
+                print("   need_human_check_fields: " + ", ".join(closure["need_human_check_fields"]))
         else:
             print("   closure: {}")
         _print_check(result["check"])
@@ -176,10 +209,16 @@ def _list(args):
         )
         if entry.get("close_mode"):
             print(f"      close_mode: {entry['close_mode']}")
-        if entry.get("formal_object"):
-            print(f"      formal_object: {entry['formal_object']}")
-        if entry.get("docs_backwrite"):
-            print(f"      docs_backwrite: {entry['docs_backwrite']}")
+        if entry.get("formal_object_id"):
+            print(f"      formal_object_id: {entry['formal_object_id']}")
+        if entry.get("sample_entity_id"):
+            print(f"      sample_entity_id: {entry['sample_entity_id']}")
+        if entry.get("protocol_object_id"):
+            print(f"      protocol_object_id: {entry['protocol_object_id']}")
+        if entry.get("docs_anchor"):
+            print(f"      docs_anchor: {entry['docs_anchor']}")
+        if entry.get("docs_backwrite_path"):
+            print(f"      docs_backwrite_path: {entry['docs_backwrite_path']}")
         if entry.get("top_issues"):
             print("      top_issues: " + " | ".join(entry["top_issues"]))
 
