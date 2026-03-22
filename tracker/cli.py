@@ -25,6 +25,7 @@ from .commands.update_cmd import cmd_update, cmd_find
 from .commands.hooks_cmd import cmd_hooks
 from .commands.domain_sync_cmd import cmd_domain_sync
 from .commands.req_cmd import cmd_req
+from .commands.close_cmd import cmd_close_check
 
 
 def main():
@@ -254,6 +255,10 @@ def main():
     p_req_check.add_argument("--json", action="store_true", help="JSON 输出")
     p_req_check.add_argument("--no-save", action="store_true", help="不写回项目中的最后校验状态")
 
+    p_close = sub.add_parser("close-check", help="检查 Merge-to-Close 正式关闭门禁")
+    p_close.add_argument("task_id", help="任务ID")
+    p_close.add_argument("--json", action="store_true", help="JSON 输出")
+
     # ── 方案推荐 ──
     p_propose = sub.add_parser("propose", aliases=["pp"], help="基于 review 回复生成方案推荐 prompt")
     p_propose.add_argument("--full", action="store_true", help="完整输出（方便复制）")
@@ -382,6 +387,7 @@ def main():
         "prompt": cmd_prompt,
         "docs": cmd_docs,
         "req": cmd_req,
+        "close-check": cmd_close_check,
         "propose": cmd_propose, "pp": cmd_propose,
         "scan": cmd_scan,
         "gate": cmd_gate,

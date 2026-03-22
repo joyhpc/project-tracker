@@ -28,6 +28,7 @@ TRACE_MATRIX_COLUMNS = [
     "当前结论",
 ]
 APP_MATRIX_COLUMNS = ["应用目标ID", "应用场景", "用户价值", "平台能力", "约束/风险", "当前结论"]
+APP_MATRIX_ALT_COLUMNS = ["目标ID", "目标名称", "为什么重要", "当前状态"]
 VALID_DOC_STATUSES = {"Draft", "Reviewing", "Active", "Frozen", "Obsoleted"}
 REQUIRED_DOC_METADATA = ("pt_role", "id", "version", "status", "baseline")
 
@@ -612,6 +613,22 @@ def _check_required_columns(path: Path, columns: list[str], issue_type: str) -> 
     }]
 
 
+def _check_any_required_columns(path: Path, column_sets: list[list[str]], issue_type: str) -> list[dict]:
+    if not path.exists():
+        return []
+    content = path.read_text(encoding="utf-8")
+    for columns in column_sets:
+        if all(column in content for column in columns):
+            return []
+    expected = " 或 ".join("[" + ", ".join(columns) + "]" for columns in column_sets)
+    return [{
+        "type": issue_type,
+        "severity": "error",
+        "file": str(path.name),
+        "message": f"{path.name} 缺少必需列组合，至少应满足: {expected}",
+    }]
+
+
 def _as_list(value) -> list[str]:
     if value in (None, ""):
         return []
@@ -856,7 +873,13 @@ def check_requirements(project: dict, repo: Path, *, strict: bool = False) -> di
         key = _binding_key("req_app_goal_matrix", subproject["name"])
         binding = bindings.get(key)
         if binding:
-            issues.extend(_check_required_columns(repo / binding["path"], APP_MATRIX_COLUMNS, "app_matrix_missing_columns"))
+            issues.extend(
+                _check_any_required_columns(
+                    repo / binding["path"],
+                    [APP_MATRIX_COLUMNS, APP_MATRIX_ALT_COLUMNS],
+                    "app_matrix_missing_columns",
+                )
+            )
 
     if strict:
         issues.extend(_check_link_targets(root_dir))

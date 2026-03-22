@@ -200,6 +200,27 @@ class RequirementsTests(RequirementsSandboxTestCase):
         self.assertEqual(project["requirements"]["last_trace_rows"], result["summary"]["rows"])
         self.assertIn("last_traced_at", project["requirements"])
 
+    def test_check_requirements_accepts_alternative_app_matrix_columns(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57", subprojects=["CAMRX"])
+
+        app_goal = repo / "01_需求阶段_Requirements" / "01_CAMRX" / "CAMRX_应用目标矩阵.md"
+        content = app_goal.read_text(encoding="utf-8")
+        header, body = content[4:].split("\n---\n", 1)
+        replacement = (
+            "# CAMRX 应用目标矩阵\n\n"
+            "| 目标ID | 目标名称 | 为什么重要 | 当前状态 |\n"
+            "|---|---|---|---|\n"
+            "| G-01 | 场景覆盖能力 | important | 部分明确 |\n"
+        )
+        app_goal.write_text("---\n" + header + "\n---\n" + replacement, encoding="utf-8")
+
+        result = core.check_requirements("A57", save=False)
+
+        self.assertTrue(result["valid"], result["issues"])
+
 
 if __name__ == "__main__":
     unittest.main()

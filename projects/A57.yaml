@@ -2,7 +2,15 @@ id: A57
 name: A57 域控测试盒
 flow: duxin
 created: 2026-02-24 22:52
-repo: /tmp/A57-docs
+repo: /home/ubuntu/A57-docs
+requirements:
+  profile: hardware-platform
+  root: 01_需求阶段_Requirements
+  subprojects:
+  - name: CAMRX
+    dir: 01_CAMRX
+  - name: DCURX
+    dir: 02_DCURX
 phases:
 - id: REQ
   name: 需求阶段

@@ -104,6 +104,24 @@
 - `A57-docs` 回写路径：
 - 回写提交或版本标识：
 
+## 工具落地点
+
+当前建议通过 `pt close-check <task_id>` 先执行机器校验，再允许相关事项进入关闭判断。
+
+建议把以下字段写入任务节点的 `closure` 元数据：
+
+- `formal_object`
+- `borrowed_object`
+- `borrowed_purpose`
+- `scope`
+- `sample_id`
+- `protocol_object`
+- `firmware_version`
+- `fpga_version`
+- `evidence`
+- `docs_backwrite`
+- `close_mode`
+
 ## 与多 Repo 协议的关系
 
 本协议是 [`A57_MULTI_REPO_COLLAB_PROTOCOL.md`](./A57_MULTI_REPO_COLLAB_PROTOCOL.md) 的强制执行补充。

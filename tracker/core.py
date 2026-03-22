@@ -47,6 +47,7 @@ from .project_validation import (
     validate_project_schema as _project_validation_validate_project_schema,
 )
 from . import requirements as _requirements
+from . import close_gate as _close_gate
 
 
 # ── 数据格式工具 ──────────────────────────────────────
@@ -1682,6 +1683,13 @@ def trace_requirements(project_id: str, *, dry_run: bool = False, save: bool = T
         })
         _save(p)
     return result
+
+
+def check_close_gate(project_id: str, task_id: str) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    return _close_gate.check_close_gate(p, task_id)
 
 
 def attach_doc(project_id: str, task_id: str, file_path: str, description: str = ""):

@@ -4,6 +4,7 @@ import re
 import sys
 from pathlib import Path
 from .. import core
+from ..close_gate import node_requires_close_gate
 from ..engine import analyze, compute_cpm
 from . import _icon, _require
 
@@ -165,6 +166,17 @@ def cmd_done(args):
                     print(f"     - {r['file']}")
                 print(f"  使用 pt review --approve <file> 审核，或 --force 强制完成")
                 if not force:
+                    if len(task_ids) == 1:
+                        sys.exit(1)
+                    continue
+
+            if node and not force and node_requires_close_gate(node):
+                close_result = core.check_close_gate(p["id"], task_id)
+                if not close_result.get("valid"):
+                    print(f"⛔ Merge-to-Close 门禁不通过: [{task_id}]")
+                    for issue in close_result.get("issues", []):
+                        print(f"   - {issue.get('message')}")
+                    print(f"   运行 pt close-check {task_id} 查看详情，或 --force 强制完成")
                     if len(task_ids) == 1:
                         sys.exit(1)
                     continue
