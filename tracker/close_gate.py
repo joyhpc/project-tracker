@@ -130,6 +130,73 @@ def normalize_closure_view(closure: dict | None) -> dict:
     return view
 
 
+def summarize_human_fields(closure: dict | None, issues: list[dict] | None = None) -> list[str]:
+    normalized = normalize_closure_view(closure)
+    fields: list[str] = []
+    for field in normalized.get("need_human_check_fields", []):
+        if isinstance(field, str) and field.strip():
+            fields.append(field.strip())
+
+    for field in REQUIRED_CLOSE_FIELDS:
+        value = normalized.get(field)
+        if isinstance(value, str):
+            if not value.strip() or value.strip() == NEED_HUMAN_CHECK:
+                fields.append(field)
+        elif value in (None, []):
+            fields.append(field)
+
+    evidence_paths = normalized.get("evidence_paths", [])
+    if not evidence_paths or any(str(item).strip() == NEED_HUMAN_CHECK for item in evidence_paths):
+        fields.append("evidence_paths")
+
+    borrowed_object_id = str(normalized.get("borrowed_object_id", "")).strip()
+    if borrowed_object_id and not str(normalized.get("borrowed_purpose", "")).strip():
+        fields.append("borrowed_purpose")
+
+    for issue in issues or []:
+        field = issue.get("field")
+        if isinstance(field, str) and field.strip():
+            fields.append(field.strip())
+
+    result = []
+    seen = set()
+    for field in fields:
+        if field not in seen:
+            seen.add(field)
+            result.append(field)
+    return result
+
+
+def build_human_closure_template(project: dict, task_id: str) -> dict:
+    node = _find_node_in_project(project, task_id)
+    if not node:
+        raise ValueError(f"任务不存在: {task_id}")
+
+    result = check_close_gate(project, task_id)
+    closure = result.get("closure", {}) or {}
+    fields = summarize_human_fields(closure, result.get("issues", []))
+    values = {}
+    for field in fields:
+        current = closure.get(field)
+        if current in (None, ""):
+            values[field] = "" if field != "evidence_paths" else []
+        else:
+            values[field] = current
+
+    return {
+        "task_id": task_id,
+        "name": node.get("name", task_id),
+        "required": result.get("required", False),
+        "valid": result.get("valid", False),
+        "docs_anchor": closure.get("docs_anchor", ""),
+        "docs_backwrite_path": closure.get("docs_backwrite_path", ""),
+        "fields": fields,
+        "values": values,
+        "closure": closure,
+        "issues": result.get("issues", []),
+    }
+
+
 def validate_closure_schema(node: dict) -> list[dict]:
     issues: list[dict] = []
     node_id = node.get("id", "?")
@@ -298,6 +365,7 @@ def summarize_close_gates(project: dict) -> dict:
             "docs_backwrite_path": closure.get("docs_backwrite_path", ""),
             "docs_backwrite": closure.get("docs_backwrite_path", ""),
             "close_mode": closure.get("close_mode", ""),
+            "need_human_fields": summarize_human_fields(closure, result.get("issues", [])),
             "top_issues": [issue.get("message", "") for issue in result.get("issues", [])[:3]],
         })
     invalid = [entry for entry in entries if not entry["valid"]]

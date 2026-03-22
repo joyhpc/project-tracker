@@ -48,10 +48,12 @@ def cmd_close(args):
         _show(args)
     elif args.close_command == "list":
         _list(args)
+    elif args.close_command == "human":
+        _human(args)
     elif args.close_command == "check":
         _check(args)
     else:
-        print("❌ close 需要子命令：set / show / list / check")
+        print("❌ close 需要子命令：set / show / list / human / check")
         sys.exit(1)
 
 
@@ -171,8 +173,11 @@ def _show(args):
                     print(f"   {key}: {closure.get(key)}")
             if closure.get("evidence_paths"):
                 print("   evidence_paths: " + ", ".join(closure["evidence_paths"]))
-            if closure.get("need_human_check_fields"):
-                print("   need_human_check_fields: " + ", ".join(closure["need_human_check_fields"]))
+        if closure.get("need_human_check_fields"):
+            print("   need_human_check_fields: " + ", ".join(closure["need_human_check_fields"]))
+        human_fields = result.get("check", {}).get("closure", {}).get("need_human_check_fields", [])
+        if human_fields:
+            print("   human_fields: " + ", ".join(human_fields))
         else:
             print("   closure: {}")
         _print_check(result["check"])
@@ -219,8 +224,45 @@ def _list(args):
             print(f"      docs_anchor: {entry['docs_anchor']}")
         if entry.get("docs_backwrite_path"):
             print(f"      docs_backwrite_path: {entry['docs_backwrite_path']}")
+        if entry.get("need_human_fields"):
+            print("      need_human_fields: " + ", ".join(entry["need_human_fields"]))
         if entry.get("top_issues"):
             print("      top_issues: " + " | ".join(entry["top_issues"]))
+
+
+def _human(args):
+    try:
+        project = core.require_active()
+        result = core.get_close_human_template(project["id"], args.task_id)
+    except (RuntimeError, ValueError) as exc:
+        print(f"❌ {exc}")
+        sys.exit(1)
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    print(f"🧩 close human | task={args.task_id} | valid={'yes' if result.get('valid') else 'no'}")
+    if result.get("docs_anchor"):
+        print(f"   docs_anchor: {result['docs_anchor']}")
+    if result.get("docs_backwrite_path"):
+        print(f"   docs_backwrite_path: {result['docs_backwrite_path']}")
+    fields = result.get("fields", [])
+    if not fields:
+        print("   无需人工补充字段")
+        return
+    print("   need:")
+    for field in fields:
+        print(f"   - {field}")
+    print("   template:")
+    for field in fields:
+        value = result.get("values", {}).get(field, "")
+        if isinstance(value, list):
+            print(f"   {field}:")
+            for item in value or [""]:
+                print(f"     - {item}")
+        else:
+            print(f"   {field}: {value}")
 
 
 def _check(args):

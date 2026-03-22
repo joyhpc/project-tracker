@@ -95,6 +95,8 @@ def cmd_status(args):
                 )
             if entry.get("docs_anchor"):
                 print(f"      anchor={entry.get('docs_anchor')}")
+            if entry.get("need_human_fields"):
+                print("      human=" + ", ".join(entry["need_human_fields"]))
             if entry.get("top_issues"):
                 print("      缺少/问题: " + " | ".join(entry["top_issues"]))
         if len(invalid_entries) > 5:

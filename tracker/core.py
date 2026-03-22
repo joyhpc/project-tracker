@@ -1716,6 +1716,13 @@ def list_close_gates(project_id: str) -> dict:
     return _close_gate.summarize_close_gates(p)
 
 
+def get_close_human_template(project_id: str, task_id: str) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    return _close_gate.build_human_closure_template(p, task_id)
+
+
 def update_task_closure(
     project_id: str,
     task_id: str,

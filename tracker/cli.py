@@ -301,6 +301,10 @@ def main():
     p_close_list.add_argument("--invalid-only", action="store_true", help="仅显示未通过门禁的任务")
     p_close_list.add_argument("--json", action="store_true", help="JSON 输出")
 
+    p_close_human = close_sub.add_parser("human", help="输出单任务最短人工补充模板")
+    p_close_human.add_argument("task_id", help="任务ID")
+    p_close_human.add_argument("--json", action="store_true", help="JSON 输出")
+
     p_close_check = close_sub.add_parser("check", help="检查单任务 close gate")
     p_close_check.add_argument("task_id", help="任务ID")
     p_close_check.add_argument("--json", action="store_true", help="JSON 输出")

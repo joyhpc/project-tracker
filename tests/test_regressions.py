@@ -304,6 +304,43 @@ nodes:
 
         self.assertIn("Merge-to-Close", output)
         self.assertIn("[bringup]", output)
+        self.assertIn("human=", output)
+
+    def test_close_command_human_outputs_minimal_template(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        (repo / "docs_backwrite.md").write_text("# doc\n", encoding="utf-8")
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+
+        core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "formal_object_id": "DCURX_MAIN",
+                "scope": "DCURX 控制平面",
+                "sample_entity_id": "NEED_HUMAN_CHECK",
+                "protocol_object_id": "NA",
+                "firmware_version": "NEED_HUMAN_CHECK",
+                "fpga_version": "NEED_HUMAN_CHECK",
+                "docs_anchor": "A57.DCURX.CONTROL_PLANE.GONOGO",
+                "docs_backwrite_path": "docs_backwrite.md",
+                "close_mode": "merged_fix",
+                "evidence_paths": ["NEED_HUMAN_CHECK"],
+                "need_human_check_fields": ["sample_entity_id", "firmware_version", "fpga_version", "evidence_paths"],
+            },
+            require=True,
+        )
+
+        human_args = SimpleNamespace(close_command="human", task_id="bringup", json=False)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cmd_close(human_args)
+        output = buffer.getvalue()
+
+        self.assertIn("close human", output)
+        self.assertIn("sample_entity_id", output)
+        self.assertIn("firmware_version", output)
+        self.assertIn("evidence_paths", output)
 
     def test_review_select_action_rejects_multiple_flags(self):
         args = SimpleNamespace(add="a.md", approve=None, report=None, analyze=True, list=False)
