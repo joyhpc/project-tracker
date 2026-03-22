@@ -10,6 +10,14 @@
 - `pt` 的调用模型以 `active project + linked repo` 为中心；命令可在任意目录执行，但操作对象必须是被管理项目，而不是 `project-tracker` 目录。
 - 若某个项目需要“第一性原理需求 -> 追溯矩阵 -> 基线 -> 执行记录 -> 放行结论”链路，`pt` 应提供骨架和自动化支持，正式文档仍写入目标项目 repo。
 - 多个子项目可以共享方法，不共享正式设计文件。工具层禁止把 CAMRX、DCURX 等子项目的正文设计文件混放在 `project-tracker` 内长期维护。
+- A57 类硬件项目的多仓职责边界以 `docs/A57_MULTI_REPO_COLLAB_PROTOCOL.md` 为准；过程闭环门禁以 `docs/MERGE_TO_CLOSE_PROTOCOL.md` 为准。
+
+## Merge-to-Close 门禁
+
+- 对“能力成立、验证跑通、设计决策完成、范围冻结、基线更新”这类事项，`project-tracker` 不得只凭过程讨论直接关闭。
+- 相关结论必须先回写目标项目 repo 的正式文档，再允许在本仓库关闭对应事项。
+- 若某事项尚未绑定正式对象、借用对象、适用范围或证据锚点，应保持为进行中或待确认状态，不得伪装成已闭环。
+- 对审核或验证问题，合法关闭方式只包括 `Merged Fix` 或 `Merged Waiver / Accepted Risk`。
 
 ## 推荐落地方式
 - 在 `pt init ... --repo <path>` 或 `pt docs --link <path>` 后，对关联 repo 执行方法生成、文档挂接、索引和同步。
