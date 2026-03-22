@@ -305,6 +305,11 @@ def main():
     p_close_human.add_argument("task_id", help="任务ID")
     p_close_human.add_argument("--json", action="store_true", help="JSON 输出")
 
+    p_close_report = close_sub.add_parser("report", help="输出当前项目 close gate 未闭环总表")
+    p_close_report.add_argument("--invalid-only", action="store_true", help="仅输出未通过门禁的任务")
+    p_close_report.add_argument("--json", action="store_true", help="JSON 输出")
+    p_close_report.add_argument("--save", help="保存 Markdown 报告到指定路径")
+
     p_close_check = close_sub.add_parser("check", help="检查单任务 close gate")
     p_close_check.add_argument("task_id", help="任务ID")
     p_close_check.add_argument("--json", action="store_true", help="JSON 输出")

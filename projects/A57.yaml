@@ -1194,6 +1194,34 @@ nodes:
   created: 2026-02-25 11:34
   depends:
   - fpga_dev.mipi_3g5_verify.si_test
+  close_required: true
+  closure:
+    conclusion: 'CAMRX 3.5Gbps/Lane 当前作为正式基线继续推进，但第一轮正式 Go/No-Go 判定仍缺样机实体、协议板对象、固件版本、KU3P 版本和证据路径，因此当前只能维持“基线继续推进、验证未闭环”的项目口径。'
+    formal_object_id: CAMRX_MAIN
+    formal_object_class: MAIN_BOARD
+    sample_entity_id: NEED_HUMAN_CHECK
+    protocol_object_id: A39_BRG
+    protocol_object_class: BRIDGE_BOARD
+    borrowed_object_id: DCURX_MAIN
+    borrowed_object_class: BORROWED_MAIN_BOARD
+    borrowed_purpose: 用于在 CAMRX 主板未完成前先验证 3.5Gbps/Lane MIPI D-PHY 可行性
+    scope: CAMRX 3.5Gbps/Lane GO/NO-GO 判定
+    firmware_version: NEED_HUMAN_CHECK
+    fpga_version: NEED_HUMAN_CHECK
+    pcb_version: NEED_HUMAN_CHECK
+    bom_version: NEED_HUMAN_CHECK
+    docs_anchor: A57.CAMRX.HS_3P5G.CURRENT
+    docs_backwrite_path: 01_需求阶段_Requirements/00_项目级需求_Project_Level/CAMRX_3.5Gbps_当前有效结论页.md
+    close_mode: merged_fix
+    evidence_paths:
+    - NEED_HUMAN_CHECK
+    need_human_check_fields:
+    - sample_entity_id
+    - firmware_version
+    - fpga_version
+    - pcb_version
+    - bom_version
+    - evidence_paths
 - id: camrx_schematic
   name: CAMRX 原理图合并与检查
   phase: DETAIL
@@ -1284,6 +1312,31 @@ nodes:
   - dcurx_fmc_ecn
   deliverables:
   - DCURX联调报告
+  close_required: true
+  closure:
+    conclusion: DCURX eDP / OLDI 当前已存在底层跑通事实，但正式集成闭环仍缺样机实体、协议板对象、固件版本、KU3P 版本和原始证据路径，因此当前只能记为“正式对象上的局部成立事实”，不能上升为联调已正式通过。
+    formal_object_id: DCURX_MAIN
+    formal_object_class: MAIN_BOARD
+    sample_entity_id: NEED_HUMAN_CHECK
+    protocol_object_id: NEED_HUMAN_CHECK
+    protocol_object_class: DECODER_BOARD
+    scope: DCURX 正式对象 eDP / OLDI 软硬件联调
+    firmware_version: NEED_HUMAN_CHECK
+    fpga_version: NEED_HUMAN_CHECK
+    pcb_version: A57_DCURX_MAIN_V1_0
+    bom_version: NEED_HUMAN_CHECK
+    docs_anchor: A57.DCURX.EDP_OLDI.EXEC_V1_V2
+    docs_backwrite_path: 01_需求阶段_Requirements/00_项目级需求_Project_Level/DCURX_V1_V2_执行记录页.md
+    close_mode: merged_fix
+    evidence_paths:
+    - NEED_HUMAN_CHECK
+    need_human_check_fields:
+    - sample_entity_id
+    - protocol_object_id
+    - firmware_version
+    - fpga_version
+    - bom_version
+    - evidence_paths
 - id: camrx_integration
   name: CAMRX 软硬件联调
   phase: INTEG
@@ -1296,6 +1349,31 @@ nodes:
   - mcu_review
   deliverables:
   - CAMRX联调报告
+  close_required: true
+  closure:
+    conclusion: CAMRX 软硬件联调是正式对象闭环出口之一，但在 3.5Gbps/Lane 专项的样机、版本和证据全部绑定前，不得视为正式通过。
+    formal_object_id: CAMRX_MAIN
+    formal_object_class: MAIN_BOARD
+    sample_entity_id: NEED_HUMAN_CHECK
+    protocol_object_id: A39_BRG
+    protocol_object_class: BRIDGE_BOARD
+    scope: CAMRX 正式对象软硬件联调
+    firmware_version: NEED_HUMAN_CHECK
+    fpga_version: NEED_HUMAN_CHECK
+    pcb_version: NEED_HUMAN_CHECK
+    bom_version: NEED_HUMAN_CHECK
+    docs_anchor: A57.CAMRX.HS_3P5G.EXEC_V1_V2
+    docs_backwrite_path: 01_需求阶段_Requirements/00_项目级需求_Project_Level/CAMRX_V1_V2_执行记录页.md
+    close_mode: merged_fix
+    evidence_paths:
+    - NEED_HUMAN_CHECK
+    need_human_check_fields:
+    - sample_entity_id
+    - firmware_version
+    - fpga_version
+    - pcb_version
+    - bom_version
+    - evidence_paths
 - id: camrx_sch_base
   name: CAMRX 原理图-基础部分(电源/控制/DDR/时钟)
   phase: DETAIL
@@ -1428,6 +1506,34 @@ nodes:
   owner: 硬件工程师
   note: KU3P与STM32H745IIK6通信由QSPI改FMC
   started: 2026-03-12 17:10
+  close_required: true
+  closure:
+    conclusion: FMC 当前仅作为 DCURX 控制平面的并行验证与对照路线，不替代连续 QSPI 的长期正式口径；正式关闭前必须补齐验证对象、样机、版本和证据。
+    formal_object_id: DCURX_MAIN
+    formal_object_class: MAIN_BOARD
+    sample_entity_id: NEED_HUMAN_CHECK
+    protocol_object_id: NA
+    protocol_object_class: NA
+    borrowed_object_id: NEED_HUMAN_CHECK
+    borrowed_object_class: BORROWED_VALIDATION_PLATFORM
+    borrowed_purpose: FMC 并行验证与风险对照，不替代 DCURX 正式控制平面路线
+    scope: DCURX 控制平面并行 FMC 验证与 ECN 分账
+    firmware_version: NEED_HUMAN_CHECK
+    fpga_version: NEED_HUMAN_CHECK
+    pcb_version: A57_DCURX_MAIN_V1_0
+    bom_version: NEED_HUMAN_CHECK
+    docs_anchor: A57.DCURX.CONTROL_PLANE.GONOGO
+    docs_backwrite_path: 01_需求阶段_Requirements/00_项目级需求_Project_Level/DCURX_控制平面Go_No-Go执行记录页.md
+    close_mode: merged_fix
+    evidence_paths:
+    - NEED_HUMAN_CHECK
+    need_human_check_fields:
+    - sample_entity_id
+    - borrowed_object_id
+    - firmware_version
+    - fpga_version
+    - bom_version
+    - evidence_paths
 blockers: []
 log:
 - time: 2026-02-24 22:52

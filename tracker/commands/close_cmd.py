@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 from .. import core
@@ -50,10 +51,12 @@ def cmd_close(args):
         _list(args)
     elif args.close_command == "human":
         _human(args)
+    elif args.close_command == "report":
+        _report(args)
     elif args.close_command == "check":
         _check(args)
     else:
-        print("❌ close 需要子命令：set / show / list / human / check")
+        print("❌ close 需要子命令：set / show / list / human / report / check")
         sys.exit(1)
 
 
@@ -263,6 +266,105 @@ def _human(args):
                 print(f"     - {item}")
         else:
             print(f"   {field}: {value}")
+
+
+def _render_report_markdown(project: dict, entries: list[dict], templates: dict[str, dict]) -> str:
+    lines = []
+    lines.append("# Close Gate 未闭环总表")
+    lines.append("")
+    lines.append(f"> 项目: `{project['name']}` / `{project['id']}`")
+    lines.append("> 文档性质: 自动生成")
+    lines.append("> 目的: 汇总当前所有未通过 Merge-to-Close 的任务、缺失字段和正式回写落点")
+    lines.append("")
+    if not entries:
+        lines.append("> 当前没有未闭环任务。")
+        lines.append("")
+        return "\n".join(lines)
+
+    lines.append("## 1. 汇总")
+    lines.append("")
+    lines.append("| 任务 | 状态 | Docs Anchor | 回写路径 | 人工待补字段 |")
+    lines.append("|---|---|---|---|---|")
+    for entry in entries:
+        human_fields = templates.get(entry["task_id"], {}).get("fields", [])
+        lines.append(
+            f"| `{entry['task_id']}` {entry['name']} | `{entry.get('status')}` | `{entry.get('docs_anchor') or '-'}` | `{entry.get('docs_backwrite_path') or '-'}` | `{', '.join(human_fields) or '-'}` |"
+        )
+    lines.append("")
+
+    lines.append("## 2. 明细")
+    lines.append("")
+    for entry in entries:
+        template = templates.get(entry["task_id"], {})
+        lines.append(f"### {entry['task_id']} - {entry['name']}")
+        lines.append("")
+        lines.append(f"- `status`: `{entry.get('status')}`")
+        lines.append(f"- `close_mode`: `{entry.get('close_mode') or '-'}`")
+        lines.append(f"- `formal_object_id`: `{entry.get('formal_object_id') or '-'}`")
+        lines.append(f"- `docs_anchor`: `{entry.get('docs_anchor') or '-'}`")
+        lines.append(f"- `docs_backwrite_path`: `{entry.get('docs_backwrite_path') or '-'}`")
+        lines.append(f"- `human_fields`: `{', '.join(template.get('fields', [])) or '-'}`")
+        if entry.get("top_issues"):
+            lines.append("- `issues`:")
+            for issue in entry["top_issues"]:
+                lines.append(f"  - {issue}")
+        values = template.get("values", {})
+        if values:
+            lines.append("- `human_template`:")
+            for field in template.get("fields", []):
+                value = values.get(field, "")
+                if isinstance(value, list):
+                    joined = ", ".join(str(item) for item in value) if value else ""
+                    lines.append(f"  - `{field}`: `{joined}`")
+                else:
+                    lines.append(f"  - `{field}`: `{value}`")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _report(args):
+    try:
+        project = core.require_active()
+        summary = core.list_close_gates(project["id"])
+    except (RuntimeError, ValueError) as exc:
+        print(f"❌ {exc}")
+        sys.exit(1)
+
+    entries = summary.get("entries", [])
+    if getattr(args, "invalid_only", False):
+        entries = [entry for entry in entries if not entry.get("valid")]
+
+    templates = {}
+    for entry in entries:
+        templates[entry["task_id"]] = core.get_close_human_template(project["id"], entry["task_id"])
+
+    if args.json:
+        payload = {
+            "project_id": project["id"],
+            "project_name": project["name"],
+            "entries": entries,
+            "templates": templates,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    content = _render_report_markdown(project, entries, templates)
+
+    save_path = getattr(args, "save", None)
+    if save_path:
+        repo = project.get("repo", "")
+        if repo and not os.path.isabs(save_path):
+            save_path = os.path.join(repo, save_path)
+        parent = os.path.dirname(save_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(save_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        rel = os.path.relpath(save_path, repo) if repo else save_path
+        print(f"💾 已保存: {rel}")
+        return
+
+    print(content)
 
 
 def _check(args):
