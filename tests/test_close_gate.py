@@ -69,3 +69,71 @@ class CloseGateTests(unittest.TestCase):
 
         self.assertTrue(result["valid"])
         self.assertEqual(result["counts"]["error"], 0)
+
+    def test_validate_closure_schema_rejects_invalid_types_and_unknown_fields(self):
+        node = {
+            "id": "bad_close",
+            "name": "bad",
+            "phase": "P1",
+            "status": "pending",
+            "close_required": True,
+            "closure": {
+                "formal_object": "DCURX_MAIN",
+                "scope": "scope",
+                "sample_id": "SN-01",
+                "protocol_object": "PROTO",
+                "firmware_version": "fw",
+                "fpga_version": "fpga",
+                "docs_backwrite": "doc.md",
+                "close_mode": "bad_mode",
+                "evidence": "not-a-list",
+                "mystery": "value",
+            },
+        }
+
+        issues = close_gate.validate_closure_schema(node)
+        issue_types = {issue["type"] for issue in issues}
+
+        self.assertIn("unknown_closure_field", issue_types)
+        self.assertIn("invalid_closure_evidence", issue_types)
+        self.assertIn("invalid_close_mode", issue_types)
+
+    def test_summarize_close_gates_reports_invalid_count(self):
+        repo = Path(tempfile.mkdtemp(prefix="pt-close-gate-"))
+        evidence = repo / "evidence.md"
+        evidence.write_text("# ok\n", encoding="utf-8")
+        project = {
+            "id": "A57",
+            "name": "A57",
+            "repo": str(repo),
+            "nodes": [
+                {
+                    "id": "camrx",
+                    "name": "CAMRX close",
+                    "close_required": True,
+                    "closure": {
+                        "formal_object": "CAMRX_MAIN",
+                        "scope": "CAMRX",
+                        "sample_id": "CAM-01",
+                        "protocol_object": "A39_BRG",
+                        "firmware_version": "NA",
+                        "fpga_version": "KU3P_CAMRX_001",
+                        "docs_backwrite": "missing.md",
+                        "close_mode": "merged_fix",
+                        "evidence": ["evidence.md"],
+                    },
+                },
+                {
+                    "id": "note_only",
+                    "name": "普通任务",
+                    "phase": "P1",
+                    "status": "pending",
+                },
+            ],
+        }
+
+        summary = close_gate.summarize_close_gates(project)
+
+        self.assertEqual(summary["required_count"], 1)
+        self.assertEqual(summary["invalid_count"], 1)
+        self.assertEqual(summary["entries"][0]["task_id"], "camrx")

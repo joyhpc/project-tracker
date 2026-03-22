@@ -1692,6 +1692,75 @@ def check_close_gate(project_id: str, task_id: str) -> dict:
     return _close_gate.check_close_gate(p, task_id)
 
 
+def get_task_closure(project_id: str, task_id: str) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    node = _find_node(p, task_id)
+    if not node:
+        raise ValueError(f"任务不存在: {task_id}")
+    result = _close_gate.check_close_gate(p, task_id)
+    return {
+        "task_id": task_id,
+        "name": node.get("name", task_id),
+        "required": _close_gate.node_requires_close_gate(node),
+        "closure": node.get("closure", {}) or {},
+        "check": result,
+    }
+
+
+def list_close_gates(project_id: str) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    return _close_gate.summarize_close_gates(p)
+
+
+def update_task_closure(
+    project_id: str,
+    task_id: str,
+    *,
+    updates: dict | None = None,
+    clear_fields: list[str] | None = None,
+    require: bool | None = None,
+) -> dict:
+    p = _load(project_id)
+    if not p:
+        raise ValueError(f"项目不存在: {project_id}")
+    node = _find_node(p, task_id)
+    if not node:
+        raise ValueError(f"任务不存在: {task_id}")
+
+    closure = dict(node.get("closure", {}) or {})
+    for field in clear_fields or []:
+        closure.pop(field, None)
+    for key, value in (updates or {}).items():
+        if key == "evidence":
+            closure[key] = list(value)
+        else:
+            closure[key] = value
+
+    if closure:
+        node["closure"] = closure
+    else:
+        node.pop("closure", None)
+
+    if require is not None:
+        if require:
+            node["close_required"] = True
+        else:
+            node.pop("close_required", None)
+
+    p.setdefault("log", []).append({
+        "time": _now(),
+        "action": "close_update",
+        "task": task_id,
+        "detail": f"close gate updated: fields={','.join(sorted((updates or {}).keys())) or '-'}",
+    })
+    _save(p)
+    return get_task_closure(project_id, task_id)
+
+
 def attach_doc(project_id: str, task_id: str, file_path: str, description: str = ""):
     """给任务关联文档文件（相对于仓库根目录的路径）"""
     p = _load(project_id)

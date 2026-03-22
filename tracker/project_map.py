@@ -6,6 +6,7 @@ from collections import Counter
 from html import escape
 from pathlib import Path
 
+from .close_gate import summarize_close_gates
 from .project_query import get_status
 
 LANE_ORDER = ["in_progress", "ready", "blocked", "waiting", "done"]
@@ -101,6 +102,8 @@ def build_project_map(project: dict, info: dict | None = None) -> dict:
     )
     ordered_ids = topo_order + remaining_ids
     order_index = {node_id: idx for idx, node_id in enumerate(ordered_ids)}
+    close_summary = summarize_close_gates(project)
+    close_by_id = {entry["task_id"]: entry for entry in close_summary.get("entries", [])}
 
     entries = []
     for node_id in ordered_ids:
@@ -141,6 +144,9 @@ def build_project_map(project: dict, info: dict | None = None) -> dict:
             "is_milestone": node.get("type") == "milestone",
             "started": node.get("started", ""),
             "completed": node.get("completed", ""),
+            "close_required": bool(close_by_id.get(node_id)),
+            "close_valid": close_by_id.get(node_id, {}).get("valid", True),
+            "close_issue_count": close_by_id.get(node_id, {}).get("issue_count", 0),
             "order": order_index[node_id],
         }
         entries.append(entry)
@@ -207,6 +213,8 @@ def build_project_map(project: dict, info: dict | None = None) -> dict:
             "tasks_with_docs": sum(1 for entry in entries if entry["docs_count"] > 0),
             "active_decision_count": len(decisions),
             "active_subtask_count": len(active_child_nodes),
+            "close_required_count": close_summary.get("required_count", 0),
+            "close_invalid_count": close_summary.get("invalid_count", 0),
         },
         "focus": focus,
         "parallel_ready": [entry for entry in ready_entries if not focus or entry["id"] != focus["id"]],
@@ -218,6 +226,7 @@ def build_project_map(project: dict, info: dict | None = None) -> dict:
         "warnings": warnings,
         "warning_counts": dict(warning_counts),
         "active_decisions": decisions,
+        "close_gates": close_summary,
     }
 
 
@@ -238,6 +247,11 @@ def _entry_line(entry: dict) -> str:
         extras.append(f"docs={entry['docs_count']}")
     if entry.get("has_note"):
         extras.append("有备注")
+    if entry.get("close_required"):
+        if entry.get("close_valid"):
+            extras.append("close=OK")
+        else:
+            extras.append(f"close=NG({entry.get('close_issue_count', 0)})")
     if entry["lane"] == "waiting" and entry.get("waiting_for_names"):
         extras.append("等待: " + ", ".join(entry["waiting_for_names"][:3]))
     if entry["lane"] == "blocked" and entry.get("blocked_reason"):
@@ -250,6 +264,7 @@ def render_project_map_text(map_data: dict) -> str:
     metrics = map_data["metrics"]
     repo = map_data["repo"]
     focus = map_data.get("focus")
+    close_gates = map_data.get("close_gates", {})
     lines = []
     lines.append("=" * 68)
     lines.append(f"📋 {map_data['project_name']} ({map_data['project_id']}) - 项目地图")
@@ -270,6 +285,10 @@ def render_project_map_text(map_data: dict) -> str:
             + ", ".join(
                 f"{severity}={count}" for severity, count in sorted(map_data["warning_counts"].items()) if count
             )
+        )
+    if metrics["close_required_count"]:
+        lines.append(
+            f"Merge-to-Close: required={metrics['close_required_count']} | invalid={metrics['close_invalid_count']}"
         )
     lines.append("")
 
@@ -313,6 +332,24 @@ def render_project_map_text(map_data: dict) -> str:
             lines.append(f"    D{decision['id']}: {decision['title']}")
         lines.append("")
 
+    if close_gates.get("required_count"):
+        lines.append(
+            f"🔒 Merge-to-Close ({close_gates['required_count']})"
+        )
+        invalid_entries = [entry for entry in close_gates.get("entries", []) if not entry.get("valid")]
+        if invalid_entries:
+            for entry in invalid_entries[:6]:
+                lines.append(
+                    f"    ❌ [{entry['task_id']}] {entry['name']} | status={entry['status']} | issues={entry['issue_count']}"
+                )
+                if entry.get("top_issues"):
+                    lines.append("       " + " | ".join(entry["top_issues"]))
+            if len(invalid_entries) > 6:
+                lines.append(f"    ... 还有 {len(invalid_entries)-6} 个")
+        else:
+            lines.append("    ✅ 所有 close gate 已满足")
+        lines.append("")
+
     for phase in map_data["phases"]:
         milestone = f" | {phase['milestone']}" if phase.get("milestone") else ""
         lines.append(
@@ -344,6 +381,8 @@ def _card_html(entry: dict) -> str:
         detail_bits.append("critical")
     elif entry.get("slack"):
         detail_bits.append(f"slack={entry['slack']:.0f}d")
+    if entry.get("close_required"):
+        detail_bits.append("close=OK" if entry.get("close_valid") else f"close=NG({entry.get('close_issue_count', 0)})")
 
     message = ""
     if entry["lane"] == "waiting" and entry.get("waiting_for_names"):
@@ -358,6 +397,13 @@ def _card_html(entry: dict) -> str:
     milestone = '<span class="pill milestone">里程碑</span>' if entry.get("is_milestone") else ""
     focus = '<span class="pill focus">当前焦点</span>' if entry.get("is_focus") else ""
     critical = '<span class="pill critical">关键路径</span>' if entry.get("critical") else ""
+    close_gate = ""
+    if entry.get("close_required"):
+        close_gate = (
+            '<span class="pill close-ok">Close OK</span>'
+            if entry.get("close_valid")
+            else f'<span class="pill close-ng">Close NG({entry.get("close_issue_count", 0)})</span>'
+        )
     classes = ["task-card", entry["lane"]]
     if entry.get("is_focus"):
         classes.append("focus")
@@ -369,7 +415,7 @@ def _card_html(entry: dict) -> str:
   <div class="task-title">{escape(entry['name'])}</div>
   <div class="task-id">[{escape(entry['id'])}]</div>
 </div>
-<div class="task-pills">{focus}{critical}{milestone}</div>
+<div class="task-pills">{focus}{critical}{milestone}{close_gate}</div>
 <div class="task-meta">{' · '.join(detail_bits) if detail_bits else '&nbsp;'}</div>
 <div class="task-msg">{escape(message) if message else '—'}</div>
 </div>'''
@@ -379,6 +425,7 @@ def render_project_map_html(map_data: dict) -> str:
     metrics = map_data["metrics"]
     repo = map_data["repo"]
     focus = map_data.get("focus")
+    close_gates = map_data.get("close_gates", {})
     critical_cards = "".join(_card_html(entry) for entry in map_data["critical_path"][:8])
     decision_html = "".join(
         f'<div class="simple-item">D{decision["id"]}: {escape(decision["title"])}</div>'
@@ -393,6 +440,15 @@ def render_project_map_html(map_data: dict) -> str:
         suffix = " · 🔴" if entry.get("critical") else f" · slack={entry['slack']:.0f}d"
         parallel_items.append(f'<div class="simple-item">{escape(entry["name"])}{suffix}</div>')
     parallel_html = "".join(parallel_items)
+    close_invalid_html = "".join(
+        f'<div class="simple-item">[{escape(entry["task_id"])}] {escape(entry["name"])} · issues={entry["issue_count"]}</div>'
+        for entry in close_gates.get("entries", [])
+        if not entry.get("valid")
+    )
+    close_panel_html = ""
+    if metrics["close_required_count"]:
+        close_panel_body = close_invalid_html or '<div class="simple-item">✅ 所有 close gate 已满足</div>'
+        close_panel_html = f'<div class="panel"><div class="panel-title">🔒 Merge-to-Close</div>{close_panel_body}</div>'
 
     phase_html = ""
     for phase in map_data["phases"]:
@@ -466,6 +522,8 @@ h1 {{ margin: 0 0 6px; font-size: 28px; }}
 .pill.focus {{ border-color: #f0883e; color: #f0883e; }}
 .pill.critical {{ border-color: #f85149; color: #f85149; }}
 .pill.milestone {{ border-color: #8957e5; color: #bc8cff; }}
+.pill.close-ok {{ border-color: #3fb950; color: #3fb950; }}
+.pill.close-ng {{ border-color: #f85149; color: #f85149; }}
 .task-meta {{ color: #8b949e; font-size: 11px; margin-bottom: 6px; min-height: 15px; }}
 .task-msg {{ font-size: 12px; line-height: 1.45; color: #c9d1d9; }}
 .critical-strip {{ display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }}
@@ -485,6 +543,7 @@ h1 {{ margin: 0 0 6px; font-size: 28px; }}
   <div class="metric-card"><div class="metric-label">可推进</div><div class="metric-value">{metrics['ready_count']}</div></div>
   <div class="metric-card"><div class="metric-label">阻塞</div><div class="metric-value">{metrics['blocked_count']}</div></div>
   <div class="metric-card"><div class="metric-label">文档覆盖</div><div class="metric-value">{metrics['tasks_with_docs']}/{metrics['total']}</div></div>
+  <div class="metric-card"><div class="metric-label">Close Gate</div><div class="metric-value">{metrics['close_invalid_count']}/{metrics['close_required_count']}</div></div>
   <div class="metric-card"><div class="metric-label">生效决策</div><div class="metric-value">{metrics['active_decision_count']}</div></div>
 </div>
 
@@ -494,6 +553,8 @@ h1 {{ margin: 0 0 6px; font-size: 28px; }}
   <div class="panel"><div class="panel-title">🚫 当前阻塞</div>{blocker_html or '<div class="simple-item">暂无</div>'}</div>
   <div class="panel"><div class="panel-title">📦 仓库状态</div><div class="simple-item {'repo-ok' if repo['exists'] else 'repo-warn'}">{escape(repo['label'])}</div><div class="simple-item">{escape(repo['path'] or '未设置 repo 路径')}</div></div>
 </div>
+
+{close_panel_html}
 
 <div class="panel"><div class="panel-title">🔴 关键路径</div><div class="critical-strip">{critical_cards or '<div class="simple-item">暂无</div>'}</div></div>
 

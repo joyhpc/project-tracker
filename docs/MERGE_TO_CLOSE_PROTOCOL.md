@@ -6,7 +6,7 @@
 
 ## 核心原则
 
-对以下任一类事项，`project-tracker` 中的对应任务、Issue 或决策同步，不允许仅凭讨论完成而直接 `Closed`：
+对以下任一类事项，`project-tracker` 中的对应任务节点或其映射的过程事项，不允许仅凭讨论完成而直接 `Closed`：
 
 - 能力成立
 - 接口打通
@@ -85,10 +85,11 @@
 
 ## 合法关闭方式
 
-对来自审核、联调或验证的问题，只有以下两种关闭方式：
+对来自审核、联调或验证的问题，当前工具层只接受以下 `close_mode`：
 
-- `Merged Fix`：对应修复已经进入 `A57-docs` 的正式文档，并完成关联记录
-- `Merged Waiver / Accepted Risk`：对应风险接受或豁免结论已经进入 `A57-docs` 的正式文档，并完成关联记录
+- `merged_fix`：对应修复已经进入 `A57-docs` 的正式文档，并完成关联记录
+- `merged_waiver`：对应豁免结论已经进入 `A57-docs` 的正式文档，并完成关联记录
+- `accepted_risk`：对应风险接受结论已经进入 `A57-docs` 的正式文档，并完成关联记录
 
 报告生成、口头确认、截图、聊天记录、单独修改 `project-tracker` 状态，都不构成合法关闭。
 
@@ -104,9 +105,31 @@
 - `A57-docs` 回写路径：
 - 回写提交或版本标识：
 
+对应当前 CLI / YAML 结构，至少应映射为：
+
+- `formal_object`
+- `borrowed_object`
+- `borrowed_purpose`
+- `scope`
+- `sample_id`
+- `protocol_object`
+- `firmware_version`
+- `fpga_version`
+- `evidence`
+- `docs_backwrite`
+- `close_mode`
+
 ## 工具落地点
 
-当前建议通过 `pt close-check <task_id>` 先执行机器校验，再允许相关事项进入关闭判断。
+当前建议通过以下命令形成标准闭环，而不是手改 YAML：
+
+1. `pt close set <task_id> ...` 写入或更新 closure 元数据
+2. `pt close show <task_id>` 查看单任务当前正式关闭信息
+3. `pt close list [--invalid-only]` 汇总当前项目所有 close gate 任务
+4. `pt close check <task_id>` 或 `pt close-check <task_id>` 执行机器校验
+5. `pt done <task_id>` 在 close gate 不满足时会自动拒绝关闭
+
+同时，`pt status` 和 `pt map` 会显示当前项目的 Merge-to-Close 风险摘要，避免“任务已 done，但正式闭环未完成”的假进展。
 
 建议把以下字段写入任务节点的 `closure` 元数据：
 
@@ -121,6 +144,25 @@
 - `evidence`
 - `docs_backwrite`
 - `close_mode`
+
+## 推荐命令示例
+
+```bash
+pt close set edp_bringup \
+  --require \
+  --formal-object DCURX_MAIN \
+  --scope "DCURX eDP 底层链路" \
+  --sample-id SN-003 \
+  --protocol-object DCURX_TI984_DECODER \
+  --firmware-version STM32_v0.9.1 \
+  --fpga-version KU3P_bit_2026_03_22 \
+  --docs-backwrite "01_需求阶段_Requirements/.../DCURX_当前有效结论.md" \
+  --close-mode merged_fix \
+  --evidence "records/2026-03-22/edp_pass.md"
+
+pt close check edp_bringup
+pt close list --invalid-only
+```
 
 ## 与多 Repo 协议的关系
 

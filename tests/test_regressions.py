@@ -10,9 +10,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tracker import core, engine, onboard
+from tracker.commands.close_cmd import cmd_close
 from tracker.commands.decision_cmd import _select_action as select_decision_action
 from tracker.commands.poc_cmd import _select_action as select_poc_action
-from tracker.commands.project import cmd_validate
+from tracker.commands.project import cmd_status, cmd_validate
 from tracker.commands.prompt_cmd import cmd_prompt
 from tracker.commands.review_cmd import _select_action as select_review_action
 
@@ -159,6 +160,38 @@ class CoreRegressionTests(ProjectSandboxTestCase):
         self.assertTrue(output.exists())
         self.assertIn("测试问题", output.read_text(encoding="utf-8"))
 
+    def test_core_close_closure_roundtrip(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        (repo / "evidence.md").write_text("# ev\n", encoding="utf-8")
+        (repo / "docs_backwrite.md").write_text("# doc\n", encoding="utf-8")
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+
+        updated = core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "formal_object": "DCURX_MAIN",
+                "scope": "DCURX eDP",
+                "sample_id": "SN-01",
+                "protocol_object": "TI984_DECODER",
+                "firmware_version": "STM32_v0.9.1",
+                "fpga_version": "KU3P_2026_03_22",
+                "docs_backwrite": "docs_backwrite.md",
+                "close_mode": "merged_fix",
+                "evidence": ["evidence.md"],
+            },
+            require=True,
+        )
+
+        self.assertTrue(updated["required"])
+        self.assertTrue(updated["check"]["valid"])
+        listed = core.list_close_gates("TMP")
+        self.assertEqual(listed["required_count"], 1)
+        self.assertEqual(listed["valid_count"], 1)
+        shown = core.get_task_closure("TMP", "bringup")
+        self.assertEqual(shown["closure"]["formal_object"], "DCURX_MAIN")
+
 
 class CommandValidationTests(ProjectSandboxTestCase):
     def test_validate_command_reports_clean_project(self):
@@ -196,6 +229,65 @@ nodes:
             cmd_validate(args)
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("status='mystery'", buffer.getvalue())
+
+    def test_close_command_set_and_show_json(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        (repo / "evidence.md").write_text("# ev\n", encoding="utf-8")
+        (repo / "docs_backwrite.md").write_text("# doc\n", encoding="utf-8")
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+
+        set_args = SimpleNamespace(
+            close_command="set",
+            task_id="bringup",
+            formal_object="DCURX_MAIN",
+            borrowed_object=None,
+            borrowed_purpose=None,
+            scope="DCURX eDP",
+            sample_id="SN-01",
+            protocol_object="TI984_DECODER",
+            firmware_version="STM32_v0.9.1",
+            fpga_version="KU3P_2026_03_22",
+            docs_backwrite="docs_backwrite.md",
+            close_mode="merged_fix",
+            evidence=["evidence.md"],
+            clear=None,
+            require=True,
+            optional=False,
+            json=False,
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            cmd_close(set_args)
+
+        show_args = SimpleNamespace(close_command="show", task_id="bringup", json=True)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cmd_close(show_args)
+
+        output = buffer.getvalue()
+        self.assertIn('"formal_object": "DCURX_MAIN"', output)
+        self.assertIn('"required": true', output)
+
+    def test_status_command_prints_close_gate_summary(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+        core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "formal_object": "DCURX_MAIN",
+            },
+            require=True,
+        )
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cmd_status(SimpleNamespace())
+        output = buffer.getvalue()
+
+        self.assertIn("Merge-to-Close", output)
+        self.assertIn("[bringup]", output)
 
     def test_review_select_action_rejects_multiple_flags(self):
         args = SimpleNamespace(add="a.md", approve=None, report=None, analyze=True, list=False)

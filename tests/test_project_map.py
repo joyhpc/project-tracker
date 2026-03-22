@@ -45,7 +45,19 @@ class ProjectMapTests(ProjectSandboxTestCase):
                 {"id": "concept_design", "name": "概念设计", "phase": "CONCEPT", "status": "done", "depends": ["market_research"]},
                 {"id": "feasibility", "name": "可行性分析", "phase": "CONCEPT", "status": "done", "depends": ["concept_design"]},
                 {"id": "hw_design", "name": "硬件设计", "phase": "DESIGN", "status": "in_progress", "depends": ["feasibility"], "owner": "硬件工程师", "docs": [{"path": "docs/design/hw.md"}], "started": "2026-03-08 10:00"},
-                {"id": "fw_design", "name": "固件设计", "phase": "DESIGN", "status": "pending", "depends": ["feasibility"], "owner": "固件工程师"},
+                {
+                    "id": "fw_design",
+                    "name": "固件设计",
+                    "phase": "DESIGN",
+                    "status": "pending",
+                    "depends": ["feasibility"],
+                    "owner": "固件工程师",
+                    "close_required": True,
+                    "closure": {
+                        "formal_object": "PILLOW_MAIN",
+                        "scope": "固件联调",
+                    },
+                },
                 {"id": "mech_design", "name": "结构设计", "phase": "DESIGN", "status": "pending", "depends": ["feasibility"], "owner": "结构工程师"},
                 {"id": "hw_review", "name": "硬件评审", "phase": "DESIGN", "status": "pending", "depends": ["hw_design"], "owner": "硬件工程师"},
                 {"id": "bringup", "name": "板级调试", "phase": "PROTO", "status": "blocked", "depends": ["hw_review"], "blocked_reason": "等样机回板", "critical": True},
@@ -63,6 +75,11 @@ class ProjectMapTests(ProjectSandboxTestCase):
         self.assertEqual([entry["id"] for entry in map_data["parallel_ready"]], ["fw_design", "mech_design"])
         self.assertEqual(map_data["repo"]["label"], "仓库路径缺失")
         self.assertEqual(map_data["metrics"]["blocked_count"], 1)
+        self.assertEqual(map_data["metrics"]["close_required_count"], 1)
+        self.assertEqual(map_data["metrics"]["close_invalid_count"], 1)
+        fw_design = next(entry for entry in map_data["entries"] if entry["id"] == "fw_design")
+        self.assertTrue(fw_design["close_required"])
+        self.assertFalse(fw_design["close_valid"])
 
     def test_render_project_map_text_contains_waiting_and_repo_sections(self):
         project = self._sample_project()
@@ -72,6 +89,8 @@ class ProjectMapTests(ProjectSandboxTestCase):
         self.assertIn("仓库状态: 仓库路径缺失", text)
         self.assertIn("等待: 硬件设计", text)
         self.assertIn("当前焦点", text)
+        self.assertIn("Merge-to-Close", text)
+        self.assertIn("close=NG", text)
 
     def test_render_project_map_html_contains_focus_and_lane_titles(self):
         project = self._sample_project()
@@ -81,6 +100,8 @@ class ProjectMapTests(ProjectSandboxTestCase):
         self.assertIn("可并行推进", html)
         self.assertIn("等待依赖", html)
         self.assertIn("仓库路径缺失", html)
+        self.assertIn("Close Gate", html)
+        self.assertIn("Close NG", html)
 
     def test_cmd_map_prints_terminal_map(self):
         project = self._sample_project()

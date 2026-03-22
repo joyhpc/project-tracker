@@ -46,6 +46,7 @@ def cmd_status(args):
     info = core.get_status(p)
     classified = info["classified"]
     cpm = info["cpm"]
+    close_summary = core.list_close_gates(p["id"])
 
     print(f"\n📋 {p['name']} ({p['id']})")
     print(f"📊 进度: {info['done_count']}/{info['total']}")
@@ -78,6 +79,24 @@ def cmd_status(args):
         print(f"\n🚫 阻塞 ({len(info['blockers'])}):")
         for b in info["blockers"]:
             print(f"   {b['task_id']}: {b['reason']}")
+
+    if close_summary.get("required_count", 0):
+        print(
+            f"\n🔒 Merge-to-Close: required={close_summary['required_count']} | valid={close_summary['valid_count']} | invalid={close_summary['invalid_count']}"
+        )
+        invalid_entries = [entry for entry in close_summary.get("entries", []) if not entry.get("valid")]
+        for entry in invalid_entries[:5]:
+            print(
+                f"   ❌ [{entry['task_id']}] {entry['name']} | status={entry.get('status')} | issues={entry.get('issue_count')}"
+            )
+            if entry.get("close_mode") or entry.get("formal_object"):
+                print(
+                    f"      mode={entry.get('close_mode') or '-'} | formal={entry.get('formal_object') or '-'}"
+                )
+            if entry.get("top_issues"):
+                print("      缺少/问题: " + " | ".join(entry["top_issues"]))
+        if len(invalid_entries) > 5:
+            print(f"   ... 还有 {len(invalid_entries) - 5} 个未通过")
 
     # 可执行任务
     ready = classified["ready"]

@@ -11,6 +11,7 @@ from .project_constants import (
     VALID_POC_STATUSES,
     VALID_REVIEW_VERDICTS,
 )
+from .close_gate import validate_closure_schema
 from .project_model import _effective_nodes
 
 
@@ -165,6 +166,7 @@ def validate_project_schema(project: dict | None) -> list[dict]:
                         doc_path = doc.get("path") or doc.get("file")
                         if not isinstance(doc_path, str) or not doc_path.strip():
                             issues.append(_validation_issue("invalid_doc_path", "warning", f"节点 [{node_id}] docs[{doc_index}] 缺少 path/file", node=node_id, index=doc_index))
+            issues.extend(validate_closure_schema(node))
 
     for field_name in ("blockers", "log"):
         items = project.get(field_name, [])
