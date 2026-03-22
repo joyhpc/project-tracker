@@ -27,6 +27,8 @@ TRACE_MATRIX_COLUMNS = [
     "验证文档",
     "当前结论",
 ]
+TRACE_MATRIX_LEGACY_COLUMNS = ["需求ID", "来源层级", "子项目/场景", "目标文档", "验证文档", "当前结论"]
+TRACE_MATRIX_A57_COLUMNS = ["需求ID", "需求摘要", "适用子项目", "设计承接对象", "验证承接对象", "当前状态"]
 APP_MATRIX_COLUMNS = ["应用目标ID", "应用场景", "用户价值", "平台能力", "约束/风险", "当前结论"]
 APP_MATRIX_ALT_COLUMNS = ["目标ID", "目标名称", "为什么重要", "当前状态"]
 VALID_DOC_STATUSES = {"Draft", "Reviewing", "Active", "Frozen", "Obsoleted"}
@@ -859,7 +861,13 @@ def check_requirements(project: dict, repo: Path, *, strict: bool = False) -> di
         key = _binding_key(item["id"])
         binding = bindings.get(key)
         if binding and item["id"] == "req_trace_matrix":
-            issues.extend(_check_required_columns(repo / binding["path"], TRACE_MATRIX_COLUMNS, "trace_matrix_missing_columns"))
+            issues.extend(
+                _check_any_required_columns(
+                    repo / binding["path"],
+                    [TRACE_MATRIX_COLUMNS, TRACE_MATRIX_LEGACY_COLUMNS, TRACE_MATRIX_A57_COLUMNS],
+                    "trace_matrix_missing_columns",
+                )
+            )
         if binding and item["id"] == "req_current_conclusion":
             if not (repo / binding["path"]).exists():
                 issues.append({

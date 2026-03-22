@@ -183,6 +183,7 @@ pt req init --dry-run
 - 当前默认纳入 `trace_included: true` 的角色
 - 对 `Active/Frozen` 文档强制检查 `verification_refs`
 - 若文档未显式给出 `conclusion_refs`，默认回落到 `req_current_conclusion` 绑定
+- 对项目级追溯矩阵，允许新扩展列头、旧版列头和 A57 早期实战列头并存，避免项目为了工具强制返工
 - 对子项目应用目标矩阵，允许两类列头格式并存：
   - 模板型：`应用目标ID / 应用场景 / 用户价值 / 平台能力 / 约束/风险 / 当前结论`
   - A57 当前实战型：`目标ID / 目标名称 / 为什么重要 / 当前状态`
@@ -232,6 +233,7 @@ pt req index --subproject CAMRX
 - 对需求链路做静态校验
 - 给出缺页、断链、未闭环项、无当前有效结论项
 - 校验 binding 文档 frontmatter 是否满足最小契约
+- 对项目级追溯矩阵列头，兼容扩展版、旧版与 A57 早期实战版
 - 对应用目标矩阵列头，兼容模板型与 A57 当前实战型两种格式
 
 建议参数：

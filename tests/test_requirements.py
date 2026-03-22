@@ -221,6 +221,48 @@ class RequirementsTests(RequirementsSandboxTestCase):
 
         self.assertTrue(result["valid"], result["issues"])
 
+    def test_check_requirements_accepts_legacy_trace_matrix_columns(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57")
+
+        trace = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_项目级需求追溯矩阵.md"
+        content = trace.read_text(encoding="utf-8")
+        header, _body = content[4:].split("\n---\n", 1)
+        replacement = (
+            "# A57 项目级需求追溯矩阵\n\n"
+            "| 需求ID | 来源层级 | 子项目/场景 | 目标文档 | 验证文档 | 当前结论 |\n"
+            "|---|---|---|---|---|---|\n"
+            "| REQ-001 | 项目级 | CAMRX | doc.md | verify.md | conclusion.md |\n"
+        )
+        trace.write_text("---\n" + header + "\n---\n" + replacement, encoding="utf-8")
+
+        result = core.check_requirements("A57", save=False)
+
+        self.assertTrue(result["valid"], result["issues"])
+
+    def test_check_requirements_accepts_a57_trace_matrix_columns(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("A57", "A57 docs", "generic", repo=str(repo))
+        core.init_requirements("A57")
+
+        trace = repo / "01_需求阶段_Requirements" / "00_项目级需求_Project_Level" / "A57_项目级需求追溯矩阵.md"
+        content = trace.read_text(encoding="utf-8")
+        header, _body = content[4:].split("\n---\n", 1)
+        replacement = (
+            "# A57 需求追溯矩阵\n\n"
+            "| 需求ID | 需求摘要 | 适用子项目 | 设计承接对象 | 验证承接对象 | 当前状态 |\n"
+            "|---|---|---|---|---|---|\n"
+            "| BR-01 | 市场进入 | CAMRX / DCURX | 架构 | 评审 | 部分明确 |\n"
+        )
+        trace.write_text("---\n" + header + "\n---\n" + replacement, encoding="utf-8")
+
+        result = core.check_requirements("A57", save=False)
+
+        self.assertTrue(result["valid"], result["issues"])
+
 
 if __name__ == "__main__":
     unittest.main()
