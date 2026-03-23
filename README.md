@@ -165,3 +165,7 @@ pytest -q
 - `docs/PROJECT_MAP_METHOD.md` — 项目地图方法论与 `pt/sch-review` 工具边界
 - `docs/KNOWLEDGE_ROUTING.md` — 项目经验沉淀与规则升级法则
 - `docs/graph-refactor-design.md` — DAG 重构设计
+- `docs/A57_MULTI_REPO_COLLAB_PROTOCOL.md` — A57 多仓协作协议
+- `docs/MERGE_TO_CLOSE_PROTOCOL.md` — Merge-to-Close 关闭门禁
+- `docs/HARDWARE_CLOSURE_GATEKEEPER_PROTOCOL.md` — AI 硬件闭环审查官协议
+- `docs/HARDWARE_CLOSURE_EVIDENCE_MATRIX.md` — Gate 触发与证据矩阵

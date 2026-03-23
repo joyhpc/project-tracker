@@ -1,16 +1,24 @@
 # AGENTS.md — project-tracker 统一规则
 
 ## 仓库定位
+
 - 本仓库是项目方法平台和执行中枢，不是具体项目正文文档的最终归档仓。
 - 本仓库负责流程模板、需求范式模板、追溯矩阵模板、执行记录模板、索引生成、校验、同步、门禁和项目状态编排。
 - 具体项目的需求正文、设计正文、验证记录、原理图说明、PCB 说明、样机调试记录、发布结论，应保存在各自项目 repo 中。
 
 ## 核心规则
+
 - 任何新能力都应优先抽象为“方法模板 + 命令 + 校验 + 同步”，而不是把某个项目的专有正文直接沉积在本仓库。
 - `pt` 的调用模型以 `active project + linked repo` 为中心；命令可在任意目录执行，但操作对象必须是被管理项目，而不是 `project-tracker` 目录。
 - 若某个项目需要“第一性原理需求 -> 追溯矩阵 -> 基线 -> 执行记录 -> 放行结论”链路，`pt` 应提供骨架和自动化支持，正式文档仍写入目标项目 repo。
-- 多个子项目可以共享方法，不共享正式设计文件。工具层禁止把 CAMRX、DCURX 等子项目的正文设计文件混放在 `project-tracker` 内长期维护。
-- A57 类硬件项目的多仓职责边界以 `docs/A57_MULTI_REPO_COLLAB_PROTOCOL.md` 为准；过程闭环门禁以 `docs/MERGE_TO_CLOSE_PROTOCOL.md` 为准。
+- 多个子项目可以共享方法，不共享正式设计文件。工具层禁止把 `CAMRX`、`DCURX` 等子项目的正文设计文件混放在 `project-tracker` 内长期维护。
+
+## 多仓协议
+
+- A57 类硬件项目的多仓职责边界以 [docs/A57_MULTI_REPO_COLLAB_PROTOCOL.md](./docs/A57_MULTI_REPO_COLLAB_PROTOCOL.md) 为准。
+- 过程闭环门禁以 [docs/MERGE_TO_CLOSE_PROTOCOL.md](./docs/MERGE_TO_CLOSE_PROTOCOL.md) 为准。
+- AI 辅助硬件闭环的强阻断门禁以 [docs/HARDWARE_CLOSURE_GATEKEEPER_PROTOCOL.md](./docs/HARDWARE_CLOSURE_GATEKEEPER_PROTOCOL.md) 为准。
+- Gate 触发条件、必填证据和脚手架模板矩阵以 [docs/HARDWARE_CLOSURE_EVIDENCE_MATRIX.md](./docs/HARDWARE_CLOSURE_EVIDENCE_MATRIX.md) 为准。
 
 ## Merge-to-Close 门禁
 
@@ -19,12 +27,21 @@
 - 若某事项尚未绑定正式对象、借用对象、适用范围或证据锚点，应保持为进行中或待确认状态，不得伪装成已闭环。
 - 对审核或验证问题，合法关闭方式只包括 `Merged Fix` 或 `Merged Waiver / Accepted Risk`。
 
+## 硬件闭环审查官
+
+- `Chief Hardware Closure Gatekeeper` 不是所有 Agent 的默认人格，而是 `定稿 / 发板 / 闭环 / 回写` 四类动作的强制角色。
+- 只要用户试图跨越物理阶段且证据缺失，Agent 必须触发闭环拦截，而不是继续给出最终原理图、BOM 定稿、代码定稿或“已修复”口头结论。
+- 触发拦截时，禁止只提问题，必须直接输出可填写的脚手架，如预算表、Ownership 矩阵、Bring-up 表、Issue/ECN 回写单。
+
 ## 推荐落地方式
+
 - 在 `pt init ... --repo <path>` 或 `pt docs --link <path>` 后，对关联 repo 执行方法生成、文档挂接、索引和同步。
 - 新增需求体系能力时，优先考虑命令形态，例如 `pt req init`、`pt req trace`、`pt req baseline`、`pt req check`、`pt req index`。
+- 硬件闭环门禁能力优先考虑命令形态，例如 `pt gate closure`、`pt closure scaffold`、`pt closure check`、`pt close --merge-proof`。
 - 模板应可复用、可裁剪、可追溯，不得把单一项目的瞬时结论硬编码成所有项目默认真理。
 
 ## 与其他仓库的边界
+
 - `A57-docs` 一类项目仓负责项目正文和证据链。
 - `sch-review` 负责审核执行、问题发现和风险翻译。
 - `project-tracker` 只做方法抽象与项目编排，不吞并项目正文职责。
