@@ -49,6 +49,9 @@ pt gate closure edp_bringup    # Merge-to-Close 正式闭环门禁
 pt closure scaffold edp_bringup  # 输出闭环脚手架
 pt gate schematic_review --scan-dir ~/sch-review/reports/gwbrgic/
 
+# 自动收口
+# 保存项目后会自动刷新 docs/issues/<PROJECT>_CLOSE_GATE_BACKLOG_AUTO.md
+
 # 数据导出
 pt gantt                       # Mermaid Gantt 图
 pt deps                        # 依赖图

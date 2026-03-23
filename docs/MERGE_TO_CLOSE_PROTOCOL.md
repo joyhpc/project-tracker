@@ -135,6 +135,12 @@
 
 同时，`pt status` 和 `pt map` 会显示当前项目的 Merge-to-Close 风险摘要，避免“任务已 done，但正式闭环未完成”的假进展。
 
+另外，项目保存后会自动维护：
+
+- `docs/issues/<PROJECT_ID>_CLOSE_GATE_BACKLOG_AUTO.md`
+
+当存在未通过的 close gate 时自动生成；当全部通过时自动清理。
+
 建议把以下字段写入任务节点的 `closure` 元数据：
 
 - `conclusion`

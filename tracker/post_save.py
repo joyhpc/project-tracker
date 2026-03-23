@@ -34,6 +34,11 @@ def run_post_save_hooks(project: dict, event: str = "save") -> None:
     except Exception:
         pass
 
+    try:
+        _auto_close_gate_backlog(project, event)
+    except Exception:
+        pass
+
     # 2. 外部钩子 (约定式扫描)
     try:
         _run_external_hooks(project, event)
@@ -148,6 +153,13 @@ def list_hooks() -> list[dict]:
             "events": ["done", "mutation", "save"],
             "condition": "dir_exists ~/sch-review/reports",
             "description": "自动同步 sch-review 审核报告",
+        },
+        {
+            "name": "auto-close-gate-backlog",
+            "type": "builtin",
+            "events": ["save"],
+            "condition": "project has repo + close gate exists",
+            "description": "自动生成或清理 docs/issues/<PROJECT>_CLOSE_GATE_BACKLOG_AUTO.md",
         },
     ]
 
@@ -272,3 +284,35 @@ def _auto_review_sync(project: dict, event: str) -> None:
     # 不在这里保存 — 调用方会在下一次 _save 时持久化
     if new_count > 0:
         project["_reviews_auto_synced"] = new_count
+
+
+def _auto_close_gate_backlog(project: dict, event: str) -> None:
+    """自动维护 close gate 未闭环总表。"""
+    if event not in ("save", "done", "mutation"):
+        return
+
+    repo = (project.get("repo") or "").strip()
+    if not repo:
+        return
+    repo_path = Path(repo).expanduser()
+    if not repo_path.is_dir():
+        return
+
+    from .close_gate import build_human_closure_template, render_close_report_markdown, summarize_close_gates
+
+    summary = summarize_close_gates(project)
+    invalid_entries = [entry for entry in summary.get("entries", []) if not entry.get("valid")]
+    backlog_path = repo_path / "docs" / "issues" / f"{project.get('id', 'PROJECT')}_CLOSE_GATE_BACKLOG_AUTO.md"
+
+    if not invalid_entries:
+        if backlog_path.exists():
+            backlog_path.unlink()
+        return
+
+    templates = {
+        entry["task_id"]: build_human_closure_template(project, entry["task_id"])
+        for entry in invalid_entries
+    }
+    content = render_close_report_markdown(project, invalid_entries, templates)
+    backlog_path.parent.mkdir(parents=True, exist_ok=True)
+    backlog_path.write_text(content, encoding="utf-8")

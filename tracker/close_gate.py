@@ -375,3 +375,57 @@ def summarize_close_gates(project: dict) -> dict:
         "invalid_count": len(invalid),
         "valid_count": len(entries) - len(invalid),
     }
+
+
+def render_close_report_markdown(project: dict, entries: list[dict], templates: dict[str, dict]) -> str:
+    lines = []
+    lines.append("# Close Gate 未闭环总表")
+    lines.append("")
+    lines.append(f"> 项目: `{project['name']}` / `{project['id']}`")
+    lines.append("> 文档性质: 自动生成")
+    lines.append("> 目的: 汇总当前所有未通过 Merge-to-Close 的任务、缺失字段和正式回写落点")
+    lines.append("")
+    if not entries:
+        lines.append("> 当前没有未闭环任务。")
+        lines.append("")
+        return "\n".join(lines)
+
+    lines.append("## 1. 汇总")
+    lines.append("")
+    lines.append("| 任务 | 状态 | Docs Anchor | 回写路径 | 人工待补字段 |")
+    lines.append("|---|---|---|---|---|")
+    for entry in entries:
+        human_fields = templates.get(entry["task_id"], {}).get("fields", [])
+        lines.append(
+            f"| `{entry['task_id']}` {entry['name']} | `{entry.get('status')}` | `{entry.get('docs_anchor') or '-'}` | `{entry.get('docs_backwrite_path') or '-'}` | `{', '.join(human_fields) or '-'}` |"
+        )
+    lines.append("")
+
+    lines.append("## 2. 明细")
+    lines.append("")
+    for entry in entries:
+        template = templates.get(entry["task_id"], {})
+        lines.append(f"### {entry['task_id']} - {entry['name']}")
+        lines.append("")
+        lines.append(f"- `status`: `{entry.get('status')}`")
+        lines.append(f"- `close_mode`: `{entry.get('close_mode') or '-'}`")
+        lines.append(f"- `formal_object_id`: `{entry.get('formal_object_id') or '-'}`")
+        lines.append(f"- `docs_anchor`: `{entry.get('docs_anchor') or '-'}`")
+        lines.append(f"- `docs_backwrite_path`: `{entry.get('docs_backwrite_path') or '-'}`")
+        lines.append(f"- `human_fields`: `{', '.join(template.get('fields', [])) or '-'}`")
+        if entry.get("top_issues"):
+            lines.append("- `issues`:")
+            for issue in entry["top_issues"]:
+                lines.append(f"  - {issue}")
+        values = template.get("values", {})
+        if values:
+            lines.append("- `human_template`:")
+            for field in template.get("fields", []):
+                value = values.get(field, "")
+                if isinstance(value, list):
+                    joined = ", ".join(str(item) for item in value) if value else ""
+                    lines.append(f"  - `{field}`: `{joined}`")
+                else:
+                    lines.append(f"  - `{field}`: `{value}`")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"

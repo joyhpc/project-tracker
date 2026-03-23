@@ -18,6 +18,7 @@ from tracker.commands.gate_cmd import cmd_gate
 from tracker.commands.project import cmd_status, cmd_validate
 from tracker.commands.prompt_cmd import cmd_prompt
 from tracker.commands.review_cmd import _select_action as select_review_action
+from tracker.post_save import list_hooks
 
 
 class ProjectSandboxTestCase(unittest.TestCase):
@@ -386,6 +387,87 @@ nodes:
         self.assertIn("sample_entity_id", text)
         self.assertIn("A57.DCURX.CONTROL_PLANE.GONOGO", text)
         self.assertIn("已保存", buffer.getvalue())
+
+    def test_post_save_auto_generates_close_gate_backlog(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        (repo / "docs_backwrite.md").write_text("# doc\n", encoding="utf-8")
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+
+        core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "formal_object_id": "DCURX_MAIN",
+                "scope": "DCURX 控制平面",
+                "sample_entity_id": "NEED_HUMAN_CHECK",
+                "protocol_object_id": "NA",
+                "firmware_version": "NEED_HUMAN_CHECK",
+                "fpga_version": "NEED_HUMAN_CHECK",
+                "docs_anchor": "A57.DCURX.CONTROL_PLANE.GONOGO",
+                "docs_backwrite_path": "docs_backwrite.md",
+                "close_mode": "merged_fix",
+                "evidence_paths": ["NEED_HUMAN_CHECK"],
+                "need_human_check_fields": ["sample_entity_id", "firmware_version", "fpga_version", "evidence_paths"],
+            },
+            require=True,
+        )
+
+        backlog = repo / "docs" / "issues" / "TMP_CLOSE_GATE_BACKLOG_AUTO.md"
+        self.assertTrue(backlog.exists())
+        text = backlog.read_text(encoding="utf-8")
+        self.assertIn("Close Gate 未闭环总表", text)
+        self.assertIn("bringup", text)
+        self.assertIn("sample_entity_id", text)
+
+    def test_post_save_auto_removes_close_gate_backlog_when_all_valid(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        (repo / "evidence.md").write_text("# ev\n", encoding="utf-8")
+        (repo / "docs_backwrite.md").write_text("# doc\n", encoding="utf-8")
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+
+        core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "formal_object_id": "DCURX_MAIN",
+                "scope": "DCURX 控制平面",
+                "sample_entity_id": "NEED_HUMAN_CHECK",
+                "protocol_object_id": "NA",
+                "firmware_version": "NEED_HUMAN_CHECK",
+                "fpga_version": "NEED_HUMAN_CHECK",
+                "docs_anchor": "A57.DCURX.CONTROL_PLANE.GONOGO",
+                "docs_backwrite_path": "docs_backwrite.md",
+                "close_mode": "merged_fix",
+                "evidence_paths": ["NEED_HUMAN_CHECK"],
+                "need_human_check_fields": ["sample_entity_id", "firmware_version", "fpga_version", "evidence_paths"],
+            },
+            require=True,
+        )
+
+        backlog = repo / "docs" / "issues" / "TMP_CLOSE_GATE_BACKLOG_AUTO.md"
+        self.assertTrue(backlog.exists())
+
+        core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "sample_entity_id": "SN-01",
+                "firmware_version": "STM32_v0.9.1",
+                "fpga_version": "KU3P_2026_03_23",
+                "evidence_paths": ["evidence.md"],
+                "need_human_check_fields": [],
+            },
+            require=True,
+        )
+
+        self.assertFalse(backlog.exists())
+
+    def test_builtin_hooks_include_auto_close_gate_backlog(self):
+        hooks = list_hooks()
+        names = {item["name"] for item in hooks}
+        self.assertIn("auto-close-gate-backlog", names)
 
     def test_gate_closure_alias_uses_merge_to_close_checker(self):
         repo = self.tempdir / "repo"
