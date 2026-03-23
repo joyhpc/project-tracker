@@ -45,6 +45,8 @@ pt poc --add "验证项" --metric "红线指标"  # PoC 追踪
 # 审核集成（v2.5 新增）
 pt review-sync                 # 从 sch-review 自动同步审核报告
 pt gate schematic_review       # 投板门禁检查（P0/P1/P2 汇总）
+pt gate closure edp_bringup    # Merge-to-Close 正式闭环门禁
+pt closure scaffold edp_bringup  # 输出闭环脚手架
 pt gate schematic_review --scan-dir ~/sch-review/reports/gwbrgic/
 
 # 数据导出

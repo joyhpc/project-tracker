@@ -256,6 +256,8 @@ pt req check --json
 ```bash
 pt close-check <task_id>
 pt close-check <task_id> --json
+pt gate closure <task_id>
+pt closure scaffold <task_id>
 ```
 
 ### `pt req attach`

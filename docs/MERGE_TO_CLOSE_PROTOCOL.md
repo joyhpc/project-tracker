@@ -128,9 +128,9 @@
 1. `pt close set <task_id> ...` 写入或更新 closure 元数据
 2. `pt close show <task_id>` 查看单任务当前正式关闭信息
 3. `pt close list [--invalid-only]` 汇总当前项目所有 close gate 任务
-4. `pt close human <task_id>` 输出单任务最短人工补充模板
+4. `pt close human <task_id>` 或 `pt closure scaffold <task_id>` 输出单任务最短人工补充模板
 5. `pt close report [--invalid-only] [--save <path>]` 生成项目级未闭环总表
-6. `pt close check <task_id>` 或 `pt close-check <task_id>` 执行机器校验
+6. `pt close check <task_id>`、`pt close-check <task_id>` 或 `pt gate closure <task_id>` 执行机器校验
 7. `pt done <task_id>` 在 close gate 不满足时会自动拒绝关闭
 
 同时，`pt status` 和 `pt map` 会显示当前项目的 Merge-to-Close 风险摘要，避免“任务已 done，但正式闭环未完成”的假进展。
@@ -176,7 +176,9 @@ pt close set edp_bringup \
   --need-human-check-fields sample_entity_id,firmware_version,fpga_version
 
 pt close check edp_bringup
+pt gate closure edp_bringup
 pt close human edp_bringup
+pt closure scaffold edp_bringup
 pt close list --invalid-only
 pt close report --invalid-only --save docs/issues/CLOSE_GATE_BACKLOG.md
 ```

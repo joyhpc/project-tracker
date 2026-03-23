@@ -28,6 +28,63 @@ from .commands.req_cmd import cmd_req
 from .commands.close_cmd import cmd_close, cmd_close_check
 
 
+def _add_close_subcommands(close_sub, *, scaffold_alias: bool = False):
+    p_close_set = close_sub.add_parser("set", help="写入 closure 元数据")
+    p_close_set.add_argument("task_id", help="任务ID")
+    p_close_set.add_argument("--conclusion")
+    p_close_set.add_argument("--formal-object-id")
+    p_close_set.add_argument("--formal-object")
+    p_close_set.add_argument("--formal-object-class")
+    p_close_set.add_argument("--borrowed-object-id")
+    p_close_set.add_argument("--borrowed-object")
+    p_close_set.add_argument("--borrowed-object-class")
+    p_close_set.add_argument("--borrowed-purpose")
+    p_close_set.add_argument("--scope")
+    p_close_set.add_argument("--sample-entity-id")
+    p_close_set.add_argument("--sample-id")
+    p_close_set.add_argument("--protocol-object-id")
+    p_close_set.add_argument("--protocol-object")
+    p_close_set.add_argument("--protocol-object-class")
+    p_close_set.add_argument("--firmware-version")
+    p_close_set.add_argument("--fpga-version")
+    p_close_set.add_argument("--pcb-version")
+    p_close_set.add_argument("--bom-version")
+    p_close_set.add_argument("--docs-anchor")
+    p_close_set.add_argument("--docs-backwrite-path")
+    p_close_set.add_argument("--docs-backwrite")
+    p_close_set.add_argument("--close-mode")
+    p_close_set.add_argument("--evidence", action="append", help="证据路径，可重复或用逗号分隔")
+    p_close_set.add_argument("--need-human-check-fields", action="append", help="需要人工确认的字段名，可重复或用逗号分隔")
+    p_close_set.add_argument("--clear", action="append", help="清除 closure 字段，可重复")
+    p_close_set.add_argument("--require", action="store_true", help="将该任务标记为 close_required")
+    p_close_set.add_argument("--optional", action="store_true", help="清除 close_required 标记")
+    p_close_set.add_argument("--json", action="store_true", help="JSON 输出")
+
+    p_close_show = close_sub.add_parser("show", help="查看单任务 closure")
+    p_close_show.add_argument("task_id", help="任务ID")
+    p_close_show.add_argument("--json", action="store_true", help="JSON 输出")
+
+    p_close_list = close_sub.add_parser("list", help="汇总所有 close gate 任务")
+    p_close_list.add_argument("--invalid-only", action="store_true", help="仅显示未通过门禁的任务")
+    p_close_list.add_argument("--json", action="store_true", help="JSON 输出")
+
+    if scaffold_alias:
+        p_close_human = close_sub.add_parser("scaffold", help="输出单任务闭环脚手架")
+    else:
+        p_close_human = close_sub.add_parser("human", help="输出单任务最短人工补充模板")
+    p_close_human.add_argument("task_id", help="任务ID")
+    p_close_human.add_argument("--json", action="store_true", help="JSON 输出")
+
+    p_close_report = close_sub.add_parser("report", help="输出当前项目 close gate 未闭环总表")
+    p_close_report.add_argument("--invalid-only", action="store_true", help="仅输出未通过门禁的任务")
+    p_close_report.add_argument("--json", action="store_true", help="JSON 输出")
+    p_close_report.add_argument("--save", help="保存 Markdown 报告到指定路径")
+
+    p_close_check = close_sub.add_parser("check", help="检查单任务 close gate")
+    p_close_check.add_argument("task_id", help="任务ID")
+    p_close_check.add_argument("--json", action="store_true", help="JSON 输出")
+
+
 def main():
     parser = argparse.ArgumentParser(prog="pt", description="项目推进助手")
     sub = parser.add_subparsers(dest="command")
@@ -261,58 +318,11 @@ def main():
 
     p_close_root = sub.add_parser("close", help="Merge-to-Close 元数据与门禁管理")
     close_sub = p_close_root.add_subparsers(dest="close_command")
+    _add_close_subcommands(close_sub, scaffold_alias=False)
 
-    p_close_set = close_sub.add_parser("set", help="写入 closure 元数据")
-    p_close_set.add_argument("task_id", help="任务ID")
-    p_close_set.add_argument("--conclusion")
-    p_close_set.add_argument("--formal-object-id")
-    p_close_set.add_argument("--formal-object")
-    p_close_set.add_argument("--formal-object-class")
-    p_close_set.add_argument("--borrowed-object-id")
-    p_close_set.add_argument("--borrowed-object")
-    p_close_set.add_argument("--borrowed-object-class")
-    p_close_set.add_argument("--borrowed-purpose")
-    p_close_set.add_argument("--scope")
-    p_close_set.add_argument("--sample-entity-id")
-    p_close_set.add_argument("--sample-id")
-    p_close_set.add_argument("--protocol-object-id")
-    p_close_set.add_argument("--protocol-object")
-    p_close_set.add_argument("--protocol-object-class")
-    p_close_set.add_argument("--firmware-version")
-    p_close_set.add_argument("--fpga-version")
-    p_close_set.add_argument("--pcb-version")
-    p_close_set.add_argument("--bom-version")
-    p_close_set.add_argument("--docs-anchor")
-    p_close_set.add_argument("--docs-backwrite-path")
-    p_close_set.add_argument("--docs-backwrite")
-    p_close_set.add_argument("--close-mode")
-    p_close_set.add_argument("--evidence", action="append", help="证据路径，可重复或用逗号分隔")
-    p_close_set.add_argument("--need-human-check-fields", action="append", help="需要人工确认的字段名，可重复或用逗号分隔")
-    p_close_set.add_argument("--clear", action="append", help="清除 closure 字段，可重复")
-    p_close_set.add_argument("--require", action="store_true", help="将该任务标记为 close_required")
-    p_close_set.add_argument("--optional", action="store_true", help="清除 close_required 标记")
-    p_close_set.add_argument("--json", action="store_true", help="JSON 输出")
-
-    p_close_show = close_sub.add_parser("show", help="查看单任务 closure")
-    p_close_show.add_argument("task_id", help="任务ID")
-    p_close_show.add_argument("--json", action="store_true", help="JSON 输出")
-
-    p_close_list = close_sub.add_parser("list", help="汇总所有 close gate 任务")
-    p_close_list.add_argument("--invalid-only", action="store_true", help="仅显示未通过门禁的任务")
-    p_close_list.add_argument("--json", action="store_true", help="JSON 输出")
-
-    p_close_human = close_sub.add_parser("human", help="输出单任务最短人工补充模板")
-    p_close_human.add_argument("task_id", help="任务ID")
-    p_close_human.add_argument("--json", action="store_true", help="JSON 输出")
-
-    p_close_report = close_sub.add_parser("report", help="输出当前项目 close gate 未闭环总表")
-    p_close_report.add_argument("--invalid-only", action="store_true", help="仅输出未通过门禁的任务")
-    p_close_report.add_argument("--json", action="store_true", help="JSON 输出")
-    p_close_report.add_argument("--save", help="保存 Markdown 报告到指定路径")
-
-    p_close_check = close_sub.add_parser("check", help="检查单任务 close gate")
-    p_close_check.add_argument("task_id", help="任务ID")
-    p_close_check.add_argument("--json", action="store_true", help="JSON 输出")
+    p_closure_root = sub.add_parser("closure", help="Merge-to-Close 统一入口别名")
+    closure_sub = p_closure_root.add_subparsers(dest="close_command")
+    _add_close_subcommands(closure_sub, scaffold_alias=True)
 
     # ── 方案推荐 ──
     p_propose = sub.add_parser("propose", aliases=["pp"], help="基于 review 回复生成方案推荐 prompt")
@@ -327,9 +337,11 @@ def main():
     p_scan.add_argument("--arch", action="store_true", help="生成项目架构理解 prompt（中途介入第一步）")
 
     # ── 投板门禁 ──
-    p_gate = sub.add_parser("gate", help="投板/推进门禁检查 — 汇总审核 P0/P1/P2 状态")
-    p_gate.add_argument("task_id", help="节点ID")
+    p_gate = sub.add_parser("gate", help="投板/推进门禁检查，或 closure 正式闭环门禁")
+    p_gate.add_argument("gate_target", nargs="?", help="节点ID，或子类型 `closure` / `review`")
+    p_gate.add_argument("task_id", nargs="?", help="当使用 `closure` / `review` 时填写任务ID")
     p_gate.add_argument("--scan-dir", help="额外扫描审核报告目录")
+    p_gate.add_argument("--json", action="store_true", help="JSON 输出（closure 门禁可用）")
 
     # ── 审核同步 ──
     p_rsync = sub.add_parser("review-sync", aliases=["rs"], help="从 sch-review 自动同步审核报告")
@@ -443,6 +455,7 @@ def main():
         "docs": cmd_docs,
         "req": cmd_req,
         "close": cmd_close,
+        "closure": cmd_close,
         "close-check": cmd_close_check,
         "propose": cmd_propose, "pp": cmd_propose,
         "scan": cmd_scan,

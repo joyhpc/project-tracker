@@ -10,9 +10,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from tracker import core, engine, onboard
+from tracker.cli import main as cli_main
 from tracker.commands.close_cmd import cmd_close
 from tracker.commands.decision_cmd import _select_action as select_decision_action
 from tracker.commands.poc_cmd import _select_action as select_poc_action
+from tracker.commands.gate_cmd import cmd_gate
 from tracker.commands.project import cmd_status, cmd_validate
 from tracker.commands.prompt_cmd import cmd_prompt
 from tracker.commands.review_cmd import _select_action as select_review_action
@@ -384,6 +386,92 @@ nodes:
         self.assertIn("sample_entity_id", text)
         self.assertIn("A57.DCURX.CONTROL_PLANE.GONOGO", text)
         self.assertIn("已保存", buffer.getvalue())
+
+    def test_gate_closure_alias_uses_merge_to_close_checker(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        (repo / "evidence.md").write_text("# ev\n", encoding="utf-8")
+        (repo / "docs_backwrite.md").write_text("# doc\n", encoding="utf-8")
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+        core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "formal_object_id": "DCURX_MAIN",
+                "scope": "DCURX eDP",
+                "sample_entity_id": "SN-01",
+                "protocol_object_id": "TI984_DECODER",
+                "firmware_version": "STM32_v0.9.1",
+                "fpga_version": "KU3P_2026_03_22",
+                "docs_anchor": "A57.DCURX.EDP_OLDI.EXEC_V1_V2",
+                "docs_backwrite_path": "docs_backwrite.md",
+                "close_mode": "merged_fix",
+                "evidence_paths": ["evidence.md"],
+            },
+            require=True,
+        )
+
+        args = SimpleNamespace(gate_target="closure", task_id="bringup", scan_dir=None, json=False)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cmd_gate(args)
+        output = buffer.getvalue()
+
+        self.assertIn("正式闭环门禁检查", output)
+        self.assertIn("close-check", output)
+        self.assertIn("docs_anchor", output)
+
+    def test_gate_review_legacy_style_still_accepts_task_id_directly(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+
+        args = SimpleNamespace(gate_target="bringup", task_id=None, scan_dir=None, json=False)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cmd_gate(args)
+        output = buffer.getvalue()
+
+        self.assertIn("投板门禁检查", output)
+        self.assertIn("未找到关联的审核报告", output)
+
+    def test_cli_closure_scaffold_alias_outputs_template(self):
+        repo = self.tempdir / "repo"
+        repo.mkdir()
+        (repo / "docs_backwrite.md").write_text("# doc\n", encoding="utf-8")
+        core.init_project("TMP", "tmp", "generic", repo=str(repo))
+        core.update_task_closure(
+            "TMP",
+            "bringup",
+            updates={
+                "formal_object_id": "DCURX_MAIN",
+                "scope": "DCURX 控制平面",
+                "sample_entity_id": "NEED_HUMAN_CHECK",
+                "protocol_object_id": "NA",
+                "firmware_version": "NEED_HUMAN_CHECK",
+                "fpga_version": "NEED_HUMAN_CHECK",
+                "docs_anchor": "A57.DCURX.CONTROL_PLANE.GONOGO",
+                "docs_backwrite_path": "docs_backwrite.md",
+                "close_mode": "merged_fix",
+                "evidence_paths": ["NEED_HUMAN_CHECK"],
+                "need_human_check_fields": ["sample_entity_id", "firmware_version", "fpga_version", "evidence_paths"],
+            },
+            require=True,
+        )
+
+        old_argv = sys.argv[:]
+        buffer = io.StringIO()
+        try:
+            sys.argv = ["pt", "closure", "scaffold", "bringup"]
+            with contextlib.redirect_stdout(buffer):
+                cli_main()
+        finally:
+            sys.argv = old_argv
+        output = buffer.getvalue()
+
+        self.assertIn("close human", output)
+        self.assertIn("sample_entity_id", output)
+        self.assertIn("evidence_paths", output)
 
     def test_review_select_action_rejects_multiple_flags(self):
         args = SimpleNamespace(add="a.md", approve=None, report=None, analyze=True, list=False)

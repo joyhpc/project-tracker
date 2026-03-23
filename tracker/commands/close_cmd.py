@@ -49,14 +49,17 @@ def cmd_close(args):
         _show(args)
     elif args.close_command == "list":
         _list(args)
-    elif args.close_command == "human":
+    elif args.close_command in {"human", "scaffold"}:
         _human(args)
     elif args.close_command == "report":
         _report(args)
     elif args.close_command == "check":
         _check(args)
     else:
-        print("❌ close 需要子命令：set / show / list / human / report / check")
+        if getattr(args, "command", "") == "closure":
+            print("❌ closure 需要子命令：set / show / list / scaffold / report / check")
+        else:
+            print("❌ close 需要子命令：set / show / list / human / report / check")
         sys.exit(1)
 
 

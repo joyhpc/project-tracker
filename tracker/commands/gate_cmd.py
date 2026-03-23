@@ -10,6 +10,7 @@ import re
 import sys
 from pathlib import Path
 from .. import core
+from .close_cmd import _print_check
 
 
 # ── sch-review severity ↔ pt verdict 映射 ──
@@ -90,14 +91,42 @@ def _find_related_reports(project: dict, node_id: str) -> list:
 
 
 def cmd_gate(args):
-    """执行投板门禁检查。"""
+    """执行投板门禁检查或正式闭环门禁检查。"""
     try:
         project = core.require_active()
     except RuntimeError as e:
         print(f"❌ {e}")
         sys.exit(1)
 
-    node_id = args.task_id
+    gate_target = getattr(args, "gate_target", None)
+    task_id = getattr(args, "task_id", None)
+
+    if gate_target == "closure":
+        if not task_id:
+            print("❌ 用法: pt gate closure <task_id>")
+            sys.exit(1)
+        try:
+            result = core.check_close_gate(project["id"], task_id)
+        except (RuntimeError, ValueError) as exc:
+            print(f"❌ {exc}")
+            sys.exit(1)
+        if getattr(args, "json", False):
+            import json
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("🚦 正式闭环门禁检查")
+            _print_check(result)
+        if not result.get("valid"):
+            sys.exit(1)
+        return
+
+    node_id = task_id or gate_target
+    if gate_target == "review" and not task_id:
+        print("❌ 用法: pt gate review <task_id>")
+        sys.exit(1)
+    if not node_id:
+        print("❌ 用法: pt gate <task_id> 或 pt gate closure <task_id>")
+        sys.exit(1)
     nodes_map = {n["id"]: n for n in project.get("nodes", [])}
     if node_id not in nodes_map:
         print(f"❌ 节点 [{node_id}] 不存在")
