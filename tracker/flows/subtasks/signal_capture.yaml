@@ -1,0 +1,107 @@
+# 信号捕获子任务模板
+# 适用于: 机会探测器 — SENSE 阶段
+# 整合开源工具与最佳实践的信号采集流程
+
+id: signal_capture
+name: 信号捕获与背景调研
+description: 多源信号采集、趋势分析、机会初步描述
+
+attach_to:
+  - signal_capture
+  - background_research
+
+phases:
+  - id: SIG_SCAN
+    name: 信号扫描
+    tasks:
+      - id: trend_scan
+        name: 趋势扫描
+        owner: 分析师
+        days: 2
+        description: |
+          使用 pytrends 扫描 Google Trends 热度变化；
+          监控 HackerNews/Reddit/ProductHunt 新话题；
+          工具: pytrends, Crawl4AI, HN API
+        deliverables: [趋势信号列表]
+
+      - id: industry_feed
+        name: 行业信息流监控
+        owner: 分析师
+        days: 1
+        description: |
+          配置行业 RSS/Newsletter 聚合；
+          监控行业报告发布（McKinsey, CB Insights, a16z等）；
+          关注政策/法规变化信号
+        deliverables: [信息流配置, 行业信号摘要]
+
+      - id: social_listening
+        name: 社交聆听
+        owner: 分析师
+        days: 2
+        description: |
+          Twitter/X 关键词监控（痛点、抱怨、需求）；
+          Reddit 子版块情绪分析；
+          知乎/微博热点追踪（中文市场）；
+          工具: Social-Media-Trend-Tracker, snscrape
+        deliverables: [社交信号报告]
+
+      - id: patent_tech_scan
+        name: 专利与技术扫描
+        owner: 分析师
+        days: 1
+        description: |
+          Google Patents 关键技术领域检索；
+          GitHub Trending 新兴开源项目监控；
+          arXiv/论文趋势（技术型机会）
+        deliverables: [技术信号清单]
+
+  - id: SIG_FILTER
+    name: 信号过滤与研究
+    tasks:
+      - id: signal_dedup
+        name: 信号去重与聚类
+        owner: 分析师
+        depends: [trend_scan, industry_feed, social_listening, patent_tech_scan]
+        days: 1
+        description: |
+          合并多源信号，去除重复；
+          按领域/主题聚类；
+          初步标记信号强度（强/中/弱）
+        deliverables: [聚类信号清单]
+
+      - id: desk_research
+        name: 桌面调研
+        owner: 分析师
+        depends: [signal_dedup]
+        days: 3
+        description: |
+          针对强信号做深入桌面调研；
+          市场背景、技术成熟度、政策环境；
+          工具: Crawl4AI 自动化信息采集, Perplexity
+        deliverables: [调研备忘录]
+
+      - id: expert_input
+        name: 专家/用户访谈
+        owner: 分析师
+        depends: [signal_dedup]
+        days: 2
+        description: |
+          针对关键信号做 2-3 次非正式访谈；
+          验证信号真实性和痛点强度；
+          记录关键洞察
+        deliverables: [访谈纪要]
+
+  - id: SIG_OUTPUT
+    name: 输出
+    tasks:
+      - id: opportunity_brief_draft
+        name: 机会简报撰写
+        owner: 分析师
+        depends: [desk_research, expert_input]
+        days: 2
+        critical: true
+        description: |
+          一页纸机会简报: 问题、市场信号、初步假设、关键不确定性；
+          附带信号来源和置信度评估
+        deliverables: [《机会简报》]
+        gate: 团队对齐后进入初筛

@@ -1,0 +1,162 @@
+================================================================================
+              PROJECT-TRACKER 架构分析总结 (2026-04-13)
+================================================================================
+
+【总体评估】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+代码规模:        7,700+ 行核心代码 + 27 个命令文件 (2,800+ 行)
+总体健康度:      6.8/10 (高价值, 高复杂, 中等腐坏度)
+主要优势:        DAG+CPM引擎强大 | 知识库创新 | 投板门禁完整
+主要问题:        core.py过大(1865行) | 命令层冗余 | 测试覆盖率低(40%)
+
+【3-5个高价值核心功能】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ⭐⭐⭐⭐⭐ DAG + CPM 关键路径引擎 (engine.py, 386行)
+   ├─ 功能: Kahn拓扑排序 + CPM关键路径 + Slack计算 + 智能工时估算
+   ├─ 依赖入口: core.py → engine.py → {prompt.py, risk.py, project_map.py}
+   ├─ 数据质量: 直接影响所有后续分析的准确性
+   └─ 测试: ⚠️ 缺CPM精度单测 (建议补充)
+
+2. ⭐⭐⭐⭐ BM25知识检索 + LLM Prompt生成 (knowledge.py 215行 + prompt.py 506行)
+   ├─ 功能: Markdown切块 + 硬件术语增强分词 + BM25数学检索 + 角色聚焦
+   ├─ 创新点: 无需LLM API的本地检索 + 实时DAG数据融合
+   ├─ 用途: pt prompt --deep 一键生成高质量LLM提示词
+   └─ 测试: ❌ 完全无单元测试 (高优先级补充)
+
+3. ⭐⭐⭐⭐ 投板门禁系统 (close_gate.py 135行 + gate_cmd.py 200行)
+   ├─ 功能: sch-review P0/P1/P2自动映射 + 门禁条件聚合 + 阻断清单
+   ├─ 集成: sch-review + opendatasheet
+   ├─ 用途: pt gate <node> 投板决策有据可查
+   └─ 测试: ✅ test_close_gate.py (8.2KB)
+
+4. ⭐⭐⭐⭐ 项目状态机 + 持久化 (core.py 1865行 + project_mutation.py 275行)
+   ├─ 功能: YAML版本迁移 + Schema演进 + 状态转移规则 + 事务性保存
+   ├─ 复杂度: 🔴 高 (涉及数据兼容性与可靠性)
+   └─ 测试: ✅ test_project_mutation.py (4.9KB)
+
+5. ⭐⭐⭐ 需求体系平台化 (requirements.py, 778行)
+   ├─ 功能: 追溯矩阵模板 + 自动索引 + 完整性校验 + 多项目汇总
+   ├─ 用途: pt req init/trace/check 硬件需求全链路
+   └─ 测试: ✅ test_requirements.py (8.7KB)
+
+【2-3个可以删除的低价值模块】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ 优先级-高: conflict.py (118行) + conflict_cmd.py (8行)
+   ├─ 问题: 使用频率极低 | 硬阈值无法适配 | 逻辑重复(risk.py已有) | 无测试
+   ├─ 替代: 合并到 pt stats 或 pt risk --cross-project
+   ├─ 迁移成本: 低 (仅内部使用)
+   └─ 预期收益: -126行代码 + 消除1个冗余命令文件
+
+⚠️ 优先级-中: guide.py (231行) + guide_cmd.py (37行)
+   ├─ 问题: 维护成本高 | 已被pt init取代 | 运行频率极低(仅新建) | 问题老化
+   ├─ 替代: 降级为可选--guide参数 或 移到README检查清单
+   ├─ 迁移成本: 低 (独立功能)
+   └─ 预期收益: -268行代码
+
+⚠️ 优先级-中偏低: onboard.py (410行)
+   ├─ 问题: 特殊场景使用 | 与core.py迁移重复 | 无单元测试
+   ├─ 替代: 合并到core.py的migrate_project_data()
+   ├─ 迁移成本: 中 (涉及流程重构)
+   └─ 预期收益: -410行代码 + 迁移逻辑统一
+
+【主要技术负债】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔴 问题1: core.py 上帝类 (1865行, 总代码24%)
+   ├─ 职责: YAML I/O + 数据迁移 + 40+个Internal API + 命令代理
+   ├─ 影响: 修改需全量测试 | 难以理解数据流 | 新功能堆积
+   ├─ 方案:
+   │  ├─ core_io.py (YAML I/O, ~200行)
+   │  ├─ core_migration.py (版本迁移, ~300行)
+   │  ├─ core_api.py (Internal API, ~800行)
+   │  └─ core_facade.py (公开接口, ~200行)
+   └─ 预期: 单文件<500行 | 可独立测试 | 降低改动影响范围
+
+🟡 问题2: 命令层冗余 (27个文件, 部分仅薄包装)
+   ├─ 示例: conflict_cmd(8) → guide_cmd(37) → risk_cmd(33) → notify_cmd(30)
+   ├─ 影响: 文件过多导航混乱 | 重复的"获取项目"逻辑
+   ├─ 方案:
+   │  ├─ 合并薄命令到 analysis.py
+   │  ├─ 保留复杂命令 (review_cmd/node_cmd/tasks.py)
+   │  └─ 建立 command_base.py 统一基类
+   └─ 预期: -8~10个文件 | 新命令开发时间-40%
+
+🟡 问题3: 循环依赖隐患
+   ├─ engine.py ←→ project_map.py (都用build_graph)
+   ├─ risk.py ←→ prompt.py (都用engine + cpm)
+   └─ 方案: 提取 graph_utils.py 作为共享库
+
+🟡 问题4: 测试覆盖率低 (~40%)
+   ├─ 缺失: guide.py | conflict.py | fuzzy.py | knowledge.py
+   ├─ 高优先级补充:
+   │  ├─ knowledge.py: 分词 + BM25单测
+   │  ├─ engine.py: CPM精度验证
+   │  └─ fuzzy.py: 意图识别用例
+   └─ 预期: 覆盖率 > 70%
+
+【推荐优化路线 (6-8周)】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+第一阶段 (1-2周): 清债
+├─ 删除: conflict.py + conflict_cmd.py (126行)
+├─ 删除: guide.py + guide_cmd.py (268行) 或 降级为可选参数
+├─ 合并: risk_cmd.py + notify_cmd.py 到 analysis.py
+└─ 预期: -500行代码 | 维护成本↓ | 导航更清晰
+
+第二阶段 (2-3周): 重构核心
+├─ 拆分: core.py → {core_io, core_migration, core_api, core_facade}
+├─ 建立: command_base.py 统一命令框架
+├─ 提取: graph_utils.py 共享DAG逻辑
+└─ 预期: 单文件<500行 | 改动影响范围↓ | 新功能快速接入
+
+第三阶段 (2-3周): 强化测试
+├─ 补充: knowledge.py + engine.py + fuzzy.py 单元测试
+├─ 添加: E2E集成测试 (init→add→compute→prompt)
+├─ 建立: tests/fixtures/ 统一管理测试数据
+└─ 预期: 覆盖率>70% | 自动化检测回归
+
+第四阶段 (可选, 2周): 架构优化
+├─ 引入: dataclass + TypedDict强化类型
+├─ 配合: mypy严格模式
+├─ 分离: project_map.py渲染器 (Mermaid/HTML/PlantUML)
+└─ 预期: IDE支持增强 | 扩展性改善
+
+【健康度评分】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Dimension          Score  Notes
+────────────────────────────────────────────────────────────────────────
+代码组织           6/10   core.py过大 | 命令层冗余
+功能完整性         9/10   DAG+CPM+知识库+门禁很强
+可测试性           5/10   缺基础设施 | 多个模块无测试
+文档清晰度         7/10   架构文档好 | 代码注释可改进
+扩展性             6/10   需重构才能加新渲染器/集成
+性能               8/10   YAML I/O可优化 | 总体轻量
+────────────────────────────────────────────────────────────────────────
+总体健康度         6.8/10 【高价值、高复杂、中等腐坏度】
+
+【关键文件与通道】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+绝对路径范围内必读:
+  /home/ubuntu/project-tracker/tracker/core.py (1865行)
+  /home/ubuntu/project-tracker/tracker/engine.py (386行)
+  /home/ubuntu/project-tracker/tracker/prompt.py (506行)
+  /home/ubuntu/project-tracker/tracker/knowledge.py (215行)
+  /home/ubuntu/project-tracker/tracker/risk.py (173行)
+  /home/ubuntu/project-tracker/tracker/project_validation.py (443行)
+  /home/ubuntu/project-tracker/tests/ (覆盖率验证)
+  /home/ubuntu/project-tracker/flows/ (流程模板定义)
+  /home/ubuntu/project-tracker/projects/ (项目数据示例)
+
+核心依赖拓扑:
+  cli.py (命令路由)
+    ↓
+  commands/*.py (命令实现, 27个)
+    ↓
+  core.py (持久化façade)
+    ↓ (分叉)
+  ├─ engine.py (DAG+CPM) → {prompt.py, risk.py, project_map.py}
+  ├─ project_mutation.py (状态机)
+  ├─ project_validation.py (校验)
+  └─ project_query.py (查询)

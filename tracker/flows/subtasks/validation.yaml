@@ -1,0 +1,120 @@
+# 验证子任务模板
+# 适用于: 机会探测器 — VALIDATE 阶段
+# 用最小成本验证关键假设，避免大规模投入前的致命错误
+
+id: validation
+name: 假设验证与MVP
+description: 关键假设识别、MVP设计执行、数据驱动决策
+
+attach_to:
+  - hypothesis_list
+  - mvp_design
+  - mvp_execution
+  - data_analysis
+
+phases:
+  - id: VAL_HYPOTHESIS
+    name: 假设梳理
+    tasks:
+      - id: assumption_extraction
+        name: 关键假设提取
+        owner: 分析师
+        days: 1
+        description: |
+          从前序分析中提取所有隐含假设；
+          分类: 需求假设、价格假设、渠道假设、技术假设；
+          框架: 假设 → 如果错了会怎样 → 验证方式
+        deliverables: [假设清单]
+
+      - id: assumption_prioritize
+        name: 假设优先级排序
+        owner: 决策者
+        depends: [assumption_extraction]
+        days: 1
+        description: |
+          风险 × 不确定性 矩阵排序；
+          识别「致命假设」（Leap of Faith Assumptions）；
+          选择 Top 3 必须验证的假设
+        deliverables: [优先级假设矩阵]
+
+  - id: VAL_DESIGN
+    name: MVP设计
+    tasks:
+      - id: mvp_type_select
+        name: MVP 类型选择
+        owner: 执行者
+        depends: [assumption_prioritize]
+        days: 1
+        description: |
+          根据待验证假设选择最小 MVP 类型:
+          - 落地页测试（需求验证）
+          - 魔法师型（人工模拟）
+          - 视频MVP（产品概念）
+          - 礼宾型（高接触服务）
+          - 单功能原型（技术可行性）
+          工具: GrapesJS(落地页), screenshot-to-code(快速原型)
+        deliverables: [MVP 方案选择文档]
+
+      - id: mvp_metric_define
+        name: 验证指标定义
+        owner: 分析师
+        depends: [mvp_type_select]
+        days: 1
+        description: |
+          为每个假设定义可量化的红线指标；
+          通过/失败标准提前约定；
+          数据采集方案设计；
+          工具: PostHog(埋点), GrowthBook(A/B测试)
+        deliverables: [验证指标清单]
+
+  - id: VAL_EXECUTE
+    name: MVP执行
+    tasks:
+      - id: mvp_build
+        name: MVP 构建
+        owner: 执行者
+        depends: [mvp_metric_define]
+        days: 5
+        description: |
+          按选定方案快速构建 MVP；
+          原则: 够用就好，速度优先；
+          时间盒: 最多1周，超时则简化范围
+        deliverables: [MVP 产出物]
+
+      - id: mvp_test_run
+        name: MVP 测试运行
+        owner: 执行者
+        depends: [mvp_build]
+        days: 7
+        description: |
+          投放/发布 MVP 并收集数据；
+          最少接触 30 个目标用户；
+          记录定性反馈和定量数据
+        deliverables: [测试原始数据]
+
+  - id: VAL_ANALYZE
+    name: 分析与决策
+    tasks:
+      - id: data_crunch
+        name: 数据分析
+        owner: 分析师
+        depends: [mvp_test_run]
+        days: 2
+        description: |
+          对照红线指标分析数据；
+          统计显著性检验（样本足够时）；
+          定性反馈主题聚类
+        deliverables: [数据分析报告]
+
+      - id: validation_verdict
+        name: 验证结论
+        owner: 决策者
+        depends: [data_crunch]
+        days: 1
+        critical: true
+        description: |
+          Go: 所有致命假设通过 → 进入商业计划；
+          Pivot: 部分假设失败但有调整空间 → 修改方向重新验证；
+          Kill: 核心假设证伪 → 停止投入，记录学习
+        deliverables: [验证结论报告]
+        gate: Go/Pivot/Kill 决策

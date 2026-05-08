@@ -1,0 +1,102 @@
+# 商业计划子任务模板
+# 适用于: 机会探测器 — PLAN 阶段
+# 验证通过后，制定可执行的商业计划
+
+id: business_planning
+name: 商业计划
+description: 商业模式设计、GTM策略、资源规划、风险缓解
+
+attach_to:
+  - business_model
+  - go_to_market
+  - resource_plan
+  - risk_mitigation
+
+phases:
+  - id: BIZ_MODEL
+    name: 商业模式
+    tasks:
+      - id: bmc_canvas
+        name: 商业模式画布
+        owner: 决策者
+        days: 2
+        description: |
+          Business Model Canvas 9大模块填写；
+          重点: 价值主张、客户细分、收入来源、成本结构；
+          对比 2-3 种商业模式方案
+        deliverables: [商业模式画布]
+
+      - id: pricing_strategy
+        name: 定价策略
+        owner: 分析师
+        depends: [bmc_canvas]
+        days: 2
+        description: |
+          基于竞品定价、用户支付意愿、成本结构设定价格；
+          定价模式: 订阅/按量/免费增值/混合；
+          价格锚定和心理定价策略
+        deliverables: [定价方案]
+
+      - id: moat_strategy
+        name: 护城河策略
+        owner: 决策者
+        depends: [bmc_canvas]
+        days: 1
+        description: |
+          识别可构建的竞争壁垒类型；
+          网络效应 / 规模效应 / 品牌 / 转换成本 / 数据壁垒；
+          护城河构建路线图
+        deliverables: [护城河策略文档]
+
+  - id: BIZ_GTM
+    name: 市场进入策略
+    tasks:
+      - id: channel_strategy
+        name: 获客渠道策略
+        owner: 分析师
+        depends: [pricing_strategy]
+        days: 2
+        description: |
+          Bull's Eye 框架: 列出所有可能渠道 → 筛选 → 测试；
+          优先低成本高效渠道；
+          CAC 目标设定
+        deliverables: [渠道策略文档]
+
+      - id: launch_plan
+        name: 上线计划
+        owner: 执行者
+        depends: [channel_strategy]
+        days: 2
+        description: |
+          Launch 时间线与检查清单；
+          预热/发布/后续 三阶段计划；
+          Product Hunt / 社交媒体 / PR 计划
+        deliverables: [上线计划文档]
+
+  - id: BIZ_RESOURCE
+    name: 资源与风险
+    tasks:
+      - id: resource_budget
+        name: 资源需求与预算
+        owner: 执行者
+        depends: [launch_plan]
+        days: 2
+        description: |
+          人员: 全职/兼职/外包需求；
+          资金: 启动资金 + 6个月运营资金；
+          工具/基础设施成本；
+          瀑布图展示资金使用计划
+        deliverables: [资源预算表]
+
+      - id: risk_contingency
+        name: 风险应急计划
+        owner: 决策者
+        depends: [resource_budget, moat_strategy]
+        days: 2
+        critical: true
+        description: |
+          Top 5 风险的详细缓解方案；
+          触发条件与应急响应流程；
+          Kill 条件预设: 什么情况下放弃
+        deliverables: [风险应急计划]
+        gate: 启动批准 — 资金到位且风险可控

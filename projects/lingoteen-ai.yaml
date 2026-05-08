@@ -1,0 +1,470 @@
+schema_version: 2
+id: lingoteen-ai
+name: LingoTeen AI
+flow: opportunity_detector
+created: 2026-03-13 02:49
+repo: /home/ubuntu/lingoteen-ai
+phases:
+- id: SENSE
+  name: 机会感知
+- id: SCREEN
+  name: 初筛
+  milestone: G1
+- id: ANALYZE
+  name: 深度分析
+  milestone: G2
+- id: VALIDATE
+  name: 验证
+  milestone: G3
+- id: PLAN
+  name: 商业计划
+  milestone: G4
+- id: LAUNCH
+  name: 执行启动
+- id: MONITOR
+  name: 监控迭代
+nodes:
+- id: signal_capture
+  name: 信号捕获
+  type: task
+  phase: SENSE
+  owner: 分析师
+  deliverables:
+  - 机会信号清单
+  status: done
+  started: 2026-03-13 02:55
+  completed: 2026-03-13 02:55
+- id: background_research
+  name: 背景调研
+  type: task
+  phase: SENSE
+  owner: 分析师
+  depends:
+  - signal_capture
+  deliverables:
+  - 背景调研备忘录
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: opportunity_brief
+  name: 机会描述
+  type: task
+  phase: SENSE
+  owner: 分析师
+  depends:
+  - background_research
+  deliverables:
+  - 《机会简报》
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: ms_sense
+  name: 机会感知 里程碑
+  type: milestone
+  phase: SENSE
+  depends:
+  - opportunity_brief
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: market_sizing
+  name: 市场规模估算
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - ms_sense
+  deliverables:
+  - TAM/SAM/SOM 估算
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: competition_scan
+  name: 竞争扫描
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - ms_sense
+  deliverables:
+  - 竞争格局概览
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: capability_match
+  name: 能力匹配评估
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - ms_sense
+  deliverables:
+  - 能力差距分析
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: rough_economics
+  name: 粗算经济模型
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - market_sizing
+  - competition_scan
+  - capability_match
+  deliverables:
+  - 初步经济模型
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: ms_screen
+  name: 初筛 里程碑
+  type: milestone
+  phase: SCREEN
+  depends:
+  - rough_economics
+  gate: Go/Kill 决策
+  status: done
+  started: 2026-03-13 02:56
+  completed: 2026-03-13 02:56
+- id: market_deep_dive
+  name: 市场深度分析
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - ms_screen
+  deliverables:
+  - 市场深度分析报告
+  status: done
+  started: 2026-03-13 02:57
+  completed: 2026-03-13 02:57
+- id: competitor_analysis
+  name: 竞品分析
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - ms_screen
+  deliverables:
+  - 竞品分析矩阵
+  status: done
+  started: 2026-03-13 02:57
+  completed: 2026-03-13 02:57
+- id: value_chain
+  name: 价值链分析
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - market_deep_dive
+  - competitor_analysis
+  deliverables:
+  - 价值链地图
+  status: done
+  started: 2026-03-13 02:57
+  completed: 2026-03-13 02:57
+- id: risk_assessment
+  name: 风险评估
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - market_deep_dive
+  - competitor_analysis
+  deliverables:
+  - 风险登记簿
+  status: done
+  started: 2026-03-13 02:57
+  completed: 2026-03-13 02:57
+- id: financial_model
+  name: 财务模型
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - value_chain
+  - risk_assessment
+  deliverables:
+  - 财务模型（含敏感性分析）
+  status: done
+  started: 2026-03-13 02:57
+  completed: 2026-03-13 02:57
+- id: ms_analyze
+  name: 深度分析 里程碑
+  type: milestone
+  phase: ANALYZE
+  depends:
+  - financial_model
+  gate: 投资决策
+  status: done
+  started: 2026-03-13 02:57
+  completed: 2026-03-13 02:57
+- id: hypothesis_list
+  name: 关键假设清单
+  type: task
+  phase: VALIDATE
+  owner: 分析师
+  depends:
+  - ms_analyze
+  deliverables:
+  - 假设清单（含优先级）
+  status: done
+  started: 2026-03-13 03:00
+  completed: 2026-03-13 03:00
+- id: mvp_design
+  name: MVP 设计
+  type: task
+  phase: VALIDATE
+  owner: 执行者
+  depends:
+  - hypothesis_list
+  deliverables:
+  - MVP 方案文档
+  status: done
+  started: 2026-03-13 03:00
+  completed: 2026-03-13 03:00
+- id: mvp_execution
+  name: MVP 执行
+  type: task
+  phase: VALIDATE
+  owner: 执行者
+  depends:
+  - mvp_design
+  deliverables:
+  - MVP 产出物/数据
+  status: in_progress
+  started: 2026-03-13 03:06
+- id: data_analysis
+  name: 数据分析
+  type: task
+  phase: VALIDATE
+  owner: 分析师
+  depends:
+  - mvp_execution
+  deliverables:
+  - 验证结果报告
+  status: pending
+- id: ms_validate
+  name: 验证 里程碑
+  type: milestone
+  phase: VALIDATE
+  depends:
+  - data_analysis
+  gate: Go/Pivot/Kill 决策
+  status: pending
+- id: business_model
+  name: 商业模式设计
+  type: task
+  phase: PLAN
+  owner: 决策者
+  depends:
+  - ms_validate
+  deliverables:
+  - 商业模式画布
+  status: pending
+- id: resource_plan
+  name: 资源计划
+  type: task
+  phase: PLAN
+  owner: 执行者
+  depends:
+  - business_model
+  deliverables:
+  - 资源需求与预算
+  status: pending
+- id: go_to_market
+  name: 市场策略
+  type: task
+  phase: PLAN
+  owner: 分析师
+  depends:
+  - business_model
+  deliverables:
+  - GTM 策略文档
+  status: pending
+- id: risk_mitigation
+  name: 风险缓解计划
+  type: task
+  phase: PLAN
+  owner: 决策者
+  depends:
+  - resource_plan
+  - go_to_market
+  deliverables:
+  - 风险缓解方案
+  status: pending
+- id: ms_plan
+  name: 商业计划 里程碑
+  type: milestone
+  phase: PLAN
+  depends:
+  - risk_mitigation
+  gate: 启动批准
+  status: pending
+- id: team_formation
+  name: 团队组建
+  type: task
+  phase: LAUNCH
+  owner: 决策者
+  depends:
+  - ms_plan
+  deliverables:
+  - 团队到位确认
+  status: pending
+- id: phase1_execution
+  name: 首阶段执行
+  type: task
+  phase: LAUNCH
+  owner: 执行者
+  depends:
+  - team_formation
+  deliverables:
+  - 首阶段交付物
+  status: pending
+- id: first_revenue
+  name: 首笔收入
+  type: task
+  phase: LAUNCH
+  owner: 执行者
+  depends:
+  - phase1_execution
+  deliverables:
+  - 收入确认记录
+  critical: true
+  status: pending
+- id: metrics_dashboard
+  name: 指标看板搭建
+  type: task
+  phase: MONITOR
+  owner: 分析师
+  depends:
+  - first_revenue
+  deliverables:
+  - 运营看板
+  status: pending
+- id: iteration_review
+  name: 迭代复盘
+  type: task
+  phase: MONITOR
+  owner: 决策者
+  depends:
+  - metrics_dashboard
+  deliverables:
+  - 复盘报告与行动项
+  status: pending
+- id: ms_monitor
+  name: 监控迭代 里程碑
+  type: milestone
+  phase: MONITOR
+  depends:
+  - iteration_review
+  status: pending
+blockers: []
+log:
+- time: 2026-03-13 02:49
+  action: init
+  detail: '项目创建，流程: opportunity_detector'
+- time: 2026-03-13 02:55
+  action: done
+  task: signal_capture
+  detail: 信号捕获
+- time: 2026-03-13 02:56
+  action: note
+  detail: 完成痛点提取：传统英语学习缺乏真实语境，外教贵，青少年需要高频且游戏化的口语学伴。
+- time: 2026-03-13 02:56
+  action: done
+  task: background_research
+  detail: 背景调研
+- time: 2026-03-13 02:56
+  action: done
+  task: opportunity_brief
+  detail: 机会描述
+- time: 2026-03-13 02:56
+  action: done
+  task: ms_sense
+  detail: 机会感知 里程碑
+- time: 2026-03-13 02:56
+  action: done
+  task: market_sizing
+  detail: 市场规模估算
+- time: 2026-03-13 02:56
+  action: done
+  task: competition_scan
+  detail: 竞争扫描
+- time: 2026-03-13 02:56
+  action: done
+  task: capability_match
+  detail: 能力匹配评估
+- time: 2026-03-13 02:56
+  action: done
+  task: rough_economics
+  detail: 粗算经济模型
+- time: 2026-03-13 02:56
+  action: done
+  task: ms_screen
+  detail: 初筛 里程碑
+- time: 2026-03-13 02:57
+  action: note
+  detail: G1初筛决策：GO (推进至ANALYZE阶段)，发现强烈的供需错位，切入青少年口语赛道
+- time: 2026-03-13 02:57
+  action: done
+  task: market_deep_dive
+  detail: 市场深度分析
+- time: 2026-03-13 02:57
+  action: done
+  task: competitor_analysis
+  detail: 竞品分析
+- time: 2026-03-13 02:57
+  action: done
+  task: value_chain
+  detail: 价值链分析
+- time: 2026-03-13 02:57
+  action: done
+  task: risk_assessment
+  detail: 风险评估
+- time: 2026-03-13 02:57
+  action: done
+  task: financial_model
+  detail: 财务模型
+- time: 2026-03-13 02:57
+  action: done
+  task: ms_analyze
+  detail: 深度分析 里程碑
+- time: 2026-03-13 02:57
+  action: note
+  detail: 深度分析完成，核心文档已生成于 ~/lingoteen-docs/LingoTeen_深度分析报告.md。重点梳理了双端需求矩阵与 LiveKit
+    低延迟架构 MVP 验证思路。
+- time: 2026-03-13 03:00
+  action: done
+  task: hypothesis_list
+  detail: 关键假设清单
+- time: 2026-03-13 03:00
+  action: done
+  task: mvp_design
+  detail: MVP 设计
+- time: 2026-03-13 03:00
+  action: note
+  detail: 输出 MVP 极低延迟架构推演与更广方向探测 Prompt 至 ~/lingoteen-docs/MVP_架构设计与更广阔方向探测.md
+- time: 2026-03-13 03:06
+  action: start
+  task: mvp_execution
+  detail: MVP 执行
+- time: 2026-03-13 03:06
+  action: note
+  detail: 聚焦英语口语方向的 LiveKit + Groq 架构实施指南已更新
+- time: 2026-03-13 03:08
+  action: note
+  detail: 更新 1 周 MVP 作战计划：已针对一人公司调整策略，主攻 Serverless/BaaS 极速闭环
+- time: 2026-03-13 03:38
+  action: repo_link
+  detail: '关联仓库: /home/ubuntu/lingoteen-ai'
+reviews: []
+decisions:
+- id: 1
+  title: G2 投资决策：GO，核心假设成立，建议推进至验证阶段构建基于 LiveKit 的低延迟 MVP
+  source: 双端需求矩阵分析
+  impact: ANALYZE,VALIDATE
+  status: active
+  date: '2026-03-13'
+pocs: []

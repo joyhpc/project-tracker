@@ -1,0 +1,139 @@
+# 深度分析子任务模板
+# 适用于: 机会探测器 — ANALYZE 阶段
+# 通过初筛的机会做深入分析，支撑投资决策
+
+id: deep_analysis
+name: 深度分析
+description: 市场深挖、竞品拆解、价值链、风险、财务建模
+
+attach_to:
+  - market_deep_dive
+  - competitor_analysis
+  - value_chain
+  - risk_assessment
+  - financial_model
+
+phases:
+  - id: ANA_MARKET
+    name: 市场深度研究
+    tasks:
+      - id: segment_analysis
+        name: 市场细分分析
+        owner: 分析师
+        days: 3
+        description: |
+          按用户画像/使用场景/地域/价格带细分市场；
+          识别最有吸引力的细分市场；
+          分析各细分的增长率和进入壁垒
+        deliverables: [市场细分报告]
+
+      - id: customer_persona
+        name: 客户画像深化
+        owner: 分析师
+        depends: [segment_analysis]
+        days: 2
+        description: |
+          目标细分市场的详细用户画像；
+          痛点排序、支付意愿、决策流程；
+          Jobs-to-be-Done 框架分析
+        deliverables: [客户画像文档]
+
+      - id: trend_projection
+        name: 趋势预测
+        owner: 分析师
+        depends: [segment_analysis]
+        days: 2
+        description: |
+          市场增长趋势建模（3-5年）；
+          关键驱动因素和潜在拐点；
+          技术采用曲线定位
+        deliverables: [趋势预测报告]
+
+  - id: ANA_COMPETE
+    name: 竞品深度拆解
+    tasks:
+      - id: competitor_deep_dive
+        name: 核心竞品拆解
+        owner: 分析师
+        days: 3
+        description: |
+          Top 3-5 竞品的深度拆解；
+          产品功能、定价策略、获客渠道、技术栈；
+          收入规模估算（如有公开数据）；
+          工具: competitor_matrix.py --mode deep
+        deliverables: [竞品拆解报告]
+
+      - id: differentiation_map
+        name: 差异化地图
+        owner: 分析师
+        depends: [competitor_deep_dive, customer_persona]
+        days: 2
+        description: |
+          基于用户需求优先级，绘制差异化机会地图；
+          识别可防御的差异化点；
+          评估「10x better」的可能性
+        deliverables: [差异化分析]
+
+  - id: ANA_VALUE
+    name: 价值链与风险
+    tasks:
+      - id: value_chain_map
+        name: 价值链绘制
+        owner: 分析师
+        depends: [competitor_deep_dive]
+        days: 2
+        description: |
+          绘制从供应到终端用户的完整价值链；
+          识别价值创造和价值捕获环节；
+          找到可切入的最优位置
+        deliverables: [价值链地图]
+
+      - id: risk_register
+        name: 风险登记簿
+        owner: 分析师
+        depends: [differentiation_map, value_chain_map]
+        days: 2
+        description: |
+          系统性风险识别: 市场、技术、竞争、法规、执行；
+          风险矩阵: 概率 × 影响 评级；
+          Top 5 风险的初步缓解思路
+        deliverables: [风险登记簿]
+
+  - id: ANA_FINANCE
+    name: 财务建模
+    tasks:
+      - id: revenue_model
+        name: 收入模型
+        owner: 分析师
+        depends: [customer_persona, trend_projection]
+        days: 3
+        description: |
+          详细收入预测（月度，3年）；
+          多种收入模式对比（订阅/交易/广告/许可）；
+          保守/基准/乐观三种情景
+        deliverables: [收入预测模型]
+
+      - id: cost_structure
+        name: 成本结构分析
+        owner: 分析师
+        depends: [value_chain_map]
+        days: 2
+        description: |
+          固定成本 vs 变动成本拆解；
+          规模效应分析；
+          盈亏平衡点计算
+        deliverables: [成本结构分析]
+
+      - id: financial_summary
+        name: 财务模型汇总
+        owner: 分析师
+        depends: [revenue_model, cost_structure, risk_register]
+        days: 2
+        critical: true
+        description: |
+          NPV/IRR/回收期计算；
+          敏感性分析（关键假设±20%）；
+          投资决策建议；
+          工具: financial_model.py --mode full
+        deliverables: [《财务分析报告》]
+        gate: 投资决策 — NPV > 0 且 IRR > 期望收益率

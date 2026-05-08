@@ -1,0 +1,180 @@
+# 机会探测器 — 加速版流程 (Solo Founder / 14天)
+#
+# 核心理念: "Building IS Validation" (2025-2026最佳实践)
+# - SENSE+SCREEN 合并为 3 天信号确认
+# - ANALYZE 精简为快速分析 (3天)
+# - VALIDATE = 直接构建MVP + 收费测试 (7天)
+# - PLAN+LAUNCH 合并为执行 (持续)
+#
+# 对比标准版: 59天 → 14天, 31节点 → 16节点
+# 适用: 个人/2人团队, 低成本验证, Micro SaaS
+
+phases:
+- id: SIGNAL
+  name: 信号确认
+  milestone: G1
+- id: QUICK_ANALYZE
+  name: 快速分析
+  milestone: G2
+- id: BUILD_VALIDATE
+  name: 构建验证
+  milestone: G3
+- id: EXECUTE
+  name: 执行增长
+
+nodes:
+# ── SIGNAL 信号确认 (Day 0-2, 4 nodes) ──────────────────
+- id: pain_mining
+  name: 痛点挖掘
+  type: task
+  phase: SIGNAL
+  owner: 分析师
+  deliverables:
+  - 痛点挖掘报告 (pain_miner.py 输出)
+  - ≥5个独立用户主动求解同一问题
+
+- id: solution_scan
+  name: 现有方案扫描
+  type: task
+  phase: SIGNAL
+  owner: 分析师
+  depends:
+  - pain_mining
+  deliverables:
+  - 竞品快速矩阵 (competitor_matrix.py --mode quick)
+
+- id: quick_score
+  name: 快速评分
+  type: task
+  phase: SIGNAL
+  owner: 决策者
+  depends:
+  - solution_scan
+  deliverables:
+  - 评分卡 (opportunity_scorer.py)
+  gate: 评分 > 50 且无红线触发
+
+- id: ms_signal
+  name: 信号确认 里程碑
+  type: milestone
+  phase: SIGNAL
+  depends:
+  - quick_score
+  gate: Go/Kill — 有真实痛点且无致命红线
+
+# ── QUICK_ANALYZE 快速分析 (Day 3-5, 4 nodes) ───────────
+- id: tam_estimate
+  name: 市场规模速估
+  type: task
+  phase: QUICK_ANALYZE
+  owner: 分析师
+  depends:
+  - ms_signal
+  deliverables:
+  - TAM/SAM/SOM 估算 (market_sizer.py)
+
+- id: unit_economics
+  name: 单位经济速算
+  type: task
+  phase: QUICK_ANALYZE
+  owner: 分析师
+  depends:
+  - ms_signal
+  deliverables:
+  - LTV/CAC/毛利率 (financial_model.py --mode rough)
+
+- id: value_prop
+  name: 一句话价值主张
+  type: task
+  phase: QUICK_ANALYZE
+  owner: 决策者
+  depends:
+  - tam_estimate
+  - unit_economics
+  deliverables:
+  - 我帮[谁]解决[什么痛]通过[什么方式]比[现有方案]好在[哪里]
+
+- id: ms_analyze
+  name: 快速分析 里程碑
+  type: milestone
+  phase: QUICK_ANALYZE
+  depends:
+  - value_prop
+  gate: LTV/CAC > 3 且 TAM > $10M
+
+# ── BUILD_VALIDATE 构建验证 (Day 5-14, 6 nodes) ─────────
+- id: landing_page
+  name: Ghost 落地页 + 预售
+  type: task
+  phase: BUILD_VALIDATE
+  owner: 执行者
+  depends:
+  - ms_analyze
+  deliverables:
+  - 落地页上线 (Carrd/Framer)
+  - 预售按钮 (Stripe Payment Links)
+
+- id: community_launch
+  name: 社区分发 + 反向访谈
+  type: task
+  phase: BUILD_VALIDATE
+  owner: 执行者
+  depends:
+  - landing_page
+  deliverables:
+  - 3-5个社区帖子
+  - 5次反向访谈纪要
+  gate: ≥3/5人确认痛点 + ≥1帖子>10回复
+
+- id: mvp_build
+  name: AI加速MVP构建
+  type: task
+  phase: BUILD_VALIDATE
+  owner: 执行者
+  depends:
+  - community_launch
+  deliverables:
+  - 可用MVP (Cursor+Claude Code, 7天时间盒)
+  critical: true
+
+- id: first_users
+  name: 首批用户试用
+  type: task
+  phase: BUILD_VALIDATE
+  owner: 执行者
+  depends:
+  - mvp_build
+  deliverables:
+  - 10人试用数据
+  - ≥3人自发回访
+
+- id: ms_validate
+  name: 构建验证 里程碑
+  type: milestone
+  phase: BUILD_VALIDATE
+  depends:
+  - first_users
+  gate: ≥3人预付费 + ≥3人回访 → Go; 否则 Pivot/Kill
+
+# ── EXECUTE 执行增长 (持续, 2 nodes) ─────────────────────
+- id: growth_engine
+  name: 增长引擎启动
+  type: task
+  phase: EXECUTE
+  owner: 执行者
+  depends:
+  - ms_validate
+  deliverables:
+  - 确定核心获客渠道
+  - 首月收入目标
+
+- id: first_revenue
+  name: 首笔收入
+  type: task
+  phase: EXECUTE
+  owner: 执行者
+  depends:
+  - growth_engine
+  deliverables:
+  - 收入确认记录
+  critical: true

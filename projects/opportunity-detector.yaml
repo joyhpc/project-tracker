@@ -1,0 +1,335 @@
+schema_version: 2
+id: opportunity-detector
+name: 机会探测器
+flow: opportunity_detector
+created: 2026-03-12 17:57
+repo: ''
+phases:
+- id: SENSE
+  name: 机会感知
+- id: SCREEN
+  name: 初筛
+  milestone: G1
+- id: ANALYZE
+  name: 深度分析
+  milestone: G2
+- id: VALIDATE
+  name: 验证
+  milestone: G3
+- id: PLAN
+  name: 商业计划
+  milestone: G4
+- id: LAUNCH
+  name: 执行启动
+- id: MONITOR
+  name: 监控迭代
+nodes:
+- id: signal_capture
+  name: 信号捕获
+  type: task
+  phase: SENSE
+  owner: 分析师
+  deliverables:
+  - 机会信号清单
+  status: pending
+- id: background_research
+  name: 背景调研
+  type: task
+  phase: SENSE
+  owner: 分析师
+  depends:
+  - signal_capture
+  deliverables:
+  - 背景调研备忘录
+  status: pending
+- id: opportunity_brief
+  name: 机会描述
+  type: task
+  phase: SENSE
+  owner: 分析师
+  depends:
+  - background_research
+  deliverables:
+  - 《机会简报》
+  status: pending
+- id: ms_sense
+  name: 机会感知 里程碑
+  type: milestone
+  phase: SENSE
+  depends:
+  - opportunity_brief
+  status: pending
+- id: market_sizing
+  name: 市场规模估算
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - ms_sense
+  deliverables:
+  - TAM/SAM/SOM 估算
+  status: pending
+- id: competition_scan
+  name: 竞争扫描
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - ms_sense
+  deliverables:
+  - 竞争格局概览
+  status: pending
+- id: capability_match
+  name: 能力匹配评估
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - ms_sense
+  deliverables:
+  - 能力差距分析
+  status: pending
+- id: rough_economics
+  name: 粗算经济模型
+  type: task
+  phase: SCREEN
+  owner: 分析师
+  depends:
+  - market_sizing
+  - competition_scan
+  - capability_match
+  deliverables:
+  - 初步经济模型
+  status: pending
+- id: ms_screen
+  name: 初筛 里程碑
+  type: milestone
+  phase: SCREEN
+  depends:
+  - rough_economics
+  gate: Go/Kill 决策
+  status: pending
+- id: market_deep_dive
+  name: 市场深度分析
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - ms_screen
+  deliverables:
+  - 市场深度分析报告
+  status: pending
+- id: competitor_analysis
+  name: 竞品分析
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - ms_screen
+  deliverables:
+  - 竞品分析矩阵
+  status: pending
+- id: value_chain
+  name: 价值链分析
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - market_deep_dive
+  - competitor_analysis
+  deliverables:
+  - 价值链地图
+  status: pending
+- id: risk_assessment
+  name: 风险评估
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - market_deep_dive
+  - competitor_analysis
+  deliverables:
+  - 风险登记簿
+  status: pending
+- id: financial_model
+  name: 财务模型
+  type: task
+  phase: ANALYZE
+  owner: 分析师
+  depends:
+  - value_chain
+  - risk_assessment
+  deliverables:
+  - 财务模型（含敏感性分析）
+  status: pending
+- id: ms_analyze
+  name: 深度分析 里程碑
+  type: milestone
+  phase: ANALYZE
+  depends:
+  - financial_model
+  gate: 投资决策
+  status: pending
+- id: hypothesis_list
+  name: 关键假设清单
+  type: task
+  phase: VALIDATE
+  owner: 分析师
+  depends:
+  - ms_analyze
+  deliverables:
+  - 假设清单（含优先级）
+  status: pending
+- id: mvp_design
+  name: MVP 设计
+  type: task
+  phase: VALIDATE
+  owner: 执行者
+  depends:
+  - hypothesis_list
+  deliverables:
+  - MVP 方案文档
+  status: pending
+- id: mvp_execution
+  name: MVP 执行
+  type: task
+  phase: VALIDATE
+  owner: 执行者
+  depends:
+  - mvp_design
+  deliverables:
+  - MVP 产出物/数据
+  status: pending
+- id: data_analysis
+  name: 数据分析
+  type: task
+  phase: VALIDATE
+  owner: 分析师
+  depends:
+  - mvp_execution
+  deliverables:
+  - 验证结果报告
+  status: pending
+- id: ms_validate
+  name: 验证 里程碑
+  type: milestone
+  phase: VALIDATE
+  depends:
+  - data_analysis
+  gate: Go/Pivot/Kill 决策
+  status: pending
+- id: business_model
+  name: 商业模式设计
+  type: task
+  phase: PLAN
+  owner: 决策者
+  depends:
+  - ms_validate
+  deliverables:
+  - 商业模式画布
+  status: pending
+- id: resource_plan
+  name: 资源计划
+  type: task
+  phase: PLAN
+  owner: 执行者
+  depends:
+  - business_model
+  deliverables:
+  - 资源需求与预算
+  status: pending
+- id: go_to_market
+  name: 市场策略
+  type: task
+  phase: PLAN
+  owner: 分析师
+  depends:
+  - business_model
+  deliverables:
+  - GTM 策略文档
+  status: pending
+- id: risk_mitigation
+  name: 风险缓解计划
+  type: task
+  phase: PLAN
+  owner: 决策者
+  depends:
+  - resource_plan
+  - go_to_market
+  deliverables:
+  - 风险缓解方案
+  status: pending
+- id: ms_plan
+  name: 商业计划 里程碑
+  type: milestone
+  phase: PLAN
+  depends:
+  - risk_mitigation
+  gate: 启动批准
+  status: pending
+- id: team_formation
+  name: 团队组建
+  type: task
+  phase: LAUNCH
+  owner: 决策者
+  depends:
+  - ms_plan
+  deliverables:
+  - 团队到位确认
+  status: pending
+- id: phase1_execution
+  name: 首阶段执行
+  type: task
+  phase: LAUNCH
+  owner: 执行者
+  depends:
+  - team_formation
+  deliverables:
+  - 首阶段交付物
+  status: pending
+- id: first_revenue
+  name: 首笔收入
+  type: task
+  phase: LAUNCH
+  owner: 执行者
+  depends:
+  - phase1_execution
+  deliverables:
+  - 收入确认记录
+  critical: true
+  status: pending
+- id: metrics_dashboard
+  name: 指标看板搭建
+  type: task
+  phase: MONITOR
+  owner: 分析师
+  depends:
+  - first_revenue
+  deliverables:
+  - 运营看板
+  status: pending
+- id: iteration_review
+  name: 迭代复盘
+  type: task
+  phase: MONITOR
+  owner: 决策者
+  depends:
+  - metrics_dashboard
+  deliverables:
+  - 复盘报告与行动项
+  status: pending
+- id: ms_monitor
+  name: 监控迭代 里程碑
+  type: milestone
+  phase: MONITOR
+  depends:
+  - iteration_review
+  status: pending
+blockers: []
+log:
+- time: 2026-03-12 17:57
+  action: init
+  detail: '项目创建，流程: opportunity_detector'
+reviews: []
+decisions: []
+pocs: []

@@ -1740,15 +1740,68 @@ reviews:
 - file: CAMRX/01_Requirements/2026 01 30 会议.md
   task: null
   verdicts:
-    GO: 1
+  - verdict: GO
+    topic: (legacy, 1次)
   source: scan
 - file: DCURX/04_详细设计_Detailed_Design/01_硬件设计_Hardware/01_域控核心板_CoreBoard/PCB Layout说明.md
   task: null
   verdicts:
-    GO: 1
+  - verdict: GO
+    topic: (legacy, 1次)
   source: scan
 - file: docs/onboard-prompt.md
   task: null
   verdicts:
-    GO: 2
+  - verdict: GO
+    topic: (legacy, 2次)
+  - verdict: GO
+    topic: (legacy, 2次)
   source: scan
+schema_version: 2
+decisions:
+- id: 1
+  title: LM5060替代JW7221热插拔芯片
+  source: ECN-001
+  impact: U39电源口需重新设计
+  status: active
+  date: '2026-03-12'
+- id: 2
+  title: 3.5Gbps DPHY采用GW5AT-LV60
+  source: FPGA寻样评估
+  impact: CAMRX原理图MIPI部分
+  status: active
+  date: '2026-03-12'
+- id: 3
+  title: DCURX+CAMRX联调并行
+  source: 架构评审
+  impact: 缩短关键路径
+  status: active
+  date: '2026-03-12'
+- id: 4
+  title: STM32H745作为MCU
+  source: 器件评估
+  impact: 固件基于双核H7
+  status: active
+  date: '2026-03-12'
+- id: 5
+  title: KU3P-STM32通信由QSPI改FMC
+  source: ECN-001
+  impact: 核心板通信架构变更
+  status: active
+  date: '2026-03-12'
+pocs:
+- id: 1
+  title: 3.5Gbps DPHY 8ch验证
+  metric: 眼图裕量>=15%
+  status: pending
+  date: '2026-03-12'
+- id: 2
+  title: LM5060热插拔验证
+  metric: OVP+UVLO全过
+  status: pending
+  date: '2026-03-12'
+- id: 3
+  title: CPHY桥接方案(60K)
+  metric: IO+CPHY+VDDIO验证通过
+  status: pending
+  date: '2026-03-12'

@@ -1,0 +1,100 @@
+# 市场初筛子任务模板
+# 适用于: 机会探测器 — SCREEN 阶段
+# 快速评估市场吸引力，淘汰不值得深入的机会
+
+id: market_screening
+name: 市场初筛
+description: 市场规模、竞争、能力匹配、经济模型的快速评估
+
+attach_to:
+  - market_sizing
+  - competition_scan
+  - capability_match
+  - rough_economics
+
+phases:
+  - id: SCR_MARKET
+    name: 市场规模评估
+    tasks:
+      - id: tam_topdown
+        name: TAM 自顶向下估算
+        owner: 分析师
+        days: 2
+        description: |
+          从宏观数据出发: 行业报告、统计年鉴、上市公司财报；
+          TAM = 整体市场容量；
+          工具: market_sizer.py --method topdown
+        deliverables: [TAM 估算表]
+
+      - id: sam_bottomup
+        name: SAM 自底向上验证
+        owner: 分析师
+        depends: [tam_topdown]
+        days: 2
+        description: |
+          从用户画像出发: 目标客户数 × 客单价 × 频次；
+          SAM = 可服务市场；SOM = 短期可获取份额；
+          交叉验证与 TAM 的一致性
+        deliverables: [SAM/SOM 估算表]
+
+  - id: SCR_COMPETE
+    name: 竞争扫描
+    tasks:
+      - id: competitor_list
+        name: 竞品清单梳理
+        owner: 分析师
+        days: 1
+        description: |
+          直接竞品 + 间接竞品 + 潜在进入者；
+          信息源: Crunchbase, ProductHunt, App Store, 企查查；
+          工具: Crawl4AI 自动采集竞品信息
+        deliverables: [竞品清单]
+
+      - id: quick_competitive_map
+        name: 快速竞争地图
+        owner: 分析师
+        depends: [competitor_list]
+        days: 1
+        description: |
+          2×2 矩阵定位（选择最关键的两个维度）；
+          识别市场空白区域；
+          工具: competitor_matrix.py --mode quick
+        deliverables: [竞争定位图]
+
+  - id: SCR_FIT
+    name: 能力与经济评估
+    tasks:
+      - id: capability_gap
+        name: 能力差距分析
+        owner: 分析师
+        days: 1
+        description: |
+          对照机会需求，评估团队/个人能力匹配度；
+          列出需要补齐的关键能力；
+          评估学习成本和时间
+        deliverables: [能力差距矩阵]
+
+      - id: rough_unit_economics
+        name: 粗算单位经济
+        owner: 分析师
+        depends: [sam_bottomup, quick_competitive_map, capability_gap]
+        days: 2
+        description: |
+          粗估: 获客成本(CAC)、客户终身价值(LTV)、毛利率；
+          LTV/CAC > 3? 毛利率 > 50%?
+          粗估投入回报周期；
+          工具: financial_model.py --mode rough
+        deliverables: [粗算经济模型]
+
+      - id: screening_scorecard
+        name: 初筛评分卡
+        owner: 分析师
+        depends: [rough_unit_economics]
+        days: 1
+        critical: true
+        description: |
+          多维打分: 市场(30%) + 竞争(20%) + 能力(20%) + 经济(30%)；
+          Go/Kill 建议；
+          工具: opportunity_scorer.py
+        deliverables: [初筛评分卡]
+        gate: Go/Kill 决策 — 评分 < 60 建议 Kill
