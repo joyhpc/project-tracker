@@ -1,0 +1,4 @@
+interface:
+  display_name: "Critical Component Selection"
+  short_description: "Freeze-grade hardware component decisions"
+  default_prompt: "Use $critical-component-selection to structure a freeze-grade hardware component selection decision."
