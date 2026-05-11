@@ -1,176 +1,158 @@
 # Project Tracker (项目推进助手)
 
-> **[REVIEW] 新增: 钩子协议 (`pt hooks`) + 领域同步桥 (`pt domain-sync`) — 详见 `tracker/post_save.py`, `tracker/domain_sync.py`**
+`project-tracker` 是一个轻量项目推进辅助工具。它帮助你用 `pt` 查看项目状态、下一步行动、任务依赖、文档挂接和简单闭环门禁；它不是项目正文归档仓、复杂项目管理平台或知识库系统。
 
-基于 DAG + CPM 关键路径的硬件项目推进 CLI 工具。
+正式需求、设计说明、BOM、测试记录、样品记录、发布结论和长期知识，应放在各自项目 repo、wiki 或专用知识库中。`project-tracker` 只保存紧凑状态、索引、路径和门禁元数据。
 
-**核心能力**: 全局 DAG + CPM 引擎 | BM25 知识检索 | LLM Prompt 生成 | 投板门禁 | 风险量化 | 审核工具链集成
+路线约束见 [Issue #1](https://github.com/joyhpc/project-tracker/issues/1)：当前阶段保持轻量辅助，暂缓深度项目管理化。
+
+## 核心能力
+
+- 项目 YAML 状态索引：阶段、任务、依赖、负责人、状态和日志
+- DAG + CPM：计算关键路径、slack、可并行任务和下一步行动
+- 文档路径挂接：把任务指向 linked project repo 中的正式文件
+- 决策 / PoC / review 简要索引：只记录标题、状态、路径和少量摘要
+- 简单门禁：提醒证据、样品、版本、正式回写路径是否缺失
+- 导出与可视化：终端项目地图、Mermaid 依赖图、Gantt、CSV
+
+以下能力如果仍存在于代码中，应视为待核验或实验能力，不应继续扩张：深度 prompt 生成、内置知识检索、复杂自动同步、跨仓自动 ingest、Web/通知集成。
 
 ## 安装
 
 ```bash
 git clone git@github.com:joyhpc/project-tracker.git
 cd project-tracker
-python3 -m venv .venv
+python -m venv .venv
 . .venv/bin/activate
 pip install -e .
 ```
 
-或直接运行：`./pt --help`
+Windows 上可直接使用：
+
+```powershell
+python -m tracker --help
+```
 
 ## 快速开始
 
 ```bash
-# 项目管理
-pt init A57 --name "A57 域控测试盒" --flow duxin
-pt status                      # 查看状态
-pt map                         # 终端项目地图
-pt map --html                  # HTML 项目地图
-pt list                        # 列出所有项目
-pt switch A57                  # 切换项目
+# 创建和切换项目
+pt init PILLOW --name "智能助眠枕头" --flow generic --repo ../smart-sleep-pillow
+pt switch PILLOW
 
-# 任务操作
-pt tasks                       # 查看任务列表
-pt next                        # 下一步行动
-pt start pcb_sample            # 开始任务
-pt done pcb_sample --note "已发板厂"  # 完成任务
-pt block pcb_eq --reason "等EQ"      # 标记阻塞
+# 轻量推进
+pt status
+pt plan
+pt next
+pt tasks
 
-# 分析与决策
-pt risk                        # 风险评估
-pt prompt "MIPI问题" --deep    # 生成带知识上下文的 LLM prompt
-pt decision --add "方案变更"   # 登记决策
-pt poc --add "验证项" --metric "红线指标"  # PoC 追踪
+# 任务状态
+pt start fw_design
+pt done fw_design --note "固件架构文档已回写项目仓"
+pt block bringup --reason "等待样机"
 
-# 审核集成（v2.5 新增）
-pt review-sync                 # 从 sch-review 自动同步审核报告
-pt gate schematic_review       # 投板门禁检查（P0/P1/P2 汇总）
-pt gate closure edp_bringup    # Merge-to-Close 正式闭环门禁
-pt closure scaffold edp_bringup  # 输出闭环脚手架
-pt gate schematic_review --scan-dir ~/sch-review/reports/gwbrgic/
+# 文档挂接：正式文档写在项目 repo，本仓只保存路径
+pt docs --link ../smart-sleep-pillow
+pt docs fw_design
 
-# 自动收口
-# 保存项目后会自动刷新 docs/issues/<PROJECT>_CLOSE_GATE_BACKLOG_AUTO.md
+# 决策 / PoC / 门禁索引
+pt decision --add "Gen1 只做 1-50Hz 振动"
+pt poc --summary
+pt close list --invalid-only
 
-# 数据导出
-pt gantt                       # Mermaid Gantt 图
-pt deps                        # 依赖图
-pt burndown                    # 燃尽图
-pt export nodes                # CSV 导出
+# 可视化与导出
+pt map
+pt deps
+pt gantt
+pt export nodes
+```
 
-# 需求体系（v2.7）
-pt req init --subprojects CAMRX,DCURX
-pt req index
-pt req check --strict
+## 文件边界
+
+```text
+project-tracker/
+  projects/*.yaml        轻量项目状态、路径索引、DAG、门禁元数据
+  flows/                 通用流程模板
+  tracker/               pt CLI 与实现
+  docs/                  工具自身协议和方法边界
+  outputs/               本地临时输出，默认不提交
+
+linked-project-repo/
+  docs/                  正式需求、设计、验证、结论
+  hardware/              原理图、PCB、BOM 等项目资料
+  firmware/              固件代码
+  test/                  原始测试记录、报告、样品证据
+  .pt/                   可选的项目状态快照
+```
+
+原则：
+
+- `project-tracker` 不吞并项目正文。
+- `projects/*.yaml` 中的 `docs` / `evidence` 路径应指向 linked project repo 中的文件。
+- 生成报告和回写页应优先写到 linked project repo；根目录不得沉积 AI 元分析、任务追踪或自动生成文件。
+
+## 常用工作流
+
+```mermaid
+flowchart LR
+  A["pt switch <project>"] --> B["pt plan / pt next"]
+  B --> C["在项目 repo 写正式文档和证据"]
+  C --> D["pt docs / pt close / pt gate"]
+  D --> E["只在 pt 中保存路径、状态、门禁元数据"]
+  E --> B
 ```
 
 ## 项目结构
 
-```
+```text
 project-tracker/
-├── pt                           # CLI 入口
+├── pt                         # CLI 入口
 ├── tracker/
-│   ├── cli.py                   # 命令路由
-│   ├── core.py                  # 持久化 façade
-│   ├── engine.py                # DAG + CPM 引擎
-│   ├── knowledge.py             # BM25 知识检索（硬件术语增强）
-│   ├── prompt.py                # LLM Prompt 生成（v4: BM25 + 角色聚焦）
-│   ├── risk.py                  # 多维度风险评分
-│   ├── conflict.py              # 多项目资源冲突
-│   ├── project_map.py           # 项目地图（终端 + HTML）
-│   ├── project_model.py         # 纯函数辅助
-│   ├── project_validation.py    # schema + DAG 校验
-│   ├── project_mutation.py      # 状态机规则
-│   ├── project_query.py         # 状态聚合
-│   ├── project_constants.py     # schema 版本
-│   ├── subtask_templates.py     # 子任务模板 DAG 重连
-│   ├── flow.py                  # 流程定义加载
-│   ├── onboard.py               # 中途导入
-│   ├── guide.py                 # 启发式引导
-│   ├── commands/
-│   │   ├── gate_cmd.py          # 投板门禁（P0→NO-GO 映射）
-│   │   ├── review_sync_cmd.py   # sch-review 报告自动同步
-│   │   ├── prompt_cmd.py        # Prompt 导出
-│   │   ├── node_cmd.py          # 节点 CRUD
-│   │   ├── scan_cmd.py          # 仓库扫描
-│   │   └── ...
-│   ├── datax/                   # 数据导出（burndown/gantt/csv/deps）
-│   ├── notify/                  # 通知子包
-│   └── web/                     # Web 看板子包
-├── flows/                       # 流程模板
-│   ├── duxin_v2.yaml            # 度信平台流程
-│   ├── generic_v2.yaml          # 通用流程
-│   └── subtasks/                # 子任务模板
-│       ├── board_bringup.yaml
-│       ├── schematic_design.yaml
-│       ├── signal_validation.yaml
-│       └── mcu_firmware.yaml
-├── projects/                    # 项目数据 (git tracked)
-├── docs/                        # 架构文档
-└── setup.py
+│   ├── cli.py                 # 命令路由
+│   ├── core.py                # 项目状态 façade
+│   ├── engine.py              # DAG + CPM 引擎
+│   ├── close_gate.py          # Merge-to-Close 检查
+│   ├── project_model.py       # 项目数据辅助函数
+│   ├── project_validation.py  # YAML / DAG 校验
+│   ├── project_mutation.py    # 状态变更规则
+│   ├── project_query.py       # 状态聚合
+│   ├── flow.py                # 流程定义加载
+│   └── commands/              # CLI 命令实现
+├── flows/                     # 流程模板
+├── projects/                  # 项目状态 YAML
+├── docs/                      # 工具协议、边界和方法说明
+├── tests/                     # 回归测试
+└── tools/                     # 辅助检查/迁移脚本
 ```
-
-## 硬件审核工具集成
-
-```
-sch-review (审核判定)          opendatasheet (器件参数)
-        │                              │
-        └──── pt review-sync ──────────┘
-                    │
-         project-tracker (项目中枢)
-           │ DAG + CPM │ 知识库 │ 门禁 │
-                    │
-              pt prompt --deep
-                    │
-              Claude Code (AI 对话)
-```
-
-### 投板门禁 (`pt gate`)
-
-- 自动汇总节点关联的所有审核报告
-- sch-review P0 → pt NO-GO | P1 → CAUTION | P2 → GO
-- 有 P0 未闭合 → 输出阻断清单 → 阻止投板
-
-### 审核同步 (`pt review-sync`)
-
-- 扫描 `~/sch-review/reports/` 中的审核报告
-- 解析 P0/P1/P2 标记，自动注册到项目 reviews
-- 支持 `--dry-run` 试运行
-
-## 流程阶段
-
-```
-REQ → FEAS → INIT → OUTLINE → DETAIL → SAMPLE → SW_DEV → INTEG
-                      MS1                  MS2              MS3
-TEST_A → TEST_B → TEST_C → TRIAL → RELEASE → ACCEPT
-                              MS4
-```
-
-## 设计原则
-
-1. **数据即 Git** — YAML 文件，clone 即用
-2. **CLI 闭环** — 所有操作命令行完成
-3. **流程驱动** — 标准流程 + CPM 自动推荐
-4. **零依赖** — Python 3.10 + PyYAML
-5. **审核闭环** — 与 sch-review 双向打通，投板决策有据可查
 
 ## 开发
 
 ```bash
+python tools/check_repo_boundary.py
 pytest -q
-./pt validate --all
+python -m tracker validate
 ```
+
+## 生成物策略
+
+仓库根目录禁止新增 AI 元分析或任务追踪文件，例如：
+
+- `*_ANALYSIS.md`
+- `*_ANALYSIS.txt`
+- `*_ROADMAP.md`
+- `*_INDEX.md`
+- `TASK_*.md`
+- `AGENT_TASKS.md`
+- `*_AUTO.md`
+
+历史 AI 自分析文档如果需要保留，应归档在 `docs/_archive/` 下，并且不得作为当前架构事实源。
 
 ## 文档
 
-- `docs/architecture.md` — 知识检索 / prompt 架构
-- `docs/req-architecture.md` — 需求体系平台化架构
-- `docs/PLAN.md` — 开发计划与版本演进
-- `docs/DECISION_FRAMEWORK.md` — 决策框架
-- `docs/PROJECT_MAP_METHOD.md` — 项目地图方法论与 `pt/sch-review` 工具边界
-- `docs/KNOWLEDGE_ROUTING.md` — 项目经验沉淀与规则升级法则
-- `docs/graph-refactor-design.md` — DAG 重构设计
-- `docs/A57_MULTI_REPO_COLLAB_PROTOCOL.md` — A57 多仓协作协议
+- `AGENTS.md` — 仓库边界和 Agent 工作规则
+- `docs/PROJECT_DATA_LAYOUT.md` — 项目数据、样例、模板和生成物边界
 - `docs/MERGE_TO_CLOSE_PROTOCOL.md` — Merge-to-Close 关闭门禁
 - `docs/HARDWARE_CLOSURE_GATEKEEPER_PROTOCOL.md` — AI 硬件闭环审查官协议
 - `docs/HARDWARE_CLOSURE_EVIDENCE_MATRIX.md` — Gate 触发与证据矩阵
+- `docs/PROJECT_MAP_METHOD.md` — 项目地图方法与工具边界
+- `docs/_archive/` — 历史 AI 自分析与过期路线文档，不作为当前事实源

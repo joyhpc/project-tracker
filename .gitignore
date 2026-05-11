@@ -5,3 +5,15 @@ dist/
 build/
 .venv/
 projects/.active
+projects/.pt_history/
+exports/
+outputs/
+
+# Root-level AI/meta generated artifacts. Keep historical copies under docs/_archive/.
+/*_ANALYSIS.md
+/*_ANALYSIS.txt
+/*_ROADMAP.md
+/*_INDEX.md
+/TASK_*.md
+/AGENT_TASKS.md
+/*_AUTO.md
