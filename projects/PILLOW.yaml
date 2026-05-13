@@ -2,7 +2,7 @@ id: PILLOW
 name: 智能助眠枕头
 flow: generic
 created: 2026-02-19 17:58
-repo: /home/hpc/.openclaw/workspace/smart-sleep-pillow
+repo: D:\MY PRJ\smart-sleep-pillow
 phases:
 - id: CONCEPT
   name: 概念阶段
@@ -233,7 +233,9 @@ nodes:
   type: milestone
   phase: PROTO
   depends:
-  - bringup
+  - poc_comfort
+  - poc_vibration_isolation
+  - poc_directional_noise
   status: pending
 - id: func_test
   name: 功能测试
@@ -320,6 +322,104 @@ nodes:
   depends:
   - mass_prod
   status: pending
+- id: poc_comfort
+  name: PoC P1 体感舒适度盲测
+  phase: PROTO
+  status: pending
+  depends:
+  - bringup
+  days: 2
+  owner: 测试工程师
+  note: 'Go/No-Go红线: 盲测均分≥4.0/5, 0人眩晕'
+  closure:
+    conclusion: P1 体感舒适度尚未完成正式盲测；未绑定样品、固件版本和原始评分表前，不得作为 Gen1 体验成立结论。
+    formal_object_id: PILLOW_GEN1
+    formal_object_class: PRODUCT_GEN1
+    scope: Gen1 纯振动助眠枕头体感舒适度盲测
+    sample_entity_id: NEED_HUMAN_CHECK
+    protocol_object_id: PILLOW_GEN1_POC_PROTOCOL
+    protocol_object_class: TEST_PROTOCOL
+    firmware_version: NEED_HUMAN_CHECK
+    fpga_version: NA
+    pcb_version: NEED_HUMAN_CHECK
+    bom_version: NEED_HUMAN_CHECK
+    docs_anchor: PILLOW.GEN1.POC.COMFORT
+    docs_backwrite_path: docs/test/poc-comfort-verdict.md
+    close_mode: merged_fix
+    evidence_paths:
+    - NEED_HUMAN_CHECK
+    need_human_check_fields:
+    - sample_entity_id
+    - firmware_version
+    - pcb_version
+    - bom_version
+    - evidence_paths
+  close_required: true
+- id: poc_vibration_isolation
+  name: PoC P2 漏振阻断验证
+  phase: PROTO
+  status: pending
+  depends:
+  - bringup
+  days: 2
+  owner: 结构/测试工程师
+  note: 'Go/No-Go红线: 40cm水杯驻波=0'
+  closure:
+    conclusion: P2 漏振阻断尚未完成正式台架验证；未绑定样品、结构版本和原始记录前，不得作为 Gen1 伴侣侧不干扰结论。
+    formal_object_id: PILLOW_GEN1
+    formal_object_class: PRODUCT_GEN1
+    scope: Gen1 纯振动助眠枕头漏振阻断验证
+    sample_entity_id: NEED_HUMAN_CHECK
+    protocol_object_id: PILLOW_GEN1_POC_PROTOCOL
+    protocol_object_class: TEST_PROTOCOL
+    firmware_version: NA
+    fpga_version: NA
+    pcb_version: NEED_HUMAN_CHECK
+    bom_version: NEED_HUMAN_CHECK
+    docs_anchor: PILLOW.GEN1.POC.VIBRATION_ISOLATION
+    docs_backwrite_path: docs/test/poc-vibration-isolation-verdict.md
+    close_mode: merged_fix
+    evidence_paths:
+    - NEED_HUMAN_CHECK
+    need_human_check_fields:
+    - sample_entity_id
+    - pcb_version
+    - bom_version
+    - evidence_paths
+  close_required: true
+- id: poc_directional_noise
+  name: PoC P3 定向漏音验证
+  phase: PROTO
+  status: pending
+  depends:
+  - bringup
+  days: 2
+  owner: 声学/测试工程师
+  note: 'Go/No-Go红线: 30cm漏音≤底噪+3dBA'
+  closure:
+    conclusion: P3 定向漏音尚未完成正式声学测试；未绑定样品、声学结构版本、测试底噪和分贝计记录前，不得作为 Gen1 夜间不扰伴侣结论。
+    formal_object_id: PILLOW_GEN1
+    formal_object_class: PRODUCT_GEN1
+    scope: Gen1 纯振动助眠枕头定向漏音验证
+    sample_entity_id: NEED_HUMAN_CHECK
+    protocol_object_id: PILLOW_GEN1_POC_PROTOCOL
+    protocol_object_class: TEST_PROTOCOL
+    firmware_version: NEED_HUMAN_CHECK
+    fpga_version: NA
+    pcb_version: NEED_HUMAN_CHECK
+    bom_version: NEED_HUMAN_CHECK
+    docs_anchor: PILLOW.GEN1.POC.DIRECTIONAL_NOISE
+    docs_backwrite_path: docs/test/poc-directional-noise-verdict.md
+    close_mode: merged_fix
+    evidence_paths:
+    - NEED_HUMAN_CHECK
+    need_human_check_fields:
+    - sample_entity_id
+    - firmware_version
+    - pcb_version
+    - bom_version
+    - evidence_paths
+  close_required: true
 blockers: []
 log:
 - time: 2026-02-19 17:58
@@ -384,6 +484,25 @@ log:
 - time: 2026-02-25 21:36
   action: note
   detail: 'pengzi明确: 第一版只做1-50Hz振动, 不做音乐/高频声场。大幅简化产品复杂度。所有之前的决策(A-B-A + D1-D4)需要重新确认。'
+- time: 2026-05-10 23:09
+  action: repo_link
+  detail: '关联仓库: D:\MY PRJ\smart-sleep-pillow'
+- time: 2026-05-10 23:12
+  action: close_update
+  task: poc_comfort
+  detail: 'close gate updated: fields=bom_version,close_mode,conclusion,docs_anchor,docs_backwrite_path,evidence_paths,firmware_version,formal_object_class,formal_object_id,fpga_version,pcb_version,protocol_object_class,protocol_object_id,sample_entity_id,scope'
+- time: 2026-05-10 23:12
+  action: close_update
+  task: poc_comfort
+  detail: 'close gate updated: fields=need_human_check_fields'
+- time: 2026-05-10 23:12
+  action: close_update
+  task: poc_vibration_isolation
+  detail: 'close gate updated: fields=bom_version,close_mode,conclusion,docs_anchor,docs_backwrite_path,evidence_paths,firmware_version,formal_object_class,formal_object_id,fpga_version,need_human_check_fields,pcb_version,protocol_object_class,protocol_object_id,sample_entity_id,scope'
+- time: 2026-05-10 23:12
+  action: close_update
+  task: poc_directional_noise
+  detail: 'close gate updated: fields=bom_version,close_mode,conclusion,docs_anchor,docs_backwrite_path,evidence_paths,firmware_version,formal_object_class,formal_object_id,fpga_version,need_human_check_fields,pcb_version,protocol_object_class,protocol_object_id,sample_entity_id,scope'
 reviews:
 - file: docs/feasibility/03-分体架构工程可行性-result.md
   task: feasibility

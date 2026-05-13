@@ -7,37 +7,22 @@ output directory, a GitHub issue, or the linked project repository.
 
 from __future__ import annotations
 
-import fnmatch
+import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
-FORBIDDEN_ROOT_PATTERNS = (
-    "*_ANALYSIS.md",
-    "*_ANALYSIS.txt",
-    "*_ROADMAP.md",
-    "*_INDEX.md",
-    "TASK_*.md",
-    "AGENT_TASKS.md",
-    "*_AUTO.md",
-)
+from tracker.repo_boundary import find_root_boundary_violations  # noqa: E402
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parents[1]
-    violations: list[str] = []
-
-    for path in root.iterdir():
-        if not path.is_file():
-            continue
-        for pattern in FORBIDDEN_ROOT_PATTERNS:
-            if fnmatch.fnmatch(path.name, pattern):
-                violations.append(f"{path.name} matches {pattern}")
-                break
+    violations = find_root_boundary_violations(ROOT)
 
     if violations:
         print("Root-level generated/meta files are not allowed:")
         for violation in violations:
-            print(f"  - {violation}")
+            print(f"  - {violation['message']}")
         print("\nMove useful historical files under docs/_archive/ or keep generated output in outputs/.")
         return 1
 

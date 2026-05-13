@@ -45,8 +45,7 @@ def list_flows() -> list[str]:
     for flows_dir in _flow_dirs():
         for f in flows_dir.glob("*.yaml"):
             name = f.stem.replace("_v2", "")
-            if name not in ("guide_questions",):
-                names.add(name)
+            names.add(name)
     return sorted(names)
 
 

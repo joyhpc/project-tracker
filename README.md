@@ -6,6 +6,8 @@
 
 路线约束见 [Issue #1](https://github.com/joyhpc/project-tracker/issues/1)：当前阶段保持轻量辅助，暂缓深度项目管理化。
 
+![project-tracker / pt 当前架构](docs/assets/project-tracker-architecture.png)
+
 ## 核心能力
 
 - 项目 YAML 状态索引：阶段、任务、依赖、负责人、状态和日志
@@ -128,9 +130,10 @@ project-tracker/
 ## 开发
 
 ```bash
+python -m tracker doctor
 python tools/check_repo_boundary.py
 pytest -q
-python -m tracker validate
+python -m tracker validate --all
 ```
 
 ## 生成物策略

@@ -105,6 +105,14 @@ def _relative_link(path: Path) -> str:
     return path.as_posix()
 
 
+def _repo_relative(repo: Path, path: Path) -> str:
+    return path.relative_to(repo).as_posix()
+
+
+def _posix_rel_path(path: str) -> str:
+    return Path(path).as_posix()
+
+
 def _write_file(path: Path, content: str, *, overwrite: bool, dry_run: bool) -> str:
     existed = path.exists()
     if existed and not overwrite:
@@ -142,6 +150,9 @@ def load_repo_manifest(repo: Path) -> dict:
     bindings = loaded.get("bindings", {}) or {}
     if isinstance(bindings, dict):
         manifest["bindings"] = copy.deepcopy(bindings)
+        for binding in manifest["bindings"].values():
+            if isinstance(binding, dict) and binding.get("path"):
+                binding["path"] = _posix_rel_path(str(binding["path"]))
     return manifest
 
 
@@ -270,7 +281,7 @@ def _discover_by_patterns(directory: Path, patterns: list[str]) -> Path | None:
     if not directory.exists() or not patterns:
         return None
     for path in sorted(directory.rglob("*.md")):
-        candidate = str(path.relative_to(directory)).lower()
+        candidate = path.relative_to(directory).as_posix().lower()
         if any(pattern in candidate for pattern in patterns):
             return path
     return None
@@ -284,7 +295,7 @@ def _binding_rel_path(root: str, item: dict, variables: dict[str, str]) -> str:
     rel_str = item["path"]
     for key, value in variables.items():
         rel_str = rel_str.replace(f"{{{{{key}}}}}", value)
-    return str(Path(root) / rel_str)
+    return (Path(root) / rel_str).as_posix()
 
 
 def _discover_existing_binding(
@@ -306,7 +317,7 @@ def _discover_existing_binding(
 def _build_binding_entry(item: dict, rel_path: str, *, subproject: dict | None = None, discovered_by: str = "manifest") -> dict:
     entry = {
         "role_id": item["id"],
-        "path": rel_path,
+        "path": _posix_rel_path(rel_path),
         "scope": "subproject" if subproject else "project",
         "discovered_by": discovered_by,
     }
@@ -444,7 +455,7 @@ def init_requirements(
 
         discovered = _discover_existing_binding(repo, root, item, variables, project_id=project["id"])
         if discovered:
-            rel_path = str(discovered.relative_to(repo))
+            rel_path = _repo_relative(repo, discovered)
             if _ensure_doc_metadata(discovered, required_meta, dry_run=dry_run):
                 updated.append(rel_path)
             bindings[key] = _build_binding_entry(item, rel_path, discovered_by="auto_discover")
@@ -489,7 +500,7 @@ def init_requirements(
                 subproject=subproject["name"],
             )
             if discovered:
-                rel_path = str(discovered.relative_to(repo))
+                rel_path = _repo_relative(repo, discovered)
                 if _ensure_doc_metadata(discovered, required_meta, dry_run=dry_run):
                     updated.append(rel_path)
                 bindings[key] = _build_binding_entry(item, rel_path, subproject=subproject, discovered_by="auto_discover")
@@ -516,7 +527,7 @@ def init_requirements(
     return {
         "root": str(root_dir),
         "profile": profile,
-        "manifest": str(_manifest_path(repo).relative_to(repo)),
+        "manifest": _repo_relative(repo, _manifest_path(repo)),
         "created": created,
         "updated": updated,
         "skipped": skipped,
@@ -551,7 +562,7 @@ def rebuild_indexes(
         overwrite=True,
         dry_run=dry_run,
     )
-    (updated if root_status == "updated" else created).append(str((root_dir / "README.md").relative_to(repo)))
+    (updated if root_status == "updated" else created).append(_repo_relative(repo, root_dir / "README.md"))
 
     project_readme = project_level_dir / "README.md"
     project_status = _write_file(
@@ -560,7 +571,7 @@ def rebuild_indexes(
         overwrite=True,
         dry_run=dry_run,
     )
-    (updated if project_status == "updated" else created).append(str(project_readme.relative_to(repo)))
+    (updated if project_status == "updated" else created).append(_repo_relative(repo, project_readme))
 
     for entry in entries:
         sub_dir = root_dir / entry["dir"]
@@ -571,7 +582,7 @@ def rebuild_indexes(
             overwrite=True,
             dry_run=dry_run,
         )
-        (updated if sub_status == "updated" else created).append(str(readme.relative_to(repo)))
+        (updated if sub_status == "updated" else created).append(_repo_relative(repo, readme))
 
     _save_repo_manifest(repo, repo_manifest, dry_run=dry_run)
     return {"root": str(root_dir), "created": created, "updated": updated}
@@ -591,11 +602,12 @@ def _check_link_targets(root_dir: Path) -> list[dict]:
                 continue
             resolved = (path.parent / plain_target).resolve()
             if not resolved.exists():
+                rel_file = path.relative_to(root_dir).as_posix()
                 issues.append({
                     "type": "broken_markdown_link",
                     "severity": "error",
-                    "file": str(path.relative_to(root_dir)),
-                    "message": f"{path.relative_to(root_dir)} 存在断链: {target}",
+                    "file": rel_file,
+                    "message": f"{rel_file} 存在断链: {target}",
                 })
     return issues
 
@@ -853,7 +865,7 @@ def check_requirements(project: dict, repo: Path, *, strict: bool = False) -> di
         issues.append({
             "type": "missing_root_index",
             "severity": "error",
-            "file": str(Path(root) / "README.md"),
+            "file": (Path(root) / "README.md").as_posix(),
             "message": "需求阶段索引页不存在",
         })
 
