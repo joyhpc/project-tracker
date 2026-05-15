@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +10,13 @@ from types import SimpleNamespace
 
 from tracker import core, engine
 from tracker.commands.visual_cmd import cmd_map
-from tracker.project_map import build_project_map, render_project_map_html, render_project_map_text
+from tracker.project_map import (
+    build_global_project_map,
+    build_project_map,
+    render_global_project_map_text,
+    render_project_map_html,
+    render_project_map_text,
+)
 
 
 class ProjectSandboxTestCase(unittest.TestCase):
@@ -59,12 +66,45 @@ class ProjectMapTests(ProjectSandboxTestCase):
                     },
                 },
                 {"id": "mech_design", "name": "结构设计", "phase": "DESIGN", "status": "pending", "depends": ["feasibility"], "owner": "结构工程师"},
-                {"id": "hw_review", "name": "硬件评审", "phase": "DESIGN", "status": "pending", "depends": ["hw_design"], "owner": "硬件工程师"},
+                {"id": "hw_review", "name": "硬件评审", "phase": "DESIGN", "status": "pending", "depends": ["hw_design", "fw_design", "mech_design"], "owner": "硬件工程师"},
                 {"id": "bringup", "name": "板级调试", "phase": "PROTO", "status": "blocked", "depends": ["hw_review"], "blocked_reason": "等样机回板", "critical": True},
             ],
             "blockers": [{"task_id": "bringup", "reason": "等样机回板"}],
             "log": [],
             "decisions": [{"id": 1, "title": "先做核心体感链路", "status": "active"}],
+        }
+
+    def _active_project(self) -> dict:
+        repo = self.tempdir / "active-repo"
+        repo.mkdir()
+        return {
+            "id": "ACTIVE",
+            "name": "推进中项目",
+            "flow": "generic",
+            "repo": str(repo),
+            "phases": [{"id": "P1", "name": "P1"}],
+            "nodes": [
+                {"id": "done", "name": "已完成任务", "phase": "P1", "status": "done"},
+                {"id": "ready", "name": "可推进任务", "phase": "P1", "status": "pending", "depends": ["done"]},
+            ],
+            "blockers": [],
+            "log": [],
+        }
+
+    def _done_project(self) -> dict:
+        repo = self.tempdir / "done-repo"
+        repo.mkdir()
+        return {
+            "id": "DONE",
+            "name": "完成项目",
+            "flow": "generic",
+            "repo": str(repo),
+            "phases": [{"id": "P1", "name": "P1"}],
+            "nodes": [
+                {"id": "ship", "name": "发布", "phase": "P1", "status": "done"},
+            ],
+            "blockers": [],
+            "log": [],
         }
 
     def test_build_project_map_highlights_focus_and_repo_state(self):
@@ -115,6 +155,65 @@ class ProjectMapTests(ProjectSandboxTestCase):
 
         self.assertIn("智能助眠枕头", output)
         self.assertIn("当前焦点", output)
+
+    def test_build_global_project_map_sorts_and_summarizes_projects(self):
+        blocked_project = self._sample_project()
+        blocked_project["_active"] = True
+        active_project = self._active_project()
+        done_project = self._done_project()
+
+        global_map = build_global_project_map([active_project, done_project, blocked_project])
+
+        self.assertEqual(global_map["kind"], "global_project_map")
+        self.assertEqual(global_map["active_project_id"], "PILLOW")
+        self.assertEqual([summary["project_id"] for summary in global_map["projects"]], ["PILLOW", "ACTIVE", "DONE"])
+        self.assertEqual(global_map["projects"][0]["state"], "blocked")
+        self.assertEqual(global_map["projects"][1]["state"], "active")
+        self.assertEqual(global_map["projects"][2]["state"], "done")
+        self.assertEqual(global_map["projects"][0]["close_invalid_count"], 1)
+        self.assertEqual(global_map["projects"][1]["repo_status"], "ok")
+        self.assertEqual(global_map["projects"][1]["focus"]["task_id"], "ready")
+        self.assertNotIn("depends", global_map["projects"][1]["focus"])
+
+    def test_render_global_project_map_text_contains_table_and_attention(self):
+        blocked_project = self._sample_project()
+        active_project = self._active_project()
+        global_map = build_global_project_map([active_project, blocked_project])
+
+        text = render_global_project_map_text(global_map)
+
+        self.assertIn("全局项目地图", text)
+        self.assertIn("| A | Project | Progress | State | Focus / Next |", text)
+        self.assertIn("PILLOW", text)
+        self.assertIn("ACTIVE", text)
+        self.assertIn("需要关注", text)
+        self.assertIn("板级调试", text)
+
+    def test_cmd_map_all_json_prints_global_payload(self):
+        blocked_project = self._sample_project()
+        active_project = self._active_project()
+        core._save(blocked_project)
+        core._save(active_project)
+        core._set_active(blocked_project["id"])
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            cmd_map(SimpleNamespace(all=True, json=True, html=False, output=str(self.tempdir), no_png=True))
+        payload = json.loads(buffer.getvalue())
+
+        self.assertEqual(payload["kind"], "global_project_map")
+        self.assertEqual(payload["active_project_id"], "PILLOW")
+        self.assertEqual(payload["metrics"]["project_count"], 2)
+        self.assertEqual(payload["projects"][0]["project_id"], "PILLOW")
+        self.assertNotIn("nodes", payload["projects"][0])
+
+    def test_cmd_map_json_requires_all(self):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            with self.assertRaises(SystemExit):
+                cmd_map(SimpleNamespace(all=False, json=True, html=False, output=str(self.tempdir), no_png=True))
+
+        self.assertIn("pt map --all --json", buffer.getvalue())
 
 
 class EngineOrderingTests(unittest.TestCase):

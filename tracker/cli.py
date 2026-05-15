@@ -181,6 +181,8 @@ def main():
     sub.add_parser("plan", help="项目作战地图")
 
     p_map = sub.add_parser("map", help="项目地图（终端优先，可选 HTML/PNG）")
+    p_map.add_argument("--all", "-a", action="store_true", help="汇总所有项目的全局地图")
+    p_map.add_argument("--json", action="store_true", help="JSON 输出（用于 --all 全局地图）")
     p_map.add_argument("--html", action="store_true", help="同时生成 HTML 地图")
     p_map.add_argument("--output", "-o", default="/tmp", help="HTML/PNG 输出目录 (默认 /tmp)")
     p_map.add_argument("--no-png", action="store_true", help="只生成 HTML，不截图")

@@ -25,6 +25,31 @@ LANE_ICONS = {
     "done": "✅",
 }
 
+GLOBAL_STATE_ORDER = {
+    "blocked": 0,
+    "invalid": 1,
+    "active": 2,
+    "waiting": 3,
+    "unknown": 4,
+    "done": 5,
+}
+GLOBAL_STATE_LABELS = {
+    "blocked": "阻塞",
+    "invalid": "数据异常",
+    "active": "推进中",
+    "waiting": "等待",
+    "unknown": "未知",
+    "done": "完成",
+}
+GLOBAL_STATE_ICONS = {
+    "blocked": "🚫",
+    "invalid": "❌",
+    "active": "⚡",
+    "waiting": "⏳",
+    "unknown": "·",
+    "done": "✅",
+}
+
 
 def _is_visible_main_node(node: dict) -> bool:
     return not node.get("parent") and node.get("status") != "expanded"
@@ -228,6 +253,242 @@ def build_project_map(project: dict, info: dict | None = None) -> dict:
         "active_decisions": decisions,
         "close_gates": close_summary,
     }
+
+
+def _global_project_state(map_data: dict, hard_issue_count: int) -> str:
+    metrics = map_data.get("metrics", {}) or {}
+    total = metrics.get("total", 0)
+    done_count = metrics.get("done_count", 0)
+
+    if hard_issue_count:
+        return "invalid"
+    if metrics.get("blocked_count", 0) or metrics.get("close_invalid_count", 0):
+        return "blocked"
+    if total > 0 and done_count >= total:
+        return "done"
+    if metrics.get("in_progress_count", 0) or metrics.get("ready_count", 0):
+        return "active"
+    if total > 0:
+        return "waiting"
+    return "unknown"
+
+
+def _repo_brief(repo: dict) -> str:
+    if not repo.get("configured"):
+        return "未绑定"
+    return "ok" if repo.get("exists") else "missing"
+
+
+def _top_blocker_summaries(entries: list[dict], limit: int = 3) -> list[dict]:
+    blockers = []
+    for entry in entries[:limit]:
+        blockers.append({
+            "task_id": entry.get("id", ""),
+            "name": entry.get("name", entry.get("id", "")),
+            "reason": entry.get("blocked_reason", ""),
+        })
+    return blockers
+
+
+def _focus_summary(entry: dict | None) -> dict | None:
+    if not entry:
+        return None
+    return {
+        "task_id": entry.get("id", ""),
+        "name": entry.get("name", ""),
+        "phase": entry.get("phase", ""),
+        "lane": entry.get("lane", ""),
+        "status": entry.get("status", ""),
+        "critical": bool(entry.get("critical")),
+    }
+
+
+def _build_global_project_summary(project: dict) -> dict:
+    try:
+        map_data = build_project_map(project)
+    except Exception as exc:
+        repo = _repo_state(project)
+        return {
+            "project_id": project.get("id", ""),
+            "project_name": project.get("name", ""),
+            "active": bool(project.get("_active")),
+            "state": "invalid",
+            "state_label": GLOBAL_STATE_LABELS["invalid"],
+            "progress": "0/0",
+            "progress_pct": 0,
+            "focus": None,
+            "focus_label": "-",
+            "blocked_count": 0,
+            "ready_count": 0,
+            "in_progress_count": 0,
+            "waiting_count": 0,
+            "close_required_count": 0,
+            "close_invalid_count": 0,
+            "hard_issue_count": 1,
+            "warning_counts": {"critical": 1},
+            "repo": repo,
+            "repo_status": _repo_brief(repo),
+            "total_days": 0,
+            "critical_count": 0,
+            "top_blockers": [],
+            "error": str(exc),
+        }
+
+    metrics = map_data.get("metrics", {}) or {}
+    warning_counts = map_data.get("warning_counts", {}) or {}
+    hard_issue_count = warning_counts.get("critical", 0) + warning_counts.get("error", 0)
+    state = _global_project_state(map_data, hard_issue_count)
+    focus = map_data.get("focus")
+    repo = map_data.get("repo", {})
+    total = metrics.get("total", 0)
+    done_count = metrics.get("done_count", 0)
+
+    return {
+        "project_id": map_data.get("project_id", project.get("id", "")),
+        "project_name": map_data.get("project_name", project.get("name", "")),
+        "active": bool(project.get("_active")),
+        "state": state,
+        "state_label": GLOBAL_STATE_LABELS.get(state, state),
+        "progress": f"{done_count}/{total}",
+        "progress_pct": metrics.get("progress_pct", 0),
+        "focus": _focus_summary(focus),
+        "focus_label": f"[{focus['id']}] {focus['name']}" if focus else "-",
+        "blocked_count": metrics.get("blocked_count", 0),
+        "ready_count": metrics.get("ready_count", 0),
+        "in_progress_count": metrics.get("in_progress_count", 0),
+        "waiting_count": len(map_data.get("waiting", [])),
+        "close_required_count": metrics.get("close_required_count", 0),
+        "close_invalid_count": metrics.get("close_invalid_count", 0),
+        "hard_issue_count": hard_issue_count,
+        "warning_counts": dict(warning_counts),
+        "repo": repo,
+        "repo_status": _repo_brief(repo),
+        "total_days": metrics.get("total_days", 0),
+        "critical_count": metrics.get("critical_count", 0),
+        "top_blockers": _top_blocker_summaries(map_data.get("blocked", [])),
+        "error": "",
+    }
+
+
+def _global_project_sort_key(summary: dict) -> tuple:
+    state = summary.get("state", "unknown")
+    repo_missing = 0 if summary.get("repo", {}).get("exists") else 1
+    return (
+        GLOBAL_STATE_ORDER.get(state, 99),
+        -summary.get("close_invalid_count", 0),
+        -summary.get("blocked_count", 0),
+        -summary.get("in_progress_count", 0),
+        -summary.get("ready_count", 0),
+        repo_missing,
+        summary.get("project_id", ""),
+    )
+
+
+def build_global_project_map(projects: list[dict]) -> dict:
+    """Build a read-only summary map across all managed projects."""
+    summaries = [_build_global_project_summary(project) for project in projects]
+    summaries = sorted(summaries, key=_global_project_sort_key)
+    state_counts = Counter(summary["state"] for summary in summaries)
+    active_project = next((summary for summary in summaries if summary.get("active")), None)
+    repo_missing_count = sum(1 for summary in summaries if not summary.get("repo", {}).get("exists"))
+
+    return {
+        "kind": "global_project_map",
+        "metrics": {
+            "project_count": len(summaries),
+            "repo_missing_count": repo_missing_count,
+            "blocked_count": state_counts.get("blocked", 0),
+            "invalid_count": state_counts.get("invalid", 0),
+            "active_count": state_counts.get("active", 0),
+            "waiting_count": state_counts.get("waiting", 0),
+            "done_count": state_counts.get("done", 0),
+            "close_invalid_count": sum(summary.get("close_invalid_count", 0) for summary in summaries),
+            "hard_issue_count": sum(summary.get("hard_issue_count", 0) for summary in summaries),
+        },
+        "state_counts": dict(state_counts),
+        "active_project_id": active_project.get("project_id") if active_project else "",
+        "projects": summaries,
+    }
+
+
+def _short_text(value: str, limit: int) -> str:
+    value = (value or "").replace("\n", " ").strip()
+    if len(value) <= limit:
+        return value
+    return value[: limit - 1] + "…"
+
+
+def render_global_project_map_text(global_map: dict) -> str:
+    metrics = global_map.get("metrics", {}) or {}
+    projects = global_map.get("projects", []) or []
+    lines = []
+    lines.append("=" * 88)
+    lines.append("🌐 全局项目地图")
+    lines.append("=" * 88)
+    lines.append(
+        f"项目 {metrics.get('project_count', 0)} | "
+        f"阻塞 {metrics.get('blocked_count', 0)} | "
+        f"数据异常 {metrics.get('invalid_count', 0)} | "
+        f"推进中 {metrics.get('active_count', 0)} | "
+        f"等待 {metrics.get('waiting_count', 0)} | "
+        f"完成 {metrics.get('done_count', 0)}"
+    )
+    if global_map.get("active_project_id"):
+        lines.append(f"当前 active project: {global_map['active_project_id']}")
+    if metrics.get("repo_missing_count", 0):
+        lines.append(f"仓库提示: {metrics['repo_missing_count']} 个项目未绑定或路径缺失")
+    if metrics.get("close_invalid_count", 0):
+        lines.append(f"Merge-to-Close: {metrics['close_invalid_count']} 个未通过项")
+    lines.append("")
+
+    if not projects:
+        lines.append("暂无项目。")
+        return "\n".join(lines).rstrip() + "\n"
+
+    lines.append("| A | Project | Progress | State | Focus / Next | Blocked | Ready | Close NG | Repo |")
+    lines.append("|---|---------|----------|-------|--------------|---------|-------|----------|------|")
+    for summary in projects:
+        active = "*" if summary.get("active") else ""
+        state = summary.get("state", "unknown")
+        state_text = f"{GLOBAL_STATE_ICONS.get(state, '·')} {summary.get('state_label', state)}"
+        focus = _short_text(summary.get("focus_label", "-"), 34)
+        repo = summary.get("repo_status", "")
+        lines.append(
+            f"| {active} | {summary.get('project_id', '')} | "
+            f"{summary.get('progress_pct', 0)}% ({summary.get('progress', '0/0')}) | "
+            f"{state_text} | {focus} | "
+            f"{summary.get('blocked_count', 0)} | {summary.get('ready_count', 0)} | "
+            f"{summary.get('close_invalid_count', 0)} | {repo} |"
+        )
+
+    attention = [
+        summary
+        for summary in projects
+        if summary.get("state") in ("blocked", "invalid") or summary.get("repo_status") != "ok"
+    ]
+    if attention:
+        lines.append("")
+        lines.append("需要关注")
+        for summary in attention[:8]:
+            prefix = f"- {summary.get('project_id', '')}: "
+            if summary.get("state") == "invalid":
+                detail = summary.get("error") or "存在 critical/error 级别完整性问题"
+            elif summary.get("top_blockers"):
+                blocker = summary["top_blockers"][0]
+                detail = f"{blocker.get('name', blocker.get('task_id', ''))}"
+                if blocker.get("reason"):
+                    detail += f" | {blocker['reason']}"
+            elif summary.get("close_invalid_count", 0):
+                detail = f"close gate 未通过 {summary['close_invalid_count']} 项"
+            elif summary.get("repo_status") != "ok":
+                detail = f"仓库状态: {summary.get('repo_status')}"
+            else:
+                detail = summary.get("state_label", "")
+            lines.append(prefix + detail)
+        if len(attention) > 8:
+            lines.append(f"- ... 还有 {len(attention) - 8} 个项目需要关注")
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _phase_bar(done: int, total: int, width: int = 12) -> str:

@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import json
 from pathlib import Path
 
 from .. import core
-from ..project_map import build_project_map, render_project_map_html, render_project_map_text
+from ..project_map import (
+    build_global_project_map,
+    build_project_map,
+    render_global_project_map_text,
+    render_project_map_html,
+    render_project_map_text,
+)
 
 
 def _require_project() -> dict:
@@ -38,6 +45,22 @@ def _write_map_files(map_data: dict, output: str | None, no_png: bool) -> tuple[
 
 
 def cmd_map(args):
+    if getattr(args, "all", False):
+        if getattr(args, "html", False):
+            print("❌ pt map --all 暂不支持 --html；先使用终端或 --json 全局视图。")
+            sys.exit(1)
+        projects = core.list_projects()
+        global_map = build_global_project_map(projects)
+        if getattr(args, "json", False):
+            print(json.dumps(global_map, ensure_ascii=False, indent=2))
+        else:
+            print(render_global_project_map_text(global_map), end="")
+        return
+
+    if getattr(args, "json", False):
+        print("❌ pt map --json 目前只支持全局视图；请使用: pt map --all --json")
+        sys.exit(1)
+
     project = _require_project()
     map_data = build_project_map(project)
     print(render_project_map_text(map_data), end="")
