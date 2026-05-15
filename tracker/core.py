@@ -1,12 +1,17 @@
 """核心逻辑 v2 — 兼容 façade + 扁平 DAG"""
 import yaml
 import copy
-import shutil
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 from . import flow as flowmod
+from . import project_storage as _storage
+from .project_migration import (
+    normalize_verdicts,
+    migrate_project_data,
+    prepare_for_save as _prepare_for_save,
+)
 from .project_constants import (
     PROJECT_SCHEMA_VERSION,
     VALID_DECISION_STATUSES,
@@ -41,6 +46,7 @@ from .subtask_templates import (
     match_subtask_templates as _subtask_templates_match,
 )
 from .project_validation import (
+    _validation_issue,
     check_integrity as _project_validation_check_integrity,
     summarize_validation_issues as _project_validation_summarize_validation_issues,
     validate_project as _project_validation_validate_project,
@@ -50,115 +56,16 @@ from . import requirements as _requirements
 from . import close_gate as _close_gate
 
 
-# ── 数据格式工具 ──────────────────────────────────────
-
-def normalize_verdicts(raw) -> list[dict]:
-    """统一 verdicts 格式为 list[{verdict, topic}]
-
-    兼容两种来源：
-    - 标准格式: list[{"verdict": "GO", "topic": "..."}]
-    - 旧版 scan 格式: dict{"GO": 1, "CAUTION": 2}
-
-    所有消费 verdicts 的代码应通过此函数获取数据。
-    """
-    if isinstance(raw, dict):
-        return [{"verdict": k, "topic": f"(legacy, {cnt}次)"}
-                for k, cnt in raw.items() for _ in range(cnt)]
-    return raw or []
-
-
 PROJECTS_DIR = Path(__file__).parent.parent / "projects"
 CONFIG_FILE = PROJECTS_DIR / ".active"
 
 
 def _project_file(project_id: str) -> Path:
-    return PROJECTS_DIR / f"{project_id}.yaml"
-
-
-def migrate_project_data(project: dict | None) -> tuple[dict | None, bool]:
-    """将历史项目数据迁移到当前 schema。"""
-    if not isinstance(project, dict):
-        return project, False
-
-    changed = False
-    migrated = copy.deepcopy(project)
-
-    if migrated.get("schema_version") != PROJECT_SCHEMA_VERSION:
-        migrated["schema_version"] = PROJECT_SCHEMA_VERSION
-        changed = True
-
-    for key in ("blockers", "log", "nodes", "reviews", "decisions", "pocs"):
-        if key not in migrated or migrated[key] is None:
-            migrated[key] = []
-            changed = True
-
-    for node in migrated.get("nodes", []):
-        docs = node.get("docs", []) or []
-        normalized_docs = []
-        docs_changed = False
-        for doc in docs:
-            if not isinstance(doc, dict):
-                continue
-            normalized = dict(doc)
-            path = normalized.get("path") or normalized.get("file")
-            if path and normalized.get("path") != path:
-                normalized["path"] = path
-                docs_changed = True
-            if "file" in normalized:
-                normalized.pop("file", None)
-                docs_changed = True
-            normalized_docs.append(normalized)
-        if docs_changed or normalized_docs != docs:
-            node["docs"] = normalized_docs
-            changed = True
-
-    normalized_reviews = []
-    for review in migrated.get("reviews", []):
-        if not isinstance(review, dict):
-            continue
-        normalized = dict(review)
-        verdicts = normalize_verdicts(normalized.get("verdicts", []))
-        if normalized.get("verdicts") != verdicts:
-            normalized["verdicts"] = verdicts
-            changed = True
-        normalized_reviews.append(normalized)
-    if normalized_reviews != migrated.get("reviews", []):
-        migrated["reviews"] = normalized_reviews
-
-    for collection in ("decisions", "pocs"):
-        normalized_items = []
-        for item in migrated.get(collection, []):
-            if not isinstance(item, dict):
-                continue
-            normalized = dict(item)
-            if "id" in normalized and isinstance(normalized["id"], str) and normalized["id"].isdigit():
-                normalized["id"] = int(normalized["id"])
-                changed = True
-            normalized_items.append(normalized)
-        if normalized_items != migrated.get(collection, []):
-            migrated[collection] = normalized_items
-
-    return migrated, changed
-
-
-def _prepare_for_save(project: dict) -> dict:
-    """保存前统一做 schema 归一化。"""
-    migrated, _ = migrate_project_data(project)
-    return migrated or {}
+    return _storage.project_file(PROJECTS_DIR, project_id)
 
 
 def _load(project_id: str) -> dict | None:
-    f = _project_file(project_id)
-    if f.exists():
-        with open(f, "r", encoding="utf-8") as fh:
-            project = yaml.safe_load(fh)
-        project, migrated = migrate_project_data(project)
-        # 记录 mtime 用于乐观锁
-        project["_mtime"] = f.stat().st_mtime
-        if migrated:
-            project["_schema_dirty"] = True
-        return project
-    return None
+    return _storage.load_project(PROJECTS_DIR, project_id, migrate_project_data)
 
 
 def _save(project: dict, check_mtime: bool = True):
@@ -171,27 +78,7 @@ def _save(project: dict, check_mtime: bool = True):
     Raises:
         RuntimeError: 文件已被外部修改
     """
-    PROJECTS_DIR.mkdir(exist_ok=True)
-    f = _project_file(project["id"])
-
-    # 乐观锁检查
-    if check_mtime and "_mtime" in project and f.exists():
-        current_mtime = f.stat().st_mtime
-        if current_mtime != project["_mtime"]:
-            raise RuntimeError(
-                f"并发冲突：YAML 文件已被外部修改 (mtime: {project['_mtime']} → {current_mtime})。"
-                f"请重新加载项目后重试。"
-            )
-
-    # 保存时移除内部字段
-    normalized = _prepare_for_save(project)
-    save_data = {k: v for k, v in normalized.items() if not k.startswith("_")}
-    with open(f, "w", encoding="utf-8") as fh:
-        yaml.dump(save_data, fh, allow_unicode=True, default_flow_style=False, sort_keys=False)
-
-    # 更新 mtime
-    project["_mtime"] = f.stat().st_mtime
-    project.pop("_schema_dirty", None)
+    _storage.save_project(PROJECTS_DIR, project, _prepare_for_save, check_mtime=check_mtime)
 
     # post-save hooks (best-effort, never break main flow)
     try:
@@ -213,27 +100,13 @@ MAX_HISTORY = 10
 
 def _snapshot(project: dict):
     """保存当前 YAML 到历史目录（保留最近 MAX_HISTORY 次）"""
-    HISTORY_DIR.mkdir(exist_ok=True)
     pid = project["id"]
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    src = _project_file(pid)
-    if src.exists():
-        dst = HISTORY_DIR / f"{pid}_{ts}.yaml"
-        shutil.copy2(src, dst)
-        # 清理旧快照
-        snaps = sorted(HISTORY_DIR.glob(f"{pid}_*.yaml"))
-        for old in snaps[:-MAX_HISTORY]:
-            old.unlink()
+    _storage.snapshot(HISTORY_DIR, _project_file(pid), pid, max_history=MAX_HISTORY)
 
 
 def undo(project_id: str) -> str:
     """恢复到上一个快照"""
-    snaps = sorted(HISTORY_DIR.glob(f"{project_id}_*.yaml"))
-    if not snaps:
-        raise ValueError(f"没有可恢复的历史快照: {project_id}")
-    latest = snaps[-1]
-    shutil.copy2(latest, _project_file(project_id))
-    latest.unlink()
+    latest = _storage.restore_latest_snapshot(HISTORY_DIR, _project_file(project_id), project_id)
     return f"已恢复到 {latest.name}"
 
 
@@ -634,14 +507,11 @@ def promote(project: dict, parent_id: str, sub_id: str,
 
 
 def _get_active() -> str | None:
-    if CONFIG_FILE.exists():
-        return CONFIG_FILE.read_text().strip()
-    return None
+    return _storage.get_active(CONFIG_FILE)
 
 
 def _set_active(project_id: str):
-    PROJECTS_DIR.mkdir(exist_ok=True)
-    CONFIG_FILE.write_text(project_id)
+    _storage.set_active(PROJECTS_DIR, CONFIG_FILE, project_id)
 
 
 # ── 项目管理 ──────────────────────────────────────────
@@ -679,10 +549,9 @@ def init_project(project_id: str, name: str, flow_name: str = "duxin", repo: str
 
 
 def list_projects() -> list[dict]:
-    PROJECTS_DIR.mkdir(exist_ok=True)
     result = []
     active = _get_active()
-    for f in sorted(PROJECTS_DIR.glob("*.yaml")):
+    for f in _storage.list_project_files(PROJECTS_DIR):
         p = _load(f.stem)
         if not p:
             continue
@@ -777,275 +646,6 @@ def _validate_repo_file(project: dict, file_path: str, field_name: str = "文件
         raise ValueError(f"{field_name}不存在: {file_path}")
 
 
-def _fallback_classified(project: dict) -> dict:
-    """当图存在结构性错误时，提供保守分类结果。"""
-    result = {"ready": [], "in_progress": [], "blocked": [], "waiting": [], "done": []}
-    for node in _effective_nodes(project):
-        status = node.get("status", "pending")
-        if status in ("done", "skipped"):
-            result["done"].append(node)
-        elif status == "blocked":
-            result["blocked"].append(node)
-        elif status == "in_progress":
-            result["in_progress"].append(node)
-        else:
-            waiting = dict(node)
-            waiting["_waiting_for"] = node.get("depends", [])
-            result["waiting"].append(waiting)
-    return result
-
-
-def _fallback_cpm(project: dict) -> dict:
-    """当图存在结构性错误时，返回保守的空 CPM 结果。"""
-    nodes = {
-        n["id"]: {"days": 0, "es": 0, "ef": 0, "ls": 0, "lf": 0,
-                  "slack": 0, "critical": False}
-        for n in _effective_nodes(project)
-    }
-    return {
-        "nodes": nodes,
-        "critical_path": [],
-        "total_days": 0,
-        "topo_order": [],
-    }
-
-
-# ── 项目验证 ──────────────────────────────────────────
-
-def _validation_issue(issue_type: str, severity: str, message: str, **extra) -> dict:
-    issue = {"type": issue_type, "severity": severity, "message": message}
-    issue.update(extra)
-    return issue
-
-
-
-def _validate_named_list_items(items, *, label: str, id_key: str = "id") -> list[dict]:
-    issues = []
-    if not isinstance(items, list):
-        return [
-            _validation_issue(
-                f"invalid_{label}_collection",
-                "warning",
-                f"{label} 必须是 list",
-            )
-        ]
-
-    seen_ids = set()
-    for index, item in enumerate(items):
-        if not isinstance(item, dict):
-            issues.append(
-                _validation_issue(
-                    f"invalid_{label}_item",
-                    "warning",
-                    f"{label}[{index}] 必须是 object/map",
-                    index=index,
-                )
-            )
-            continue
-        item_id = item.get(id_key)
-        if item_id in (None, ""):
-            continue
-        if item_id in seen_ids:
-            issues.append(
-                _validation_issue(
-                    f"duplicate_{label}_id",
-                    "warning",
-                    f"{label} 出现重复 ID: {item_id}",
-                    item_id=item_id,
-                )
-            )
-            continue
-        seen_ids.add(item_id)
-    return issues
-
-
-
-def validate_project_schema(project: dict | None) -> list[dict]:
-    """验证项目 YAML 的结构和关键枚举字段。"""
-    issues = []
-    if not isinstance(project, dict):
-        return [
-            _validation_issue(
-                "invalid_project_root",
-                "error",
-                "项目文件顶层必须是 YAML object/map",
-            )
-        ]
-
-    for key in ("id", "name", "flow"):
-        value = project.get(key)
-        if not isinstance(value, str) or not value.strip():
-            issues.append(
-                _validation_issue(
-                    f"invalid_{key}",
-                    "error",
-                    f"顶层字段 `{key}` 必须是非空字符串",
-                    field=key,
-                )
-            )
-
-    schema_version = project.get("schema_version")
-    if schema_version != PROJECT_SCHEMA_VERSION:
-        issues.append(
-            _validation_issue(
-                "schema_version_mismatch",
-                "info",
-                f"schema_version={schema_version!r}，当前版本为 {PROJECT_SCHEMA_VERSION}",
-            )
-        )
-
-    phases = project.get("phases", [])
-    phase_ids = set()
-    if not isinstance(phases, list):
-        issues.append(_validation_issue("invalid_phases", "warning", "顶层字段 `phases` 应为 list"))
-    else:
-        for index, phase in enumerate(phases):
-            if not isinstance(phase, dict):
-                issues.append(_validation_issue("invalid_phase_item", "warning", f"phases[{index}] 必须是 object/map", index=index))
-                continue
-            phase_id = phase.get("id")
-            phase_name = phase.get("name")
-            if not isinstance(phase_id, str) or not phase_id.strip():
-                issues.append(_validation_issue("invalid_phase_id", "warning", f"phases[{index}].id 必须是非空字符串", index=index))
-                continue
-            if phase_id in phase_ids:
-                issues.append(_validation_issue("duplicate_phase_id", "warning", f"阶段 ID 重复: {phase_id}", phase=phase_id))
-            phase_ids.add(phase_id)
-            if not isinstance(phase_name, str) or not phase_name.strip():
-                issues.append(_validation_issue("invalid_phase_name", "warning", f"phases[{index}].name 必须是非空字符串", index=index, phase=phase_id))
-
-    nodes = project.get("nodes", [])
-    if not isinstance(nodes, list):
-        issues.append(_validation_issue("invalid_nodes", "error", "顶层字段 `nodes` 必须是 list"))
-    else:
-        seen_node_ids = set()
-        for index, node in enumerate(nodes):
-            if not isinstance(node, dict):
-                issues.append(_validation_issue("invalid_node_item", "error", f"nodes[{index}] 必须是 object/map", index=index))
-                continue
-
-            node_id = node.get("id")
-            if not isinstance(node_id, str) or not node_id.strip():
-                issues.append(_validation_issue("invalid_node_id", "error", f"nodes[{index}].id 必须是非空字符串", index=index))
-                continue
-            if node_id in seen_node_ids:
-                issues.append(_validation_issue("duplicate_node_id", "error", f"节点 ID 重复: {node_id}", node=node_id))
-            seen_node_ids.add(node_id)
-
-            name = node.get("name")
-            if not isinstance(name, str) or not name.strip():
-                issues.append(_validation_issue("invalid_node_name", "error", f"节点 [{node_id}] 缺少有效 name", node=node_id))
-
-            phase = node.get("phase")
-            if not isinstance(phase, str) or not phase.strip():
-                issues.append(_validation_issue("invalid_node_phase", "error", f"节点 [{node_id}] 缺少有效 phase", node=node_id))
-            elif phase_ids and phase not in phase_ids:
-                issues.append(_validation_issue("unknown_node_phase", "warning", f"节点 [{node_id}] 引用了未知阶段 `{phase}`", node=node_id, phase=phase))
-
-            status = node.get("status", "pending")
-            if status not in VALID_NODE_STATUSES:
-                issues.append(_validation_issue("invalid_node_status", "error", f"节点 [{node_id}] status={status!r} 非法", node=node_id, status=status))
-
-            depends = node.get("depends", [])
-            if not isinstance(depends, list) or any(not isinstance(dep, str) or not dep.strip() for dep in depends):
-                issues.append(_validation_issue("invalid_node_depends", "error", f"节点 [{node_id}] depends 必须是 string list", node=node_id))
-
-            docs = node.get("docs", [])
-            if docs is not None:
-                if not isinstance(docs, list):
-                    issues.append(_validation_issue("invalid_node_docs", "warning", f"节点 [{node_id}] docs 应为 list", node=node_id))
-                else:
-                    for doc_index, doc in enumerate(docs):
-                        if not isinstance(doc, dict):
-                            issues.append(_validation_issue("invalid_doc_item", "warning", f"节点 [{node_id}] docs[{doc_index}] 必须是 object/map", node=node_id, index=doc_index))
-                            continue
-                        doc_path = doc.get("path") or doc.get("file")
-                        if not isinstance(doc_path, str) or not doc_path.strip():
-                            issues.append(_validation_issue("invalid_doc_path", "warning", f"节点 [{node_id}] docs[{doc_index}] 缺少 path/file", node=node_id, index=doc_index))
-
-    for field_name in ("blockers", "log"):
-        items = project.get(field_name, [])
-        if not isinstance(items, list):
-            issues.append(_validation_issue(f"invalid_{field_name}", "warning", f"顶层字段 `{field_name}` 应为 list"))
-
-    reviews = project.get("reviews", [])
-    if not isinstance(reviews, list):
-        issues.append(_validation_issue("invalid_reviews", "warning", "顶层字段 `reviews` 应为 list"))
-    else:
-        for index, review in enumerate(reviews):
-            if not isinstance(review, dict):
-                issues.append(_validation_issue("invalid_review_item", "warning", f"reviews[{index}] 必须是 object/map", index=index))
-                continue
-            review_file = review.get("file") or review.get("path")
-            if not isinstance(review_file, str) or not review_file.strip():
-                issues.append(_validation_issue("invalid_review_file", "warning", f"reviews[{index}] 缺少 file/path", index=index))
-            verdicts = normalize_verdicts(review.get("verdicts", []))
-            if not isinstance(verdicts, list):
-                issues.append(_validation_issue("invalid_review_verdicts", "warning", f"reviews[{index}].verdicts 应为 list 或 legacy dict", index=index))
-                continue
-            for verdict_index, verdict in enumerate(verdicts):
-                if not isinstance(verdict, dict):
-                    issues.append(_validation_issue("invalid_review_verdict", "warning", f"reviews[{index}].verdicts[{verdict_index}] 必须是 object/map", index=index))
-                    continue
-                verdict_name = verdict.get("verdict")
-                if not isinstance(verdict_name, str) or not verdict_name.strip():
-                    issues.append(_validation_issue("missing_review_verdict", "warning", f"reviews[{index}].verdicts[{verdict_index}] 缺少 verdict", index=index))
-                elif verdict_name.upper() not in VALID_REVIEW_VERDICTS:
-                    issues.append(_validation_issue("unknown_review_verdict", "info", f"reviews[{index}] 使用了非标准 verdict `{verdict_name}`", index=index))
-
-    decisions = project.get("decisions", [])
-    issues.extend(_validate_named_list_items(decisions, label="decisions"))
-    if isinstance(decisions, list):
-        for index, decision in enumerate(decisions):
-            if not isinstance(decision, dict):
-                continue
-            status = decision.get("status", "active")
-            if status not in VALID_DECISION_STATUSES:
-                issues.append(_validation_issue("invalid_decision_status", "warning", f"decisions[{index}] status={status!r} 非法", index=index))
-            title = decision.get("title")
-            if not isinstance(title, str) or not title.strip():
-                issues.append(_validation_issue("invalid_decision_title", "warning", f"decisions[{index}] 缺少 title", index=index))
-
-    pocs = project.get("pocs", [])
-    issues.extend(_validate_named_list_items(pocs, label="pocs"))
-    if isinstance(pocs, list):
-        for index, poc in enumerate(pocs):
-            if not isinstance(poc, dict):
-                continue
-            status = poc.get("status", "pending")
-            if status not in VALID_POC_STATUSES:
-                issues.append(_validation_issue("invalid_poc_status", "warning", f"pocs[{index}] status={status!r} 非法", index=index))
-            title = poc.get("title")
-            if not isinstance(title, str) or not title.strip():
-                issues.append(_validation_issue("invalid_poc_title", "warning", f"pocs[{index}] 缺少 title", index=index))
-
-    return issues
-
-
-
-def validate_project(project: dict | None) -> list[dict]:
-    issues = validate_project_schema(project)
-    hard_errors = [issue for issue in issues if issue.get("severity") in ("error", "critical")]
-    if hard_errors or not isinstance(project, dict):
-        return issues
-    try:
-        issues.extend(check_integrity(project))
-    except Exception as exc:
-        issues.append(_validation_issue("integrity_check_failed", "error", f"完整性检查执行失败: {exc}"))
-    return issues
-
-
-
-def summarize_validation_issues(issues: list[dict]) -> dict:
-    return {
-        "critical": sum(1 for issue in issues if issue.get("severity") == "critical"),
-        "error": sum(1 for issue in issues if issue.get("severity") == "error"),
-        "warning": sum(1 for issue in issues if issue.get("severity") == "warning"),
-        "info": sum(1 for issue in issues if issue.get("severity") == "info"),
-    }
-
-
-
 def validate_project_file(project_file: str | Path) -> dict:
     path = Path(project_file)
     if not path.exists():
@@ -1091,253 +691,10 @@ def validate_project_file(project_file: str | Path) -> dict:
 
 
 def validate_all_projects() -> list[dict]:
-    PROJECTS_DIR.mkdir(exist_ok=True)
-    return [validate_project_file(path) for path in sorted(PROJECTS_DIR.glob("*.yaml"))]
+    return [validate_project_file(path) for path in _storage.list_project_files(PROJECTS_DIR)]
 
 
 # ── 任务操作 ──────────────────────────────────────────
-
-def get_status(project: dict) -> dict:
-    """获取项目状态概览"""
-    from . import engine
-    flow = _project_as_flow(project)
-    task_status = _get_task_status(project)
-    warnings = check_integrity(project)
-    hard_errors = [w for w in warnings if w.get("severity") in ("error", "critical")]
-
-    if hard_errors:
-        classified = _fallback_classified(project)
-        cpm = _fallback_cpm(project)
-    else:
-        classified = engine.classify_tasks(flow, task_status)
-        cpm = engine.compute_cpm(flow, task_status)
-        warnings = check_integrity(project, cpm)
-
-    done_count, total = _progress_counts(project)
-    active_blockers = [b for b in project.get("blockers", []) if not b.get("resolved")]
-
-    return {
-        "project": project,
-        "classified": classified,
-        "cpm": cpm,
-        "blockers": active_blockers,
-        "total": total,
-        "done_count": done_count,
-        "warnings": warnings,
-    }
-
-
-def check_integrity(project: dict, cpm: dict = None) -> list[dict]:
-    """项目完整性检查 — 检测结构性问题
-
-    检查项:
-    0. 环路检测: DAG 中存在循环依赖 (Fatal Error)
-    1. 孤立终点: 非里程碑节点没有后继，且不是项目最终节点
-    2. 悬空依赖: depends 引用了不存在的节点 (Fatal Error)
-    3. 里程碑缺上游: 里程碑节点没有 depends
-    4. 反向跨阶段依赖: 前阶段节点依赖后阶段节点
-    5. 重复节点ID (Fatal Error)
-    6. 完全孤立节点: 无前驱也无后继（非首阶段）
-
-    Severity 分级:
-    - error: 必须修复，阻止写入 (环路、悬空依赖、重复ID)
-    - warning: 建议修复，允许写入 (孤立终点、孤立节点)
-    - info: 仅供参考 (跨阶段依赖、冗余依赖、粗粒度节点)
-    """
-    nodes = _effective_nodes(project)
-    node_ids = {n["id"] for n in nodes}
-    nodes_map = {n["id"]: n for n in nodes}
-    phases = project.get("phases", [])
-    phase_order = {ph["id"]: i for i, ph in enumerate(phases)}
-    last_phase_id = phases[-1]["id"] if phases else None
-    first_phase_id = phases[0]["id"] if phases else None
-
-    # 构建前驱/后继表
-    successors = {n["id"]: [] for n in nodes}
-    predecessors = {n["id"]: [] for n in nodes}
-    for n in nodes:
-        for dep in n.get("depends", []):
-            if dep in successors:
-                successors[dep].append(n["id"])
-            if dep in predecessors:
-                predecessors[n["id"]].append(dep)
-
-    final_milestones = {n["id"] for n in nodes
-                        if n.get("type") == "milestone"
-                        and n.get("phase") == last_phase_id}
-    # 最后阶段的所有节点都是合法终点
-    final_phase_nodes = {n["id"] for n in nodes
-                         if n.get("phase") == last_phase_id}
-
-    warnings = []
-
-    # 0. 环路检测 (Kahn 算法)
-    in_degree = {nid: len(predecessors.get(nid, [])) for nid in node_ids}
-    queue = [nid for nid, deg in in_degree.items() if deg == 0]
-    visited_count = 0
-    while queue:
-        nid = queue.pop(0)
-        visited_count += 1
-        for succ in successors.get(nid, []):
-            in_degree[succ] -= 1
-            if in_degree[succ] == 0:
-                queue.append(succ)
-    if visited_count != len(node_ids):
-        cycle_nodes = [nid for nid, deg in in_degree.items() if deg > 0]
-        warnings.append({
-            "type": "cycle_detected",
-            "severity": "error",
-            "nodes": cycle_nodes[:10],
-            "message": f"检测到循环依赖: {', '.join(cycle_nodes[:5])}{'...' if len(cycle_nodes) > 5 else ''}",
-        })
-
-    # 1. 孤立终点检测
-    for n in nodes:
-        nid = n["id"]
-        if not successors[nid] and nid not in final_milestones and nid not in final_phase_nodes:
-            if n.get("type") == "milestone":
-                continue
-            if n.get("status") == "done":
-                continue
-            if n.get("status") == "skipped":
-                continue
-            severity = "critical" if (cpm and cpm.get("nodes", {}).get(nid, {}).get("critical")) else "warning"
-            warnings.append({
-                "type": "orphan_terminal",
-                "severity": severity,
-                "node": nid,
-                "name": n.get("name", ""),
-                "message": f"[{nid}] {n.get('name','')} 没有后继节点 — 可能未接入下游流程",
-            })
-
-    # 2. 悬空依赖检测
-    for n in nodes:
-        for dep in n.get("depends", []):
-            if dep not in node_ids:
-                warnings.append({
-                    "type": "dangling_dep",
-                    "severity": "error",
-                    "node": n["id"],
-                    "dep": dep,
-                    "message": f"[{n['id']}] 依赖 [{dep}] 不存在",
-                })
-
-    # 3. 里程碑缺上游
-    for n in nodes:
-        if n.get("type") == "milestone" and not n.get("depends"):
-            warnings.append({
-                "type": "milestone_no_deps",
-                "severity": "warning",
-                "node": n["id"],
-                "message": f"里程碑 [{n['id']}] 没有上游依赖",
-            })
-
-    # 4. 反向跨阶段依赖（前阶段节点依赖后阶段节点）
-    #    注意：阶段是管理视角的线性排列，实际工程中并行阶段（如制样+软件开发）
-    #    的跨阶段依赖是合理的。标记为 info 供人工判断，不作为 error。
-    for n in nodes:
-        n_order = phase_order.get(n.get("phase", ""), -1)
-        if n_order < 0:
-            continue
-        for dep in n.get("depends", []):
-            dep_node = nodes_map.get(dep)
-            if dep_node:
-                dep_order = phase_order.get(dep_node.get("phase", ""), -1)
-                if dep_order > n_order:
-                    warnings.append({
-                        "type": "reverse_phase_dep",
-                        "severity": "info",
-                        "node": n["id"],
-                        "dep": dep,
-                        "message": f"[{n['id']}]({n.get('phase','')}) 依赖后阶段 [{dep}]({dep_node.get('phase','')})",
-                    })
-
-    # 5. 重复节点ID
-    from collections import Counter
-    id_counts = Counter(n["id"] for n in nodes)
-    for nid, cnt in id_counts.items():
-        if cnt > 1:
-            warnings.append({
-                "type": "duplicate_id",
-                "severity": "error",
-                "node": nid,
-                "message": f"[{nid}] 节点ID重复 ({cnt}次)",
-            })
-
-    # 6. 完全孤立节点（无前驱也无后继，非首阶段）
-    for n in nodes:
-        nid = n["id"]
-        if (not predecessors[nid] and not successors[nid]
-                and n.get("phase") != first_phase_id
-                and n.get("status") != "done"
-                and n.get("status") != "skipped"):
-            warnings.append({
-                "type": "isolated_node",
-                "severity": "warning",
-                "node": nid,
-                "message": f"[{nid}] {n.get('name','')} 完全孤立（无前驱无后继）",
-            })
-
-    # 7. 冗余依赖（A 依赖 B 和 C，但 C 已经依赖 B，则 A→B 冗余）
-    for n in nodes:
-        deps = n.get("depends", [])
-        if len(deps) < 2:
-            continue
-        dep_set = set(deps)
-        # 对每个依赖，检查是否被其他依赖的传递闭包覆盖
-        for d in deps:
-            # BFS: 从其他依赖出发，看能否到达 d
-            other_deps = dep_set - {d}
-            visited = set()
-            queue = list(other_deps)
-            reachable = False
-            while queue:
-                cur = queue.pop(0)
-                if cur == d:
-                    reachable = True
-                    break
-                if cur in visited:
-                    continue
-                visited.add(cur)
-                cur_node = nodes_map.get(cur)
-                if cur_node:
-                    for cd in cur_node.get("depends", []):
-                        if cd not in visited:
-                            queue.append(cd)
-            if reachable:
-                warnings.append({
-                    "type": "redundant_dep",
-                    "severity": "info",
-                    "node": n["id"],
-                    "dep": d,
-                    "message": f"[{n['id']}] → [{d}] 冗余依赖（已被其他依赖路径覆盖）",
-                })
-
-    # 8. 粗粒度调试节点提示（可展开为分层子任务）
-    #    调试/bringup 类节点如果没有子任务展开，提示可以细化
-    bringup_keywords = ["调试", "bringup", "bring-up", "bring_up"]
-    for n in nodes:
-        if n.get("status") == "done":
-            continue
-        nid = n["id"]
-        name_lower = (n.get("name", "") + " " + nid).lower()
-        is_bringup = any(k in name_lower for k in bringup_keywords)
-        if not is_bringup:
-            continue
-        # 检查是否已有子任务展开
-        has_children = any(
-            cn["id"].startswith(nid + ".") for cn in nodes if cn["id"] != nid
-        )
-        if not has_children:
-            warnings.append({
-                "type": "coarse_bringup",
-                "severity": "info",
-                "node": nid,
-                "message": f"[{nid}] {n.get('name','')} 是粗粒度调试节点 — 可用 pt sub-load {nid} board_bringup 展开为分层调试",
-            })
-
-    return warnings
-
 
 def start_task(project_id: str, task_id: str) -> dict:
     p = _load(project_id)

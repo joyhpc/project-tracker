@@ -1,11 +1,10 @@
 """CLI 入口 — 只做参数解析和路由"""
 import argparse
+from .console import configure_stdio
 from .commands.project import cmd_init, cmd_list, cmd_switch, cmd_status, cmd_phases, cmd_note, cmd_log, cmd_validate
 from .commands.tasks import cmd_tasks, cmd_next, cmd_start, cmd_done, cmd_block, cmd_unblock, cmd_sub_add, cmd_sub_done, cmd_sub_block, cmd_sub_list, cmd_sub_load
-from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate, cmd_gantt, cmd_stats, cmd_deps, cmd_burndown, cmd_export
-from .commands.guide_cmd import cmd_guide
-from .commands.risk_cmd import cmd_risk
-from .commands.conflict_cmd import cmd_conflict
+from .commands.analysis import cmd_plan, cmd_digest, cmd_timeline, cmd_estimate, cmd_gantt, cmd_stats, cmd_deps, cmd_burndown, cmd_export, cmd_risk, cmd_notify
+from .commands.doctor_cmd import cmd_doctor
 from .commands.prompt_cmd import cmd_prompt
 from .commands.docs_cmd import cmd_docs
 from .commands.log_cmd import cmd_log as cmd_brief
@@ -19,7 +18,6 @@ from .commands.review_sync_cmd import cmd_review_sync
 from .commands.visual_cmd import cmd_map, cmd_visual
 from .commands.node_cmd import cmd_add, cmd_rm, cmd_skip, cmd_undo, cmd_rewire, cmd_replace, cmd_promote
 from .commands.web_cmd import cmd_web
-from .commands.notify_cmd import cmd_notify
 from .commands.who_cmd import cmd_who
 from .commands.update_cmd import cmd_update, cmd_find
 from .commands.hooks_cmd import cmd_hooks
@@ -86,6 +84,7 @@ def _add_close_subcommands(close_sub, *, scaffold_alias: bool = False):
 
 
 def main():
+    configure_stdio()
     parser = argparse.ArgumentParser(prog="pt", description="项目推进助手")
     sub = parser.add_subparsers(dest="command")
 
@@ -116,9 +115,16 @@ def main():
     p_validate.add_argument("--strict", action="store_true", help="warning 也视为失败")
     p_validate.add_argument("--json", action="store_true", help="JSON 输出")
 
+    p_doctor = sub.add_parser("doctor", help="只读健康检查：仓库边界 + 项目 YAML / DAG")
+    p_doctor.add_argument("--strict", action="store_true", help="warning 也视为失败")
+    p_doctor.add_argument("--json", action="store_true", help="JSON 输出")
+    p_doctor.add_argument("--verbose", "-v", action="store_true", help="显示项目 warning/info 明细")
+
     # ── 任务操作 ──
     p_update = sub.add_parser("update", aliases=["u"], help="自然语言更新项目状态（如 \"FMC改线完了\"）")
     p_update.add_argument("text", help="变动描述（自然语言）")
+    p_update.add_argument("--dry-run", action="store_true", help="只解析和预览，不写入项目")
+    p_update.add_argument("--json", action="store_true", help="JSON 解析输出，不执行")
 
     p_find = sub.add_parser("find", aliases=["f"], help="模糊搜索节点（如 \"MIPI\"）")
     p_find.add_argument("query", help="搜索关键词")
@@ -175,6 +181,8 @@ def main():
     sub.add_parser("plan", help="项目作战地图")
 
     p_map = sub.add_parser("map", help="项目地图（终端优先，可选 HTML/PNG）")
+    p_map.add_argument("--all", "-a", action="store_true", help="汇总所有项目的全局地图")
+    p_map.add_argument("--json", action="store_true", help="JSON 输出（用于 --all 全局地图）")
     p_map.add_argument("--html", action="store_true", help="同时生成 HTML 地图")
     p_map.add_argument("--output", "-o", default="/tmp", help="HTML/PNG 输出目录 (默认 /tmp)")
     p_map.add_argument("--no-png", action="store_true", help="只生成 HTML，不截图")
@@ -213,14 +221,6 @@ def main():
     p_export.add_argument("format", choices=["nodes", "stats", "burndown"], help="导出格式")
     p_export.add_argument("--project", help="项目ID")
 
-    # ── 引导 ──
-    p_guide = sub.add_parser("guide", help="启发式项目引导")
-    p_guide.add_argument("--product", "-p")
-    p_guide.add_argument("--phase")
-    p_guide.add_argument("--overview", action="store_true")
-    p_guide.add_argument("--flow", "-f", default="duxin")
-    p_guide.add_argument("--save", "-s")
-
     # ── 人员视图 ──
     p_who = sub.add_parser("who", help="按人员查看任务分配")
     p_who.add_argument("--owner", help="筛选特定人员")
@@ -230,9 +230,6 @@ def main():
     # ── 风险 ──
     p_risk = sub.add_parser("risk", help="风险评估")
     p_risk.add_argument("--phase", help="评估单个阶段")
-
-    # ── 冲突 ──
-    sub.add_parser("conflict", aliases=["cf"], help="多项目资源冲突检测")
 
     # ── Prompt ──
     p_prompt = sub.add_parser("prompt", help="Prompt 导出（带项目上下文）")
@@ -434,6 +431,7 @@ def main():
         "phases": cmd_phases, "ph": cmd_phases,
         "note": cmd_note, "log": cmd_log,
         "validate": cmd_validate, "check": cmd_validate,
+        "doctor": cmd_doctor,
         "update": cmd_update, "u": cmd_update,
         "find": cmd_find, "f": cmd_find,
         "tasks": cmd_tasks, "t": cmd_tasks,
@@ -449,8 +447,7 @@ def main():
         "estimate": cmd_estimate, "est": cmd_estimate,
         "gantt": cmd_gantt, "stats": cmd_stats, "deps": cmd_deps,
         "burndown": cmd_burndown, "export": cmd_export,
-        "guide": cmd_guide, "risk": cmd_risk, "who": cmd_who,
-        "conflict": cmd_conflict, "cf": cmd_conflict,
+        "risk": cmd_risk, "who": cmd_who,
         "prompt": cmd_prompt,
         "docs": cmd_docs,
         "req": cmd_req,

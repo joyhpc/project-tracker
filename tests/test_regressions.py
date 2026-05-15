@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import subprocess
 import sys
 import tempfile
@@ -9,15 +10,17 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from tracker import core, engine, onboard
+from tracker import core, engine, onboard, repo_boundary
 from tracker.cli import main as cli_main
 from tracker.commands.close_cmd import cmd_close
 from tracker.commands.decision_cmd import _select_action as select_decision_action
+from tracker.commands.doctor_cmd import cmd_doctor
 from tracker.commands.poc_cmd import _select_action as select_poc_action
 from tracker.commands.gate_cmd import cmd_gate
 from tracker.commands.project import cmd_status, cmd_validate
 from tracker.commands.prompt_cmd import cmd_prompt
 from tracker.commands.review_cmd import _select_action as select_review_action
+from tracker.commands.update_cmd import cmd_update
 from tracker.post_save import list_hooks
 
 
@@ -92,6 +95,14 @@ class MigrationTests(ProjectSandboxTestCase):
 
 
 class CoreRegressionTests(ProjectSandboxTestCase):
+    def test_repo_boundary_flags_root_meta_files(self):
+        (self.tempdir / "TASK_FOO.md").write_text("# generated\n", encoding="utf-8")
+
+        violations = repo_boundary.find_root_boundary_violations(self.tempdir)
+
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0]["pattern"], "TASK_*.md")
+
     def test_validate_project_schema_flags_invalid_node_status(self):
         project = {
             "id": "BAD",
@@ -199,6 +210,81 @@ class CoreRegressionTests(ProjectSandboxTestCase):
 
 
 class CommandValidationTests(ProjectSandboxTestCase):
+    def test_doctor_command_reports_workspace_health(self):
+        core.init_project("TMP", "tmp", "generic")
+        buffer = io.StringIO()
+        args = SimpleNamespace(strict=False, json=False, verbose=False)
+
+        with contextlib.redirect_stdout(buffer):
+            cmd_doctor(args)
+
+        output = buffer.getvalue()
+        self.assertIn("pt doctor", output)
+        self.assertIn("repo boundary: OK", output)
+        self.assertIn("projects: 1", output)
+
+    def test_doctor_command_is_read_only(self):
+        core.init_project("TMP", "tmp", "generic")
+        project_file = core._project_file("TMP")
+        before = project_file.read_text(encoding="utf-8")
+        buffer = io.StringIO()
+        args = SimpleNamespace(strict=False, json=False, verbose=True)
+
+        with contextlib.redirect_stdout(buffer):
+            cmd_doctor(args)
+
+        after = project_file.read_text(encoding="utf-8")
+        self.assertEqual(after, before)
+
+    def test_update_dry_run_does_not_mutate_project(self):
+        core.init_project("TMP", "tmp", "generic")
+        args = SimpleNamespace(text="市场调研完成", dry_run=True, json=False)
+        buffer = io.StringIO()
+
+        with contextlib.redirect_stdout(buffer):
+            cmd_update(args)
+
+        project = core._load("TMP")
+        node = core._find_node(project, "market_research")
+        self.assertEqual(node["status"], "pending")
+        self.assertIn("dry-run: 未写入项目", buffer.getvalue())
+        self.assertIn("目标文件:", buffer.getvalue())
+
+    def test_update_dry_run_json_does_not_mutate_project(self):
+        core.init_project("TMP", "tmp", "generic")
+        args = SimpleNamespace(text="市场调研完成", dry_run=True, json=True)
+        buffer = io.StringIO()
+
+        with contextlib.redirect_stdout(buffer):
+            cmd_update(args)
+
+        payload = json.loads(buffer.getvalue())
+        project = core._load("TMP")
+        node = core._find_node(project, "market_research")
+        self.assertEqual(payload["version"], 1)
+        self.assertEqual(payload["intent"], "done")
+        self.assertTrue(payload["would_execute"])
+        self.assertIn("target_file", payload)
+        self.assertEqual(payload["proposed_patch"]["before"]["status"], "pending")
+        self.assertEqual(payload["proposed_patch"]["after"]["status"], "done")
+        self.assertEqual(node["status"], "pending")
+
+    def test_update_json_executes_with_structured_output(self):
+        core.init_project("TMP", "tmp", "generic")
+        args = SimpleNamespace(text="市场调研完成", dry_run=False, json=True)
+        buffer = io.StringIO()
+
+        with contextlib.redirect_stdout(buffer):
+            cmd_update(args)
+
+        payload = json.loads(buffer.getvalue())
+        project = core._load("TMP")
+        node = core._find_node(project, "market_research")
+        self.assertEqual(payload["intent"], "done")
+        self.assertTrue(payload["would_execute"])
+        self.assertTrue(payload["execution"]["executed"])
+        self.assertEqual(node["status"], "done")
+
     def test_validate_command_reports_clean_project(self):
         core.init_project("TMP", "tmp", "generic")
         buffer = io.StringIO()

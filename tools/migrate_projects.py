@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tracker.core import migrate_project_data, PROJECT_SCHEMA_VERSION  # noqa: E402
+from tracker.console import configure_stdio  # noqa: E402
 
 
 def migrate_file(path: Path, dry_run: bool = False) -> tuple[bool, str]:
@@ -30,6 +31,7 @@ def migrate_file(path: Path, dry_run: bool = False) -> tuple[bool, str]:
 
 
 def main() -> int:
+    configure_stdio()
     parser = argparse.ArgumentParser(description="迁移 project-tracker 项目 YAML 到最新 schema")
     parser.add_argument("paths", nargs="*", help="项目 YAML 文件或目录，默认 projects/")
     parser.add_argument("--dry-run", action="store_true", help="只预览，不写回文件")
@@ -44,10 +46,10 @@ def main() -> int:
         elif path.is_file():
             files.append(path)
         else:
-            print(f"WARN 跳过不存在路径: {path}")
+            print(f"WARN missing path: {path}")
 
     if not files:
-        print("没有找到可迁移的项目 YAML")
+        print("No project YAML files found")
         return 1
 
     changed_count = 0
@@ -57,7 +59,7 @@ def main() -> int:
             changed_count += 1
         print(message)
 
-    print(f"完成：{changed_count}/{len(files)} 个文件需要迁移")
+    print(f"DONE: {changed_count}/{len(files)} files need migration")
     return 0
 
 

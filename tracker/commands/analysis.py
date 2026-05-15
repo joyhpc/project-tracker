@@ -76,6 +76,67 @@ def cmd_digest(args):
             print(f"{'─'*40}")
 
 
+def cmd_risk(args):
+    """项目风险评估."""
+    from ..risk import assess_project_risk, format_risk_report
+
+    p = _require()
+    flow = core._project_as_flow(p)
+    task_status = core._get_task_status(p)
+    custom_estimates = p.get("estimates", {})
+    result = assess_project_risk(flow, task_status, custom_estimates)
+
+    phase_id = getattr(args, "phase", None)
+    if phase_id:
+        phase_id = phase_id.upper()
+        phase_data = result["phase_risks"].get(phase_id)
+        if not phase_data:
+            print(f"❌ 阶段不存在或当前无风险数据: {phase_id}")
+            sys.exit(1)
+
+        print(f"\n📋 {p['name']} ({p['id']}) — 风险评估 [{phase_id}]\n")
+        print(f"🔴 高风险: {phase_data['high']} 个  🟡 中风险: {phase_data['medium']} 个\n")
+        for i, risk in enumerate(phase_data["risks"][:10], 1):
+            print(f"  {i}. {risk['level']} [{risk['task_id']}] {risk['name']}  (分数: {risk['score']})")
+            if risk["factors"]:
+                print(f"     原因: {'; '.join(risk['factors'])}")
+        print()
+        return
+
+    print(f"\n📋 {p['name']} ({p['id']}) — 风险评估\n")
+    print(format_risk_report(result))
+
+
+def cmd_notify(args):
+    """Webhook 通知配置与测试."""
+    action = getattr(args, "action", "status")
+
+    if action == "test":
+        from ..notify import fire_event
+
+        fire_event("test", {"project_id": "test", "message": "Webhook 测试通知"})
+        print("测试通知已发送 (请检查 Webhook 接收端)")
+        return
+
+    from ..notify.config import load_config
+
+    cfg = load_config()
+    if not cfg["enabled"]:
+        print("通知状态: 已禁用")
+        print("配置文件: tracker/notify/config.yaml")
+        return
+
+    print("通知状态: 已启用")
+    for webhook in cfg["webhooks"]:
+        name = webhook.get("name", "unnamed")
+        webhook_type = webhook.get("type", "unknown")
+        events = webhook.get("events", []) or ["全部"]
+        url = webhook.get("url", "")
+        masked = url[:20] + "****" + url[-10:] if len(url) > 30 else url
+        print(f"  - {name} ({webhook_type}): {masked}")
+        print(f"    事件: {', '.join(str(event) for event in events)}")
+
+
 def cmd_timeline(args):
     """项目时间线 — 基于 CPM"""
     p = _require()
