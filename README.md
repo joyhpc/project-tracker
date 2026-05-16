@@ -6,7 +6,7 @@
 
 路线约束见 [Issue #1](https://github.com/joyhpc/project-tracker/issues/1)：当前阶段保持轻量辅助，暂缓深度项目管理化。
 
-![project-tracker / pt 当前架构](docs/assets/project-tracker-architecture.png)
+![project-tracker / pt 全局架构图](docs/assets/project-tracker-architecture-image2.png)
 
 ## 核心能力
 
