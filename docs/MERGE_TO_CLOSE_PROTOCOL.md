@@ -1,5 +1,7 @@
 # Merge-to-Close 协议
 
+Status: current closure protocol. Implementation details should be checked against `tracker/close_gate.py` and `tracker/commands/close_cmd.py`.
+
 ## 目的
 
 本协议用于强制约束 A57 类硬件项目的过程闭环方式，防止 `project-tracker` 中的过程结论先于 `A57-docs` 中的正式结论关闭，导致真相漂移。
@@ -135,7 +137,7 @@
 
 同时，`pt status` 和 `pt map` 会显示当前项目的 Merge-to-Close 风险摘要，避免“任务已 done，但正式闭环未完成”的假进展。
 
-另外，项目保存后会自动维护：
+另外，项目保存后会在 linked project repo 中自动维护：
 
 - `docs/issues/<PROJECT_ID>_CLOSE_GATE_BACKLOG_AUTO.md`
 
@@ -188,6 +190,8 @@ pt closure scaffold edp_bringup
 pt close list --invalid-only
 pt close report --invalid-only --save docs/issues/CLOSE_GATE_BACKLOG.md
 ```
+
+当项目已配置 `repo` 时，`--save` 的相对路径会解析到 linked project repo，而不是 `project-tracker` 仓库。
 
 ## 与多 Repo 协议的关系
 

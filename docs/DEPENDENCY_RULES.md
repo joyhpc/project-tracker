@@ -1,5 +1,7 @@
 # 依赖关系定义规范
 
+Status: current DAG modeling rule. Validate implementation details against `tracker/engine.py` and `tracker/project_validation.py`.
+
 ## 核心原则
 依赖关系 = "我的输入来自谁的输出"，不是"谁在我前面做"。
 

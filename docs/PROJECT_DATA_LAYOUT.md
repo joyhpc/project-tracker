@@ -1,5 +1,7 @@
 # Project Data Layout
 
+Status: current boundary document. Last verified against code on 2026-05-17.
+
 This repository separates four kinds of project material:
 
 1. **Runtime project state** lives in `projects/<PROJECT_ID>.yaml`.
@@ -65,11 +67,12 @@ Generated or tool-maintained material belongs in predictable generated areas:
 
 - `projects/.pt_history/` for local safety snapshots
 - `<PROJECT_ID>-docs/.pt/` for synced tracker manifests/snapshots
-- `docs/issues/*BACKLOG*` for generated backlog reports
+- `<PROJECT_ID>-docs/docs/issues/*BACKLOG*` for generated close-gate backlog reports
 - exported HTML/CSV/Mermaid files in a caller-selected output folder
 
-Do not put large raw evidence files into `project-tracker`. Store them in the
-linked project repo and reference them from the YAML.
+Do not put large raw evidence files, formal design text, validation records, or
+release conclusions into `project-tracker`. Store them in the linked project
+repo and reference them from the YAML.
 
 ## New Project Flow
 
@@ -97,4 +100,5 @@ python -m tracker req init
 - Keep reusable process templates in `flows/`.
 - Keep reusable document scaffolds in `tracker/templates/`.
 - Keep project truth and evidence in the linked project repo.
-
+- Treat `docs/_archive/` as historical background only, not as current
+  architecture truth.

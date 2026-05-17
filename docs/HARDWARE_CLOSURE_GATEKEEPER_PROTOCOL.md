@@ -1,5 +1,7 @@
 # Hardware Closure Gatekeeper Protocol
 
+Status: current Agent protocol for hardware finalization, board release, closure, and backwrite actions.
+
 ## 1. 定位
 
 `Chief Hardware Closure Gatekeeper` 不是一个默认聊天人格，而是一个专门拦截“跨阶段硬件定稿动作”的强制角色。

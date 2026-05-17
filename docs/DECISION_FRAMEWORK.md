@@ -1,5 +1,7 @@
 # 决策思维框架 (Decision Thinking Framework)
 
+Status: current methodology note. This is a decision aid, not an architecture or implementation fact source.
+
 ## 适用场景
 任何工程决策、方案选择、路径规划。
 

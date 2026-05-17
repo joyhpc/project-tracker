@@ -1,68 +1,104 @@
 # Project Tracker Core Architecture
 
-这份文档描述 `project-tracker` 当前的核心架构边界，重点回答三个问题：
+本文描述 `project-tracker` 当前核心代码边界，重点回答：
 
-1. 项目状态存在哪里
-2. DAG / 校验 / 状态查询分别由谁负责
-3. 为什么 `tracker/core.py` 仍然存在，但不再承担所有实现细节
+1. 项目状态存在哪里。
+2. `core.py` 为什么还存在。
+3. DAG / 校验 / 状态查询 / 状态变更 / linked repo 能力分别由谁负责。
 
-## 设计目标
+## 设计原则
 
-系统仍然坚持这 4 个基本原则：
-
-1. **CLI-first**：所有主操作都能从 `pt` 命令闭环完成
-2. **YAML-first**：项目状态以单项目单 YAML 为事实源
-3. **Git-friendly**：状态文件可 diff、可审查、可回滚、可同步
-4. **Deterministic**：依赖分类、关键路径、校验结果尽量确定性输出
+1. **CLI-first**：主操作从 `pt` 命令闭环。
+2. **YAML-first**：单项目单 YAML 是运行时状态事实源。
+3. **Git-friendly**：状态文件可 diff、可审查、可回滚、可同步。
+4. **Deterministic**：依赖分类、关键路径、校验结果尽量确定性输出。
+5. **Boundary-first**：项目正文和证据留在 linked project repo，`project-tracker` 只保留索引和门禁元数据。
 
 ## 分层总览
 
 ```text
-pt / tracker/commands/*.py
+tracker/cli.py
         │
         ▼
-tracker/core.py                 ← 兼容 façade / 持久化入口
-        │
-        ├─ tracker/project_constants.py   ← schema 版本与枚举常量
-        ├─ tracker/project_model.py       ← 纯项目模型辅助函数
-        ├─ tracker/project_validation.py  ← schema + DAG 完整性校验
-        ├─ tracker/project_query.py       ← 状态聚合 / fallback 查询
-        ├─ tracker/project_mutation.py    ← 状态机 / 任务变更规则
-        ├─ tracker/subtask_templates.py   ← 子任务模板发现 / 匹配 / DAG rewire
-        └─ tracker/project_map.py         ← 项目地图快照 / 文本与 HTML 渲染
-        │
-        ├─ tracker/engine.py              ← DAG 分类 / CPM / 关键路径
-        ├─ tracker/flow.py                ← 流程模板加载
-        ├─ tracker/knowledge.py           ← Markdown AST + BM25 检索
-        └─ tracker/prompt.py              ← Prompt 组装
+tracker/commands/*.py
         │
         ▼
-projects/*.yaml                 ← 项目事实源
-projects/.pt_history/           ← 历史快照
+tracker/core.py                        兼容 façade / 持久化入口
+        │
+        ├─ project_storage.py          YAML load/save、active project、snapshot、restore
+        ├─ project_migration.py        schema 迁移、保存前归一化
+        ├─ project_constants.py        schema 版本和枚举常量
+        ├─ project_model.py            纯项目模型辅助函数
+        ├─ project_validation.py       schema + DAG 完整性校验
+        ├─ project_query.py            状态聚合 / fallback 查询
+        ├─ project_mutation.py         状态机 / 任务变更规则
+        ├─ subtask_templates.py        子任务模板发现 / 匹配 / DAG rewire
+        ├─ project_map.py              项目地图快照 / 文本与 HTML 渲染
+        ├─ requirements.py             linked repo 需求骨架、索引、检查、追溯
+        └─ close_gate.py               Merge-to-Close 元数据校验和报告
+        │
+        ├─ engine.py                   DAG 分类 / CPM / 关键路径
+        ├─ flow.py                     流程模板加载
+        ├─ datax/*                     导出与统计
+        ├─ web/*                       只读 Web 看板
+        ├─ knowledge.py                BM25 检索，辅助 prompt
+        └─ prompt.py                   Prompt 组装，辅助能力
+        │
+        ▼
+projects/*.yaml                        项目运行时状态事实源
+linked project repo                     正式项目正文和证据事实源
 ```
+
+## `core.py` 的当前职责
+
+`core.py` 是对外稳定入口，不是所有实现细节的归宿。
+
+仍适合保留在 `core.py` 的职责：
+
+- active project 选择和加载入口。
+- 对 `project_storage.py` 的统一包装。
+- 历史快照和 `undo`。
+- 兼容旧命令层与旧测试依赖的公共 API。
+- 把 `requirements.py`、`close_gate.py` 等能力接到统一项目模型上。
+- 在保存项目后触发 best-effort post-save hooks。
+
+不应继续塞进 `core.py` 的职责：
+
+- 纯状态机规则。
+- DAG 校验规则。
+- 展示和地图渲染。
+- 需求模板细节。
+- close gate 字段规则。
+- 新的导出格式。
+
+新增能力的默认落点应该先是具体模块，再由 `core.py` 暴露薄包装。
 
 ## 模块职责
 
-### `tracker/core.py`
+### `project_storage.py`
 
-`core.py` 现在承担两类职责：
+只处理存储原语：
 
-1. **必须保留在这里的状态相关能力**
-   - 项目文件路径与激活项目路径
-   - YAML 读写
-   - schema 迁移
-   - 乐观锁
-   - 历史快照
-   - 兼容旧命令层和旧测试的公共 API
+- `project_file()`
+- `load_project()`
+- `save_project()`
+- `get_active()` / `set_active()`
+- `list_project_files()`
+- `snapshot()` / `restore_latest_snapshot()`
 
-2. **对外兼容 façade**
-   - 命令层继续 `import core`
-   - 但底层纯逻辑已经拆到 `project_*` 模块
-   - 这样先降低复杂度，再逐步继续重构命令层
+它不理解 DAG、任务状态、需求或 close gate。
 
-这是一个刻意的过渡架构：**先拆实现，再保持接口稳定**。
+### `project_migration.py`
 
-### `tracker/project_constants.py`
+负责把旧项目数据迁移到当前 schema，并在保存前清理内部字段。
+
+关键函数：
+
+- `migrate_project_data()`
+- `prepare_for_save()`
+- `normalize_verdicts()`
+
+### `project_constants.py`
 
 集中维护共享常量：
 
@@ -72,14 +108,9 @@ projects/.pt_history/           ← 历史快照
 - `VALID_POC_STATUSES`
 - `VALID_REVIEW_VERDICTS`
 
-价值：
+### `project_model.py`
 
-- 避免多个模块各自维护枚举
-- 后续加 schema 文档或 JSON Schema 时更容易复用
-
-### `tracker/project_model.py`
-
-这里放**纯函数**，不碰文件系统，不依赖 CLI：
+纯函数层，不碰文件系统，不依赖 CLI：
 
 - `_get_task_status()`
 - `_project_as_flow()`
@@ -87,47 +118,29 @@ projects/.pt_history/           ← 历史快照
 - `_progress_counts()`
 - `_undone_dependencies()`
 
-这些函数本质是在做“项目 YAML → 引擎可消费结构 / 展示统计”的转换。
+它把项目 YAML 转成 `engine.py` 和展示层可消费的结构。
 
-### `tracker/project_validation.py`
+### `project_validation.py`
 
 负责两层校验：
 
-1. **Schema 校验**
-   - 顶层字段是否存在
-   - `nodes/phases/reviews/decisions/pocs` 结构是否合法
-   - 枚举字段是否合法
+- schema 校验：顶层字段、列表结构、枚举字段、必需字段。
+- 完整性校验：DAG 环、悬空依赖、重复 ID、反向跨阶段依赖、粗粒度节点提示等。
 
-2. **完整性校验**
-   - DAG 是否有环
-   - 是否有悬空依赖
-   - 是否有重复 ID
-   - 是否存在反向跨阶段依赖
-   - 是否存在粗粒度 bringup 节点等提示
+输出统一 issue 列表，供 CLI、doctor、测试和后续集成使用。
 
-输出统一为 issue 列表，便于：
+### `project_query.py`
 
-- CLI 打印
-- JSON 输出
-- 后续接 GitHub Actions / pre-commit / external integrations
+负责状态快照：
 
-### `tracker/project_query.py`
+- 调 `engine.classify_tasks()` 计算 ready / waiting / blocked / done。
+- 调 `engine.compute_cpm()` 计算关键路径和 slack。
+- 在项目结构有问题时生成保守 fallback。
+- 输出 `core.get_status()` 的统一返回结构。
 
-负责把多个子能力拼成“状态快照”：
+### `project_mutation.py`
 
-- 调引擎计算 ready / waiting / blocked / done
-- 调 CPM 算关键路径
-- 结合校验结果生成保守 fallback
-- 产出 `get_status()` 的统一返回结构
-
-这个模块的核心价值是：
-
-- 把“读取状态”和“修改状态”拆开
-- 避免 `core.py` 同时承担查询、写入、校验、展示拼装
-
-### `tracker/project_mutation.py`
-
-负责项目内的状态变更规则：
+负责项目对象内的变更规则，不负责文件读写：
 
 - `start_task_in_project()`
 - `done_task_in_project()`
@@ -135,131 +148,149 @@ projects/.pt_history/           ← 历史快照
 - `add_subtask_to_project()` / `done_subtask_in_project()`
 - `attach_doc_to_task()`
 
-这个模块只处理**已加载项目对象上的状态机逻辑**，不负责文件读写。
+依赖未完成、close gate 未通过、状态非法等规则应优先在这里或 close gate 模块表达。
 
-价值是：
+### `subtask_templates.py`
 
-- 把“怎么改状态”从 `core.py` 文件系统层里拆出来
-- 让任务状态机更容易单测
-- 为后续继续细分子任务编排逻辑铺路
+负责子任务模板：
 
-### `tracker/subtask_templates.py`
+- 候选模板目录发现。
+- 模板元数据列表。
+- `attach_to` 匹配。
+- 模板应用后的子图插入、外部依赖提示和 DAG rewire。
 
-负责子任务模板相关的 3 类能力：
+### `project_map.py`
 
-- 模板目录发现与模板元数据列举
-- `attach_to` 匹配
-- 模板应用到项目后的子图插入、外部依赖提示处理、DAG rewire
+负责把状态快照整理成“人读得懂”的地图：
 
-这让 `core.py` 不再自己承担模板发现 + YAML 解析 + 子图重连的混合职责。
+- 单项目地图。
+- 全局项目地图。
+- stale/sync 风险摘要。
+- 当前焦点选择。
+- 阶段泳道、阻塞、关键路径、close gate 摘要。
+- 文本和 HTML 渲染。
 
-### `tracker/project_map.py`
+`plan`、`map`、`visual` 应共享这里的语义，避免各自拼一套。
 
-负责把项目状态快照整理成“适合人读”的地图视图：
+### `requirements.py`
 
-- 终端地图
-- HTML 地图
-- 当前焦点选择
-- 分阶段泳道视图
-- 仓库状态 / 决策 / 阻塞 / 关键路径摘要
+负责 `pt req` 的 linked repo 能力：
 
-这样 `plan` / `map` / `visual` 三个入口共享同一份地图语义，而不是各自拼一套。
+- 生成需求骨架到目标 repo。
+- 维护 `.pt/requirements_manifest.yaml`。
+- 重建索引页。
+- 检查 frontmatter、绑定、断链和必需列。
+- 刷新需求追溯矩阵。
 
-### `tracker/engine.py`
+运行时项目 YAML 只保存 profile、root、manifest、subprojects、last_check、last_trace 等轻量状态。
 
-`engine.py` 仍然是图引擎内核：
+### `close_gate.py`
 
-- 任务分类
-- 拓扑顺序
-- CPM 关键路径
-- Slack / 工期推导
+负责 Merge-to-Close：
 
-它不关心 YAML 如何保存，只关心输入是否是合法 flow + status 映射。
+- 判断任务是否需要 close gate。
+- 归一化 closure 视图。
+- 校验正式对象、借用对象、适用范围、版本、证据和回写路径。
+- 生成单任务人工补齐模板。
+- 汇总项目级 close gate 状态。
+- 渲染 Markdown backlog/report。
+
+它不负责保存正式结论正文；正式结论仍应在 linked repo。
+
+### `engine.py`
+
+图引擎内核：
+
+- `build_graph()`
+- `topo_sort()` / `stable_node_order()`
+- `compute_cpm()`
+- `classify_tasks()`
+- `analyze_blockers()`
+- `find_alternatives()`
+
+它不关心项目 YAML 如何保存，也不关心 CLI 输出格式。
 
 ## 关键调用链
 
-### 1. `pt validate --all`
+### `pt validate --all`
 
 ```text
-tracker/commands/project.py
-    → core.validate_all_projects()
-    → core.validate_project_file()
-    → core.validate_project()
-    → project_validation.validate_project()
-    → project_validation.check_integrity()
+commands/project.py
+  → core.validate_all_projects()
+  → core.validate_project_file()
+  → project_storage.load_project()
+  → project_migration.migrate_project_data()
+  → project_validation.validate_project()
 ```
 
-### 2. `pt status`
+### `pt doctor`
 
 ```text
-tracker/commands/project.py
-    → core.get_status(project)
-    → project_query.get_status(project)
-    → project_validation.check_integrity(project)
-    → engine.classify_tasks(...)
-    → engine.compute_cpm(...)
+commands/doctor_cmd.py
+  → repo_boundary.find_root_boundary_violations()
+  → core.validate_all_projects()
+  → core._get_active() / core._load()
 ```
 
-### 3. `pt done <task>`
+`doctor` 必须只读。
+
+### `pt status`
 
 ```text
-tracker/commands/node_cmd.py
-    → core.done(...)
-    → project_mutation.done_task_in_project(...)
-    → core._save(project)
-    → core.check_integrity(project)
+commands/project.py
+  → core.require_active()
+  → core.get_status(project)
+  → project_query.get_status(project)
+  → project_validation.check_integrity(project)
+  → engine.classify_tasks()
+  → engine.compute_cpm()
 ```
 
-注意这里 `done()` 仍然走 `core.py`，但 `_undone_dependencies()` / `check_integrity()` 的实现已经来自拆分模块。
+### `pt done <task>`
 
-## 为什么保留 `core.py` façade
+```text
+commands/tasks.py
+  → core.done_task() / core.quick_done()
+  → core.task_completion_issues()
+  → close_gate.check_close_gate()
+  → project_mutation.done_task_in_project()
+  → project_storage.save_project()
+  → post_save.run_post_save_hooks()
+```
 
-如果直接让所有命令层改成分别 import 新模块，会带来三个风险：
+### `pt req trace`
 
-1. 命令层改动面太大，回归成本高
-2. 旧测试和 monkeypatch 依赖 `core.PROJECTS_DIR` / `core.CONFIG_FILE` / `core.HISTORY_DIR`
-3. 持久化逻辑和纯逻辑会在一次改动里同时变化，难以定位回归
+```text
+commands/req_cmd.py
+  → core.trace_requirements()
+  → requirements.trace_requirements()
+  → linked repo trace matrix
+  → project YAML lightweight last_trace state
+```
 
-所以当前策略是：
+### `pt close report --save docs/issues/CLOSE_GATE_BACKLOG.md`
 
-- **先抽纯逻辑**
-- **再保留 `core` 作为稳定入口**
-- **最后视需要继续把命令层直接改到更细粒度模块**
-
-这是更适合现有仓库节奏的低风险重构路径。
+```text
+commands/close_cmd.py
+  → core.list_close_gates()
+  → close_gate.summarize_close_gates()
+  → close_gate.render_close_report_markdown()
+  → linked repo relative path when project.repo exists
+```
 
 ## 当前边界判断
 
-### 适合继续留在 `core.py` 的内容
+适合继续做的改进：
 
-- 文件系统路径
-- active project 选择
-- YAML 读写 / 迁移
-- 历史快照
-- repo sync / README 状态写回
-- 对外兼容 API
+- 继续把纯持久化包装从 `core.py` 薄化到 `project_storage.py`。
+- 为项目 YAML 补 machine-readable schema 或 schema 文档。
+- 为命令层补更细粒度测试。
+- 给 `project_query.py` / `project_map.py` 增加 explain/debug 输出。
 
-### 适合继续拆出去的内容
+不适合在当前路线中扩张的方向：
 
-- 纯展示格式化
-- 更细粒度的 project repository 抽象
-- project repository / persistence 抽象继续拆分
-- JSON Schema 导出 / schema 文档生成
-
-## 当前闭环状态
-
-完成这轮重构后，系统具备如下闭环：
-
-- 新模块已承接 `core` 内部的纯逻辑与校验逻辑
-- 命令层无需修改即可继续使用
-- `pytest -q` 可回归验证
-- `./pt validate --all` 可显式校验项目数据
-- 文档与 handoff 已同步说明新的模块边界
-
-## 下一轮最值得做的优化
-
-1. 把 project repository / persistence 抽象从 `core.py` 继续拆出去
-2. 给 `project_validation.py` 补 JSON Schema 导出或 machine-readable schema
-3. 给 `project_query.py` 增加 explain/debug 输出，解释 ready / blocked / CPM 来源
-4. 给命令层补更细粒度单测，而不只依赖回归测试
+- 把项目正文搬进 `project-tracker`。
+- 引入数据库替代 YAML 状态源。
+- 做自动全仓 ingest、向量库或复杂知识治理。
+- 让 `doctor`、check 类命令写回或修复文件。
 

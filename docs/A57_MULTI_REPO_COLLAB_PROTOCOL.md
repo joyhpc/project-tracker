@@ -1,5 +1,7 @@
 # A57 多 Repo 协作协议
 
+Status: current protocol for A57-style hardware projects. It defines repository ownership boundaries, not project design content.
+
 ## 目的
 
 本协议用于冻结 A57 类硬件项目在 `A57-docs`、`project-tracker`、`sch-review` 三个仓库之间的职责边界、读写方向和结论沉淀规则，避免出现多重真相、对象漂移和验证结论失真。

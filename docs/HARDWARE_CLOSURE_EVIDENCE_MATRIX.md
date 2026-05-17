@@ -1,5 +1,7 @@
 # Hardware Closure Evidence Matrix
 
+Status: current evidence checklist for the hardware closure gatekeeper protocol.
+
 | Gate | 触发动作 | 缺失证据 | 必填字段 | 输出脚手架 |
 |---|---|---|---|---|
 | `Gate 1` | 选型、系统框图、总体方案 | 边界不清、控制权不清 | `NON_GOALS`, `OWNERSHIP_MATRIX` | Ownership 矩阵认领表 |

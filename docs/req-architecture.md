@@ -1,5 +1,7 @@
 # Project Tracker Requirements Architecture
 
+Status: current design and boundary document for `pt req`. Implementation details should be checked against `tracker/requirements.py` and `tracker/commands/req_cmd.py`.
+
 这份文档定义 `pt req` 模块的目标、边界和落地方式。它解决的不是“再加几个 Markdown 模板”，而是把硬件项目的需求链路平台化，同时保持项目正文文档仍然归属于各自项目仓库。
 
 ## 1. 要解决的问题

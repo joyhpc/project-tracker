@@ -1,123 +1,94 @@
 # Project Tracker Anchors
 
-这份文档给新 agent / 新同事一个“落脚点”，让进入仓库后能快速找到主干，而不是在命令、流程、知识检索、项目 YAML 之间迷路。
+这份文档给新 agent / 新同事一个稳定落脚点。进入仓库后，优先按这里建立心智模型，再去读具体代码。
 
-## 1. 先看哪里
+## 阅读顺序
 
-按这个顺序读：
+1. [`README.md`](../README.md)：仓库定位、快速开始、目录边界。
+2. [`docs/README.md`](./README.md)：哪些文档是当前事实源，哪些只是历史背景。
+3. [`docs/architecture.md`](./architecture.md)：整体架构、数据流、读写边界。
+4. [`docs/core-architecture.md`](./core-architecture.md)：`core.py` façade 与 `project_*` 模块边界。
+5. [`tracker/cli.py`](../tracker/cli.py)：所有 CLI 命令的总路由。
+6. [`tracker/core.py`](../tracker/core.py)：兼容入口、active project、YAML 读写、快照、迁移。
+7. [`tracker/project_storage.py`](../tracker/project_storage.py)、[`tracker/project_model.py`](../tracker/project_model.py)、[`tracker/project_validation.py`](../tracker/project_validation.py)、[`tracker/project_query.py`](../tracker/project_query.py)、[`tracker/project_mutation.py`](../tracker/project_mutation.py)、[`tracker/subtask_templates.py`](../tracker/subtask_templates.py)、[`tracker/project_map.py`](../tracker/project_map.py)：已拆出的存储、模型、校验、查询、状态机、模板和地图层。
+8. [`tracker/engine.py`](../tracker/engine.py)：DAG、拓扑排序、关键路径、Slack、ready/waiting/blocked 分类。
+9. [`tests/`](../tests/)：当前行为合同和回归保护。
 
-1. `README.md` — 安装、CLI 快速开始、基本目录结构
-2. `docs/core-architecture.md` — 当前核心架构分层与调用链
-3. `tracker/cli.py` — 所有 CLI 命令的总路由
-4. `tracker/core.py` — 兼容 façade，负责 YAML 读写、迁移、乐观锁、公共入口
-5. `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` / `tracker/subtask_templates.py` / `tracker/project_map.py` — 已抽出的纯模型、校验、查询、状态机、子任务模板、地图视图层
-6. `tracker/engine.py` — DAG、拓扑排序、关键路径、Slack、依赖分类
-7. `tracker/knowledge.py` — Markdown 切块 + BM25 检索
-8. `tracker/prompt.py` — Prompt 组装层，把项目上下文变成给 LLM 的输入
-9. `tests/test_regressions.py` — 回归保护网，里面基本能看出系统承诺了什么
+## 架构锚点
 
-## 2. 当前架构锚点
+### CLI 层
 
-### A. CLI 层
-- 入口：`pt`, `pt.sh`, `tracker/cli.py`
-- 责任：只做参数解析和命令路由
-- 不该做：项目读写规则、依赖计算、知识检索细节
+- 入口：`pt`、`pt.sh`、`python -m tracker`、`tracker/cli.py`
+- 责任：参数解析、子命令注册、路由到 `tracker/commands/*.py`
+- 不应承接：项目读写规则、依赖计算、状态机细节、文档生成逻辑
 
-### B. 状态持久化层
-- 核心文件：`tracker/core.py`（兼容 façade）
-- 子模块：`tracker/project_constants.py`、`tracker/project_model.py`、`tracker/project_validation.py`、`tracker/project_query.py`、`tracker/project_mutation.py`、`tracker/subtask_templates.py`、`tracker/project_map.py`
-- 数据目录：`projects/`
-- 持久化格式：单项目单 YAML
-- 关键机制：
-  - schema 迁移：`migrate_project_data()`
-  - 乐观锁：`_save(..., check_mtime=True)`
-  - 历史快照：`.pt_history`
-  - 结构/完整性校验：`project_validation.py`
-  - 状态聚合：`project_query.py`
-  - 状态机规则：`project_mutation.py`
-  - 子任务模板发现/重连：`subtask_templates.py`
-  - 项目地图快照/渲染：`project_map.py`
+### 状态与持久化层
 
-### C. 计划引擎层
+- 兼容入口：`tracker/core.py`
+- 存储原语：`tracker/project_storage.py`
+- 迁移归一化：`tracker/project_migration.py`
+- 运行时数据：`projects/<PROJECT_ID>.yaml`
+- 当前项目：`projects/.active`
+- 本地快照：`projects/.pt_history/`
+
+`core.py` 现在是 façade，不是所有逻辑的家。新逻辑优先拆到更具体模块，再由 `core.py` 暴露稳定 API。
+
+### 项目逻辑层
+
+- `project_model.py`：把项目 YAML 转成引擎和展示可消费的结构。
+- `project_validation.py`：schema、DAG、悬空依赖、反向跨阶段依赖、粗粒度节点等校验。
+- `project_query.py`：聚合 `status` 所需的 ready/waiting/blocked/done、CPM、fallback。
+- `project_mutation.py`：任务状态机、子任务状态、文档挂接等项目内变更规则。
+- `subtask_templates.py`：子任务模板发现、匹配、应用和 DAG rewire。
+- `project_map.py`：单项目/全局项目地图快照、文本输出、HTML 渲染。
+
+### 图引擎层
+
 - 核心文件：`tracker/engine.py`
-- 责任：
-  - 构建全局 DAG
-  - 识别 ready / waiting / blocked
-  - CPM 关键路径和 slack
-  - 下游影响和拓扑顺序
+- 责任：构建 DAG、拓扑排序、CPM、slack、ready/waiting/blocked 分类、下游影响。
+- 约束：不关心 YAML 如何保存，只消费 flow-like 结构和任务状态映射。
 
-### D. AI / 知识增强层
-- 核心文件：`tracker/knowledge.py`, `tracker/prompt.py`
-- 责任：
-  - 从 note / note_file / docs 建知识块
-  - 用 BM25 做确定性检索
-  - 把当前任务、依赖链、历史结论拼成 prompt
+### Linked Repo 能力
 
-### E. 流程定义层
-- 目录：`tracker/flows/`
-- 说明：流程模板是产品逻辑，不是运行时状态
-- 原则：
-  - flow 负责“标准节点是什么”
-  - project YAML 负责“现在做到哪了”
+- `requirements.py`：把需求骨架、索引和追溯矩阵生成到 linked project repo。
+- `close_gate.py`：校验 closure 元数据是否足以关闭事项。
+- `docs_cmd.py` / `core.attach_doc()`：只在项目 YAML 中保存正式文档路径。
 
-## 3. 当前已知高价值入口
+正式项目正文和证据不属于 `project-tracker`。
 
-### 如果要改 CLI 行为
-优先看：`tracker/cli.py` + 对应 `tracker/commands/*.py`
+### 辅助能力
 
-### 如果要改任务状态机 / YAML 结构
-优先看：`tracker/core.py`（持久化包装）和 `tracker/project_mutation.py` / `tracker/subtask_templates.py` / `tracker/project_model.py` / `tracker/project_validation.py`（状态机/子任务模板/纯逻辑/校验）
+- `knowledge.py` / `prompt.py`：给 `pt prompt` 的本地检索和 prompt 组装，辅助判断，不是正式事实源。
+- `datax/`：CSV、Gantt、Mermaid、burndown、stats 导出。
+- `web/`：只读 Web 看板。
+- `notify/` 与 `post_save.py`：best-effort 钩子和通知，不应改变主流程成败。
+- `repo_boundary.py`：根目录边界检查，必须保持纯函数形态。
 
-### 如果要改依赖、关键路径、ready 判断
-优先看：`tracker/engine.py`
+## 常见修改入口
 
-### 如果要改 prompt 质量
-优先看：`tracker/knowledge.py` 和 `tracker/prompt.py`
+| 目标 | 优先看 |
+|---|---|
+| 改 CLI 参数或命令入口 | `tracker/cli.py` + 对应 `tracker/commands/*.py` |
+| 改任务状态机 | `tracker/project_mutation.py`，再检查 `core.py` 包装 |
+| 改 YAML schema 或校验 | `tracker/project_migration.py`、`tracker/project_validation.py` |
+| 改依赖/关键路径/ready 判断 | `tracker/engine.py` |
+| 改项目地图 | `tracker/project_map.py`、`tracker/commands/visual_cmd.py` |
+| 改需求骨架/trace/check | `tracker/requirements.py`、`tracker/commands/req_cmd.py` |
+| 改 close gate | `tracker/close_gate.py`、`tracker/commands/close_cmd.py` |
+| 改 prompt 辅助能力 | `tracker/knowledge.py`、`tracker/prompt.py`、`tracker/commands/prompt_cmd.py` |
 
-### 如果要防回归
-优先看：`tests/test_regressions.py`
+## 验证命令
 
-## 4. 这轮新建的工程锚点
-
-为了让 fresh clone 更容易接手，这一轮补了两个基础设施：
-
-- `tests/conftest.py`
-  - 作用：保证直接在仓库根目录运行 `pytest` 时，`tracker` 包可被稳定导入
-  - 价值：新机器不先 `pip install -e .` 也能直接跑回归
-
-- `pt validate` / `core.validate_project_file(...)`
-  - 作用：把结构级 schema 校验和 DAG 完整性检查显式暴露出来
-  - 价值：新 agent 可以先验项目 YAML，再开始修改状态或流程
-
-- `tracker/project_constants.py` / `tracker/project_model.py` / `tracker/project_validation.py` / `tracker/project_query.py` / `tracker/project_mutation.py` / `tracker/subtask_templates.py`
-  - 作用：把 `core.py` 里的常量、纯模型逻辑、校验逻辑、状态查询逻辑、状态机规则、子任务模板编排逻辑分层拆出
-  - 价值：后续优化可以在不动 CLI 入口的前提下继续细化架构
-
-- `.github/workflows/python-tests.yml`
-  - 作用：对 `main` / PR 自动执行 `pip install -e . && pytest -q`
-  - 价值：把“测试能过”从口头承诺变成 GitHub 上的可见信号
-
-## 5. 推荐验证命令
-
-```bash
-python -m pip install -e .
+```powershell
+python tools/check_repo_boundary.py
+python -m tracker doctor
+python -m tracker validate --all
 pytest -q
-./pt validate
-./pt map
-./pt list
-./pt --help
 ```
 
-如果只想做快速静态验证：
+如果只需要快速语法检查：
 
-```bash
+```powershell
 python -m py_compile tracker/*.py tracker/commands/*.py tests/*.py
 ```
 
-## 6. 下一批适合交给别的 agent 的任务
-
-1. 补 `pyproject.toml` / 现代化打包配置，替代纯 `setup.py`
-2. 为关键 CLI 命令增加更细粒度测试，而不是只靠大回归集
-3. 给 `projects/*.yaml` 增加更明确的 schema 文档或 JSON Schema
-4. 增加导入/导出能力，支持和外部 PM 工具做一跳同步
-5. 给 `prompt` / `knowledge` 增加可解释调试输出，方便看“为什么召回这几段”
